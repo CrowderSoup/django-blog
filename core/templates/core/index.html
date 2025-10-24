@@ -1,0 +1,26 @@
+{% extends "base.html" %} {% load static %} {% block content %}
+<div class="block h-card">
+  <section class="author">
+    <aside>
+      <figure class="author-image-container">
+        <img
+          class="u-photo"
+          alt="Aaron Crowder avatar"
+          src="{% static 'space.jpeg' %}"
+          height="90"
+          width="90"
+        />
+      </figure>
+    </aside>
+    <div class="author-box">
+      <div class="author-intro">{{ settings.intro|safe }}</div>
+      <div class="author-bio p-note">{{ settings.bio|safe }}</div>
+    </div>
+  </section>
+</div>
+<!--
+<div class="h-feed">
+  <h3>Recent Blog Posts</h3>
+</div>
+-->
+{% endblock %}

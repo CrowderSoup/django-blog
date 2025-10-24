@@ -1,0 +1,20 @@
+{% extends "base.html" %} {% load static %} {% block content %}
+<article class="h-entry">
+  <header>
+    <a class="u-url" href="/page/{{ page.slug }}">
+      <h3 class="p-name">{{ page.title }}</h3>
+    </a>
+    <p>
+      by
+      <a class="p-author h-card" href="{{ .Site.Author.url }}">
+        Aaron Crowder
+      </a>
+      on
+      <time class="dt-published" datetime="{{ page.published_on }}">
+        {{ page.published_on }}
+      </time>
+    </p>
+  </header>
+  <div class="e-content">{{ page.content|safe }}</div>
+</article>
+{% endblock %}
