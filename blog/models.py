@@ -12,7 +12,7 @@ class Post(models.Model):
     title = models.CharField(max_length=512)
     slug = models.SlugField(max_length=255, unique=True)
     content = MarkdownxField()
-    published_on = models.DateTimeField("date published")
+    published_on = models.DateTimeField("date published", null=True, blank=True)
 
     def __str__(self):
         return self.title
@@ -41,3 +41,6 @@ class Post(models.Model):
         text = strip_tags(html)
 
         return Truncator(text).chars(500, truncate="...")
+    
+    def is_published(self):
+        return self.published_on is not None

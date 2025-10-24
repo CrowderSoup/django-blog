@@ -1,11 +1,21 @@
 import markdown
 
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.shortcuts import render, get_object_or_404
 
 from .models import Post
 
 def posts(request):
-    posts = Post.objects.all()
+    query_set = Post.objects.exclude(published_on__isnull=True).order_by("-published_on")
+    paginator = Paginator(query_set, 10)
+    page_number = request.GET.get("page")
+
+    try:
+        posts = paginator.page(page_number)
+    except PageNotAnInteger:
+        posts = paginator.page(1)
+    except EmptyPage:
+        posts = paginator.page(paginator.num_pages)
 
     return render(request, 'blog/posts.html', { "posts": posts })
 

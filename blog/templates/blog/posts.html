@@ -1,17 +1,38 @@
-{% extends "base.html" %} {% block content %} {% for post in posts %}
-<article class="h-entry">
-  <header>
-    <a class="u-url" href="/blog/post/{{ post.slug }}">
-      <h3 class="p-name">{{ post.title }}</h3>
-    </a>
-    <p>
-      by <a class="p-author h-card" href="#"> Aaron Crowder </a> on
-      <time class="dt-published" datetime="{{ post.published_on }}">
-        {{ post.published_on|date:"Y-m-d" }}
-      </time>
-    </p>
-  </header>
-  <p class="p-summary">{{ post.summary }}</p>
-  <a href="/blog/post/{{ post.slug }}" class="u-url">Read more...</a>
-</article>
-{% endfor %} {% endblock %}
+{% extends "base.html" %} {% block content %} 
+<div class="h-feed">
+  {% for post in posts %}
+  <article class="h-entry">
+    <header>
+      <a class="u-url" href="/blog/post/{{ post.slug }}">
+        <h3 class="p-name">{{ post.title }}</h3>
+      </a>
+      <p>
+        by <a class="p-author h-card" href="#"> Aaron Crowder </a> on
+        <time class="dt-published" datetime="{{ post.published_on }}">
+          {{ post.published_on|date:"Y-m-d" }}
+        </time>
+      </p>
+    </header>
+    <p class="p-summary">{{ post.summary }}</p>
+    <a href="/blog/post/{{ post.slug }}" class="u-url">Read more...</a>
+  </article>
+  {% endfor %}
+</div>
+
+
+<nav class="paginator">
+    {% if posts.has_previous %}
+        <span class="pagination-item">
+            <a href="?page={{ posts.previous_page_number }}">&larr; Newer</a>
+        </span>
+    {% endif %}
+    <span class="pagination-item-spacer">
+        Page {{ posts.number }} of {{ posts.paginator.num_pages }}
+    </span>
+    {% if posts.has_next %}
+        <span class="pagination-item">
+            <a href="?page={{ posts.next_page_number }}">Older &rarr;</a>
+        </span>
+    {% endif %}
+</nav>
+{% endblock %}
