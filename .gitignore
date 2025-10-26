@@ -53,3 +53,6 @@ Thumbs.db
 
 # collected static files
 staticfiles/
+
+# media uploads
+uploads/

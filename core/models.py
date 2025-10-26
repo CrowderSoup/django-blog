@@ -5,13 +5,13 @@ from django.utils.text import slugify
 from django.utils.safestring import mark_safe
 
 from solo.models import SingletonModel
-from markdownx.models import MarkdownxField
+from mdeditor.fields import MDTextField
 
 
 class Page(models.Model):
     title = models.CharField(max_length=512)
     slug = models.SlugField(max_length=255, unique=True)
-    content = MarkdownxField()
+    content = MDTextField()
     published_on = models.DateTimeField("date published")
 
     def __str__(self):
@@ -57,8 +57,8 @@ class MenuItem(models.Model):
 class SiteConfiguration(SingletonModel):
     title = models.CharField(max_length=255)
     tagline = models.CharField(max_length=1024)
-    intro = MarkdownxField(max_length=512, default="")
-    bio = MarkdownxField()
+    intro = MDTextField(max_length=512, default="")
+    bio = MDTextField()
     main_menu = models.ForeignKey(Menu, null=True, on_delete=models.SET_NULL)
 
     def __str__(self):

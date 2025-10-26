@@ -5,5 +5,5 @@ urlpatterns = [
     path('', include('core.urls')),
     path('blog/', include('blog.urls')),
     path('admin/', admin.site.urls),
-    path('markdownx/', include('markdownx.urls')),
+    path('mdeditor/', include('mdeditor.urls')),
 ]

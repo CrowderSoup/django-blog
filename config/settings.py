@@ -1,3 +1,5 @@
+import os
+
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -29,7 +31,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     # 3rd Party apps
-    'markdownx',
+    'mdeditor',
     'solo',
 ]
 
@@ -118,3 +120,38 @@ WHITENOISE_MAX_AGE = 31536000
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# add frame settings for django3.0+ like this：
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+
+MDEDITOR_CONFIGS = {
+    'default': {
+        'width': '100% ', 
+        'height': 400,
+        'toolbar': ["undo", "redo", "|",
+                    "bold", "del", "italic", "quote", "|",
+                    "h1", "h2", "h3", "h5", "h6", "|",
+                    "list-ul", "list-ol", "hr", "|",
+                    "link", "code", "preformatted-text", "code-block",
+                    "||", "preview", "watch", "fullscreen"],
+        'upload_image_formats': ["jpg", "jpeg", "gif", "png", "bmp", "webp", "svg"],
+        'image_folder': 'editor',
+        'theme': 'default',
+        'preview_theme': 'default',
+        'editor_theme': 'default',
+        'toolbar_autofixed': False,
+        'search_replace': True,
+        'emoji': True,
+        'tex': True,
+        'flow_chart': True,
+        'sequence': True,
+        'watch': True,
+        'lineWrapping': True,
+        'lineNumbers': True,
+        'language': 'en'
+    }
+}
+
+# enabling media uploads
+MEDIA_ROOT = os.path.join(BASE_DIR, 'uploads')
+MEDIA_URL = '/media/'
