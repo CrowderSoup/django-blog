@@ -2,13 +2,14 @@ import markdown
 
 from django.shortcuts import render, get_object_or_404
 
-from .models import Page
+from .models import Page, Elsewhere
 from blog.models import Post
 
 def index(request):
-    recent_blog_posts = Post.objects.order_by('-published_on')[:5]
+    recent_blog_posts = Post.objects.filter(kind=Post.ARTICLE).order_by('-published_on')[:5]
+    elsewhere = Elsewhere.objects.all()
 
-    return render(request, 'core/index.html', { "recent_posts": recent_blog_posts })
+    return render(request, 'core/index.html', { "recent_posts": recent_blog_posts, "elsewhere": elsewhere })
 
 def page(request, slug):
     page = get_object_or_404(

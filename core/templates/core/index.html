@@ -16,6 +16,31 @@
       <div class="author-intro">{{ settings.intro }}</div>
       <div class="author-bio p-note">{{ settings.bio }}</div>
     </div>
+		<div class="elsewhere">
+		{% for profile in elsewhere %}
+			<a
+				class="elsewhere-link"
+				target="_blank"
+				rel="me"
+				href="{{ profile.profile_url }}">
+        {% if profile.place == 'x' %}
+          {% include 'core/svg/twitter.svg' %}
+        {% elif profile.place == 'bsky' %}
+          {% include 'core/svg/bluesky.svg' %}
+        {% elif profile.place == 'email' %}
+          {% include 'core/svg/email.svg' %}
+        {% elif profile.place == 'mastodon' %}
+          {% include 'core/svg/mastodon.svg' %}
+        {% elif profile.place == 'github' %}
+          {% include 'core/svg/github.svg' %}
+        {% elif profile.place == 'instagram' %}
+          {% include 'core/svg/instagram.svg' %}
+        {% else %}
+          {{ profile.place }}
+        {% endif %}
+			</a>
+		{% endfor %}
+		</div>
   </section>
 </div>
 <div class="h-feed">

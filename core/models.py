@@ -61,6 +61,18 @@ class MenuItem(models.Model):
         ordering = ['weight']
 
 
+class Elsewhere(models.Model):
+    X = 'x'; BLUESKY = 'bsky'; EMAIL = 'email'; MASTODON = 'mastodon'; GITHUB = 'github'; INSTAGRAM = 'instagram';
+    PLACE_CHOICES = [(X, 'X/Twitter'), (BLUESKY, 'BSky'), (EMAIL, 'Email'), (MASTODON, 'Mastodon/ActivityPub'), (GITHUB, 'GitHub'), (INSTAGRAM, 'Instagram')]
+
+    text = models.CharField(max_length=128)
+    profile_url = models.CharField(max_length=1024)
+    place = models.CharField(max_length=16, choices=PLACE_CHOICES, default=X)
+
+    def __str__(self):
+        return self.text
+
+
 class SiteConfiguration(SingletonModel):
     title = models.CharField(max_length=255)
     tagline = models.CharField(max_length=1024)
