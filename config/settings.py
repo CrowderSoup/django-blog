@@ -4,8 +4,8 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-i-c)41n9t(lmc&w&q2)l%iyu2e2ea#d$mo+nkb!-e*5u)^*5@t'
-DEBUG = True
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-i-c)41n9t(lmc&w&q2)l%iyu2e2ea#d$mo+nkb!-e*5u)^*5@t')
+DEBUG = bool(os.environ.get("DEBUG", 0))
 
 ALLOWED_HOSTS = []
 INTERNAL_IPS = [
@@ -44,9 +44,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-
-    'debug_toolbar.middleware.DebugToolbarMiddleware',
 ]
+
+if DEBUG:
+    MIDDLEWARE.append('debug_toolbar.middleware.DebugToolbarMiddleware')
 
 ROOT_URLCONF = 'config.urls'
 
