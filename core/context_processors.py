@@ -6,7 +6,9 @@ from .models import SiteConfiguration
 
 def site_configuration(request):
     settings = SiteConfiguration.get_solo()
-    menu_items = settings.main_menu.menuitem_set.all()
+    menu_items = None
+    if settings.main_menu is not None:
+        menu_items = settings.main_menu.menuitem_set.all()
 
     md = markdown.Markdown(extensions=["fenced_code"])
     settings.intro = mark_safe(md.convert(settings.intro))
