@@ -5,12 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+  "boto3>=1.40.71",
   "django>=5.2.7",
   "django-environ>=0.12.0",
   "django-mdeditor>=0.1.20",
   "django-solo>=2.4.0",
+  "django-storages[s3]>=1.14.6",
   "django-taggit>=6.1.0",
   "markdown>=3.9",
+  "psycopg>=3.2.12",
+  "psycopg2-binary>=2.9.11",
   "python-frontmatter>=1.1.0",
 ]
 

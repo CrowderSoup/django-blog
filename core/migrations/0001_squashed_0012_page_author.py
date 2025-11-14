@@ -12,8 +12,6 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
-    replaces = [('core', '0001_squashed_0001_initial'), ('core', '0002_alter_page_content'), ('core', '0003_menuitem_weight'), ('core', '0004_alter_menuitem_options'), ('core', '0005_siteconfiguration'), ('core', '0006_siteconfiguration_main_menu'), ('core', '0007_siteconfiguration_intro'), ('core', '0008_auto_20251024_1608'), ('core', '0009_auto_20251024_1610'), ('core', '0010_alter_page_slug'), ('core', '0011_alter_page_content_alter_siteconfiguration_bio_and_more'), ('core', '0012_page_author')]
-
     initial = True
 
     dependencies = [
@@ -62,13 +60,8 @@ class Migration(migrations.Migration):
                 ('title', models.CharField(max_length=512)),
                 ('content', models.TextField()),
                 ('published_on', models.DateTimeField(verbose_name='date published')),
-                ('slug', models.SlugField(blank=True, max_length=255, null=True)),
+                ('slug', models.SlugField(max_length=255, unique=True)),
             ],
-        ),
-        migrations.AlterField(
-            model_name='page',
-            name='slug',
-            field=models.SlugField(max_length=255, unique=True),
         ),
         migrations.AlterField(
             model_name='page',
