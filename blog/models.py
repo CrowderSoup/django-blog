@@ -61,3 +61,7 @@ class Post(models.Model):
     
     def is_published(self):
         return self.published_on is not None
+    
+    class Meta:
+        ordering = ['-published_on']
+
