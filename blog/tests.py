@@ -1,7 +1,6 @@
 from django.test import TestCase
 from django.utils import timezone
 
-from core.models import Page
 from .models import Post, Tag
 
 
@@ -55,7 +54,7 @@ class PostModelTests(TestCase):
         self.assertEqual(post.slug, "hello-world")
 
     def test_slug_defaults_to_page_when_title_blank(self):
-        Page.objects.create(title="Existing", slug="page", content="content", published_on=timezone.now())
+        Post.objects.create(title="Existing", slug="page", content="content", published_on=timezone.now())
 
         post = Post(title="", content="text")
         post.save()
