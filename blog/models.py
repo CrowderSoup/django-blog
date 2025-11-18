@@ -18,6 +18,9 @@ class Tag(models.Model):
     def __str__(self):
         return self.tag
 
+    class Meta:
+        ordering = ['tag']
+
 class Post(models.Model):
     ARTICLE = "article"; NOTE = "note"; PHOTO = "photo"
     KIND_CHOICES = [(ARTICLE, "Article"), (NOTE, "Note"), (PHOTO, "Photo")]
@@ -49,7 +52,6 @@ class Post(models.Model):
     def html(self):
         md = markdown.Markdown(extensions=["fenced_code"])
         return mark_safe(md.convert(self.content))
-
 
     def summary(self):
         md = markdown.Markdown(extensions=["fenced_code"])
