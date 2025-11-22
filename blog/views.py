@@ -6,7 +6,15 @@ from django.shortcuts import render, get_object_or_404
 from .models import Post, Tag
 
 def posts(request):
+    selected_kind = request.GET.get("kind")
+    valid_kinds = [kind for kind, _ in Post.KIND_CHOICES]
+
     query_set = Post.objects.exclude(published_on__isnull=True).order_by("-published_on")
+    if selected_kind in valid_kinds:
+        query_set = query_set.filter(kind=selected_kind)
+    else:
+        selected_kind = None
+
     paginator = Paginator(query_set, 10)
     page_number = request.GET.get("page")
 
@@ -17,7 +25,15 @@ def posts(request):
     except EmptyPage:
         posts = paginator.page(paginator.num_pages)
 
-    return render(request, 'blog/posts.html', { "posts": posts })
+    return render(
+        request,
+        'blog/posts.html',
+        {
+            "posts": posts,
+            "post_kinds": Post.KIND_CHOICES,
+            "selected_kind": selected_kind,
+        },
+    )
 
 def posts_by_tag(request, tag):
     tag = get_object_or_404(Tag, tag=tag)
