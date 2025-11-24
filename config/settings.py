@@ -44,6 +44,9 @@ INSTALLED_APPS = [
     "files.apps.FilesConfig",
     "micropub.apps.MicropubConfig",
 
+    # Django Admin theme
+    "jazzmin",
+
     # Django apps
     "django.contrib.admin",
     "django.contrib.auth",
@@ -260,4 +263,13 @@ MDEDITOR_CONFIGS = {
         "lineNumbers": True,
         "language": "en",
     }
+}
+
+# ---------------------------------------------------------------------------
+# Django Jazzmin
+# ---------------------------------------------------------------------------
+
+JAZZMIN_SETTINGS = {
+    "hide_apps": ["auth"],
+    "hide_models": ["auth.Group", "auth.User"],
 }
