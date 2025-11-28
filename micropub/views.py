@@ -248,6 +248,21 @@ class MicropubView(View):
                 n_key, n_values = _normalize_property(key, value_list)
                 normalized_add[n_key] = n_values
 
+            delete_list = data.get("delete", [])
+            delete_data = delete_list[0] if delete_list else {}
+            if delete_data and not isinstance(delete_data, (dict, list, str)):
+                return HttpResponseBadRequest("Invalid delete payload")
+
+            normalized_delete = {}
+            if isinstance(delete_data, dict):
+                for key, value in (delete_data or {}).items():
+                    value_list = value if isinstance(value, list) else [value]
+                    n_key, n_values = _normalize_property(key, value_list)
+                    normalized_delete[n_key] = n_values
+            elif isinstance(delete_data, (list, str)):
+                props = delete_data if isinstance(delete_data, list) else [delete_data]
+                normalized_delete = {prop: [] for prop in props}
+
             if "content" in normalized_replace:
                 new_content = _first_value({"content": normalized_replace["content"]}, "content")
                 if new_content is not None:
@@ -269,6 +284,15 @@ class MicropubView(View):
                         continue
                     tag, _ = Tag.objects.get_or_create(tag=tag_slug)
                     post.tags.add(tag)
+
+            if "category" in normalized_delete:
+                for category in normalized_delete["category"]:
+                    tag_slug = slugify(str(category))
+                    if not tag_slug:
+                        continue
+                    post.tags.filter(tag=tag_slug).delete()
+                if normalized_delete["category"] == []:
+                    post.tags.clear()
 
             post.save()
             return HttpResponse(status=204)
