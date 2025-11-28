@@ -260,7 +260,8 @@ class MicropubView(View):
             tag, _ = Tag.objects.get_or_create(tag=tag_slug)
             post.tags.add(tag)
 
-        for uploaded in request.FILES.getlist("photo"):
+        uploaded_photos = request.FILES.getlist("photo") + request.FILES.getlist("photo[]")
+        for uploaded in uploaded_photos:
             asset = File.objects.create(kind=File.IMAGE, file=uploaded)
             Attachment.objects.create(content_object=post, asset=asset, role="photo")
 
