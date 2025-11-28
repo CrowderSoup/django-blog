@@ -36,15 +36,48 @@ def _first_value(data: dict, key: str, default=None):
     return value or default
 
 
+def _normalize_property(key: str, values):
+    normalized_key = key[:-2] if key.endswith("[]") else key
+    normalized_values = []
+    for item in values:
+        if normalized_key == "content" and isinstance(item, dict):
+            html_content = item.get("html")
+            if isinstance(html_content, str):
+                item = html_to_markdown(html_content)
+            elif isinstance(item.get("value"), str):
+                item = item["value"]
+        elif normalized_key == "photo" and isinstance(item, dict):
+            url = item.get("value")
+            if not url:
+                url_candidate = item.get("url")
+                if isinstance(url_candidate, list) and url_candidate:
+                    url = url_candidate[0]
+                elif isinstance(url_candidate, str):
+                    url = url_candidate
+            alt = item.get("alt")
+            if isinstance(alt, list) and alt:
+                alt = alt[0]
+            if isinstance(url, str) and url:
+                alt_text = alt if isinstance(alt, str) else ""
+                item = {"url": url, "alt": alt_text}
+        normalized_values.append(item)
+    return normalized_key, normalized_values
+
+
 def _normalize_payload(request):
     if request.content_type and "json" in request.content_type:
         try:
             raw = json.loads(request.body or "{}")
         except json.JSONDecodeError:
             return {}
+        raw_data = {}
         if isinstance(raw, dict) and isinstance(raw.get("properties"), dict):
             properties = raw["properties"]
-            raw_data = {key: value if isinstance(value, list) else [value] for key, value in properties.items()}
+            raw_data.update({key: value if isinstance(value, list) else [value] for key, value in properties.items()})
+            for key in ("action", "url", "replace", "add", "delete", "type"):
+                if key in raw and key not in raw_data:
+                    value = raw[key]
+                    raw_data[key] = value if isinstance(value, list) else [value]
         else:
             raw_data = {key: value if isinstance(value, list) else [value] for key, value in raw.items()}
     else:
@@ -52,31 +85,7 @@ def _normalize_payload(request):
 
     normalized = {}
     for key, value in raw_data.items():
-        normalized_key = key[:-2] if key.endswith("[]") else key
-        # Normalize Micropub content objects with HTML payloads into markdown strings
-        normalized_values = []
-        for item in value:
-            if normalized_key == "content" and isinstance(item, dict):
-                html_content = item.get("html")
-                if isinstance(html_content, str):
-                    item = html_to_markdown(html_content)
-                elif isinstance(item.get("value"), str):
-                    item = item["value"]
-            elif normalized_key == "photo" and isinstance(item, dict):
-                url = item.get("value")
-                if not url:
-                    url_candidate = item.get("url")
-                    if isinstance(url_candidate, list) and url_candidate:
-                        url = url_candidate[0]
-                    elif isinstance(url_candidate, str):
-                        url = url_candidate
-                alt = item.get("alt")
-                if isinstance(alt, list) and alt:
-                    alt = alt[0]
-                if isinstance(url, str) and url:
-                    alt_text = alt if isinstance(alt, str) else ""
-                    item = {"url": url, "alt": alt_text}
-            normalized_values.append(item)
+        normalized_key, normalized_values = _normalize_property(key, value)
         normalized.setdefault(normalized_key, []).extend(normalized_values)
 
     return normalized
@@ -199,6 +208,52 @@ class MicropubView(View):
 
     def post(self, request):
         data = _normalize_payload(request)
+        action = _first_value(data, "action")
+
+        if action == "update":
+            target_url = _first_value(data, "url")
+            if not target_url:
+                return HttpResponseBadRequest("Missing url for update")
+
+            parsed = urlparse(target_url)
+            path_parts = [part for part in parsed.path.split("/") if part]
+            slug = path_parts[-1] if path_parts else ""
+            if not slug:
+                return HttpResponseBadRequest("Invalid url for update")
+
+            try:
+                post = Post.objects.get(slug=slug)
+            except Post.DoesNotExist:
+                return HttpResponseBadRequest("Post not found for update")
+
+            replace_list = data.get("replace", [])
+            replace_data = replace_list[0] if replace_list else {}
+            if replace_data and not isinstance(replace_data, dict):
+                return HttpResponseBadRequest("Invalid replace payload")
+
+            normalized_replace = {}
+            for key, value in (replace_data or {}).items():
+                value_list = value if isinstance(value, list) else [value]
+                n_key, n_values = _normalize_property(key, value_list)
+                normalized_replace[n_key] = n_values
+
+            if "content" in normalized_replace:
+                new_content = _first_value({"content": normalized_replace["content"]}, "content")
+                if new_content is not None:
+                    post.content = new_content
+
+            if "category" in normalized_replace:
+                post.tags.clear()
+                for category in normalized_replace["category"]:
+                    tag_slug = slugify(str(category))
+                    if not tag_slug:
+                        continue
+                    tag, _ = Tag.objects.get_or_create(tag=tag_slug)
+                    post.tags.add(tag)
+
+            post.save()
+            return HttpResponse(status=204)
+
         content = _first_value(data, "content", "") or ""
         name = _first_value(data, "name")
         like_of = _first_value(data, "like-of")
@@ -214,7 +269,7 @@ class MicropubView(View):
             kind = Post.REPOST
         elif in_reply_to:
             kind = Post.REPLY
-        elif request.FILES.getlist("photo") or data.get("photo"):
+        elif request.FILES.getlist("photo") or request.FILES.getlist("photo[]") or data.get("photo"):
             kind = Post.PHOTO
         elif name:
             kind = Post.ARTICLE
