@@ -1,8 +1,11 @@
 import json
+import mimetypes
+import os
 from datetime import datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
+from uuid import uuid4
 from django.http import (
     HttpResponse,
     HttpResponseBadRequest,
@@ -14,6 +17,7 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.urls import reverse
+from django.core.files.base import ContentFile
 
 from markdownify import markdownify as html_to_markdown
 
@@ -58,6 +62,20 @@ def _normalize_payload(request):
                     item = html_to_markdown(html_content)
                 elif isinstance(item.get("value"), str):
                     item = item["value"]
+            elif normalized_key == "photo" and isinstance(item, dict):
+                url = item.get("value")
+                if not url:
+                    url_candidate = item.get("url")
+                    if isinstance(url_candidate, list) and url_candidate:
+                        url = url_candidate[0]
+                    elif isinstance(url_candidate, str):
+                        url = url_candidate
+                alt = item.get("alt")
+                if isinstance(alt, list) and alt:
+                    alt = alt[0]
+                if isinstance(url, str) and url:
+                    alt_text = alt if isinstance(alt, str) else ""
+                    item = {"url": url, "alt": alt_text}
             normalized_values.append(item)
         normalized.setdefault(normalized_key, []).extend(normalized_values)
 
@@ -75,6 +93,29 @@ def _extract_mf2_objects(data: dict):
         if nested_objects:
             mf2_objects[key] = nested_objects
     return mf2_objects
+
+
+def _download_and_attach_photo(post, url: str, alt_text: str = ""):
+    try:
+        with urlopen(url, timeout=10) as response:
+            data = response.read()
+            content_type = response.headers.get("Content-Type", "")
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        return False
+
+    if not data:
+        return False
+
+    parsed = urlparse(url)
+    filename = os.path.basename(parsed.path)
+    if not filename or "." not in filename:
+        ext = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ".jpg"
+        filename = f"{uuid4().hex}{ext}"
+
+    asset = File(kind=File.IMAGE, alt_text=alt_text or "")
+    asset.file.save(filename, ContentFile(data), save=True)
+    Attachment.objects.create(content_object=post, asset=asset, role="photo")
+    return True
 
 
 def _authorized(request):
@@ -223,9 +264,22 @@ class MicropubView(View):
             asset = File.objects.create(kind=File.IMAGE, file=uploaded)
             Attachment.objects.create(content_object=post, asset=asset, role="photo")
 
-        for photo_url in data.get("photo", []):
-            if isinstance(photo_url, str) and photo_url and not photo_url.startswith("<UploadedFile"):
-                post.content += f"\n![Photo]({photo_url})\n"
+        for photo_item in data.get("photo", []):
+            if isinstance(photo_item, str) and photo_item and not photo_item.startswith("<UploadedFile"):
+                if photo_item.startswith("!["):
+                    post.content += f"\n{photo_item}\n"
+                    continue
+                if _download_and_attach_photo(post, photo_item):
+                    continue
+                post.content += f"\n![Photo]({photo_item})\n"
+            elif isinstance(photo_item, dict):
+                url = photo_item.get("url")
+                alt_text = photo_item.get("alt") or ""
+                if isinstance(url, str) and url:
+                    if _download_and_attach_photo(post, url, alt_text=alt_text):
+                        continue
+                    alt_fragment = alt_text if alt_text else "Photo"
+                    post.content += f"\n![{alt_fragment}]({url})\n"
         if data.get("photo"):
             post.save()
 
