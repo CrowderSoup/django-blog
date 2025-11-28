@@ -207,6 +207,52 @@ class MicropubView(View):
             )
         if query == "syndicate-to":
             return JsonResponse({"syndicate-to": []})
+        if query == "source":
+            target_url = request.GET.get("url")
+            if not target_url:
+                return HttpResponseBadRequest("Missing url for source query")
+
+            parsed = urlparse(target_url)
+            path_parts = [part for part in parsed.path.split("/") if part]
+            slug = path_parts[-1] if path_parts else ""
+            if not slug:
+                return HttpResponseBadRequest("Invalid url for source query")
+
+            try:
+                post = Post.objects.get(slug=slug, deleted=False)
+            except Post.DoesNotExist:
+                return HttpResponse(status=404)
+
+            props = {
+                "content": [post.content] if post.content else [],
+                "name": [post.title] if post.title else [],
+                "published": [post.published_on.isoformat()] if post.published_on else [],
+                "category": list(post.tags.values_list("tag", flat=True)),
+            }
+            if post.like_of:
+                props["like-of"] = [post.like_of]
+            if post.repost_of:
+                props["repost-of"] = [post.repost_of]
+            if post.in_reply_to:
+                props["in-reply-to"] = [post.in_reply_to]
+
+            photos = []
+            for attachment in post.attachments.filter(asset__kind=File.IMAGE):
+                url = attachment.asset.file.url
+                alt = attachment.asset.alt_text
+                if alt:
+                    photos.append({"value": url, "alt": alt})
+                else:
+                    photos.append(url)
+            if photos:
+                props["photo"] = photos
+
+            requested_props = request.GET.getlist("properties[]") or request.GET.getlist("properties")
+            if requested_props:
+                filtered = {k: v for k, v in props.items() if k in requested_props}
+                props = filtered
+
+            return JsonResponse({"properties": props})
         return HttpResponseBadRequest("Unsupported query")
 
     def post(self, request):
