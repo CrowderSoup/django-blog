@@ -36,8 +36,16 @@ def _normalize_payload(request):
             raw = json.loads(request.body or "{}")
         except json.JSONDecodeError:
             return {}
-        return {key: value if isinstance(value, list) else [value] for key, value in raw.items()}
-    return {key: request.POST.getlist(key) for key in request.POST}
+        raw_data = {key: value if isinstance(value, list) else [value] for key, value in raw.items()}
+    else:
+        raw_data = {key: request.POST.getlist(key) for key in request.POST}
+
+    normalized = {}
+    for key, value in raw_data.items():
+        normalized_key = key[:-2] if key.endswith("[]") else key
+        normalized.setdefault(normalized_key, []).extend(value)
+
+    return normalized
 
 
 def _authorized(request):

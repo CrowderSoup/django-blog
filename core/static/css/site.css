@@ -83,6 +83,7 @@ nav.tags {
   overflow: hidden;
   width: 100%;
   height: 100%;
+  border-radius: 0.5rem;
 }
 
 .photo-slider figure .photo-container::before {
@@ -105,7 +106,6 @@ nav.tags {
   height: clamp(16rem, 75vh, 48rem);
   object-fit: contain; /* show the whole photo (prevents cropping tall shots) */
   background: transparent;
-  border-radius: 0.5rem;
   z-index: 1;
 }
 
