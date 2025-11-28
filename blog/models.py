@@ -53,9 +53,8 @@ class Post(models.Model):
         return self.title
 
     def save(self, *args, **kwargs):
-        title_blank = not self.title
-        if title_blank:
-            suffix = timezone.now().strftime("%Y%m%d%H%M%S")
+        if not self.title:
+            timestamp = int(timezone.now().timestamp())
             base_titles = {
                 Post.NOTE: "Note",
                 Post.PHOTO: "Photo",
@@ -63,9 +62,11 @@ class Post(models.Model):
                 Post.REPOST: "Repost",
                 Post.REPLY: "Reply",
             }
-            self.title = base_titles.get(self.kind, "Article") + f" {suffix}"
+            self.title = f"{base_titles.get(self.kind, 'Article')}: {timestamp}"
+
         if not self.slug:
-            base = 'page' if title_blank else (slugify(self.title or '') or 'page')
+            timestamp = int(timezone.now().timestamp())
+            base = f"{self.kind}-{timestamp}"
             slug = base
             i = 2
             # Ensure uniqueness without race conditions
@@ -73,6 +74,7 @@ class Post(models.Model):
                 slug = f"{base}-{i}"
                 i += 1
             self.slug = slug
+
         super().save(*args, **kwargs)
 
     def get_absolute_url(self):

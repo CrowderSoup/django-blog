@@ -51,7 +51,9 @@ class PostModelTests(TestCase):
         post = Post(title="Hello World", content="text")
         post.save()
 
-        self.assertEqual(post.slug, "hello-world")
+        self.assertTrue(post.slug.startswith(f"{post.kind}-"))
+        suffix = post.slug.split(f"{post.kind}-", 1)[1]
+        self.assertTrue(suffix.isdigit())
 
     def test_slug_defaults_to_page_when_title_blank(self):
         Post.objects.create(title="Existing", slug="page", content="content", published_on=timezone.now())
@@ -59,4 +61,6 @@ class PostModelTests(TestCase):
         post = Post(title="", content="text")
         post.save()
 
-        self.assertEqual(post.slug, "page-2")
+        self.assertTrue(post.slug.startswith("article-"))
+        suffix = post.slug.split("article-", 1)[1]
+        self.assertTrue(suffix.isdigit())
