@@ -15,6 +15,8 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.urls import reverse
 
+from markdownify import markdownify as html_to_markdown
+
 from blog.models import Post, Tag
 from files.models import Attachment, File
 from .models import Webmention
@@ -47,7 +49,17 @@ def _normalize_payload(request):
     normalized = {}
     for key, value in raw_data.items():
         normalized_key = key[:-2] if key.endswith("[]") else key
-        normalized.setdefault(normalized_key, []).extend(value)
+        # Normalize Micropub content objects with HTML payloads into markdown strings
+        normalized_values = []
+        for item in value:
+            if normalized_key == "content" and isinstance(item, dict):
+                html_content = item.get("html")
+                if isinstance(html_content, str):
+                    item = html_to_markdown(html_content)
+                elif isinstance(item.get("value"), str):
+                    item = item["value"]
+            normalized_values.append(item)
+        normalized.setdefault(normalized_key, []).extend(normalized_values)
 
     return normalized
 
