@@ -202,8 +202,11 @@ class MicropubView(View):
                         {"type": Post.REPOST, "name": "Repost"},
                         {"type": Post.REPLY, "name": "Reply"},
                     ],
+                    "syndicate-to": [],
                 }
             )
+        if query == "syndicate-to":
+            return JsonResponse({"syndicate-to": []})
         return HttpResponseBadRequest("Unsupported query")
 
     def post(self, request):
