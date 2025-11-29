@@ -103,6 +103,8 @@ def post_editor(request, slug=None):
     title_initial = editing_post.title if editing_post else ""
     content_initial = editing_post.content if editing_post else ""
     context = {
+        "hide_nav": True,
+        "hide_site_description": True,
         "post_kinds": Post.KIND_CHOICES,
         "selected_kind": selected_kind,
         "tags": existing_tags,

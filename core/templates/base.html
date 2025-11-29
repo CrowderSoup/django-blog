@@ -23,12 +23,16 @@
   <body>
     <header>
       <h1>$❯ {{ settings.title }}</h1>
+      {% if not hide_site_description %}
       <div class="site-description">{{ settings.tagline }}</div>
+      {% endif %}
+      {% if not hide_nav %}
       <nav>
         {% for item in menu_items %}
         <a href="{{ item.url }}">{{ item.text }}</a>
         {% endfor %}
       </nav>
+      {% endif %}
     </header>
     <main>{% block content %}{% endblock %}</main>
     <footer>
