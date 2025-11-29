@@ -48,6 +48,8 @@ class Post(models.Model):
     like_of = models.URLField(blank=True)
     repost_of = models.URLField(blank=True)
     in_reply_to = models.URLField(blank=True)
+    mastodon_url = models.URLField(blank=True)
+    bluesky_url = models.URLField(blank=True)
 
     def __str__(self):
         return self.title

@@ -133,6 +133,33 @@
       <small>Existing tags stay selected; new entries will be created automatically.</small>
     </div>
 
+    <div class="field" data-kind-section="note,photo">
+      <label>Syndication</label>
+      <small>Automatically share to connected accounts and capture the resulting links.</small>
+      {% if syndication_targets %}
+      <div class="kind-grid">
+        {% for target in syndication_targets %}
+        <label class="kind-pill" style="border-radius: 12px;">
+          <input type="checkbox" name="syndicate_{{ target.uid }}" value="1"{% if target.uid == 'mastodon' and syndicate_mastodon %} checked{% endif %}{% if target.uid == 'bluesky' and syndicate_bluesky %} checked{% endif %}>
+          <span>{{ target.name }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted">Add Mastodon or Bluesky credentials in the environment to enable syndication.</p>
+      {% endif %}
+      {% if syndication_links.mastodon or syndication_links.bluesky %}
+      <ul class="simple-list">
+        {% if syndication_links.mastodon %}
+        <li>Current Mastodon link: <a href="{{ syndication_links.mastodon }}" rel="noopener">{{ syndication_links.mastodon }}</a></li>
+        {% endif %}
+        {% if syndication_links.bluesky %}
+        <li>Current Bluesky link: <a href="{{ syndication_links.bluesky }}" rel="noopener">{{ syndication_links.bluesky }}</a></li>
+        {% endif %}
+      </ul>
+      {% endif %}
+    </div>
+
     <div class="field">
       <label for="photos">Images</label>
       <input type="file" id="photos" name="photos" accept="image/*" multiple>
@@ -302,7 +329,8 @@
     if (active) { active.parentElement.classList.add('active'); }
 
     kindSections.forEach((section) => {
-      const matches = section.dataset.kindSection === kind;
+      const kinds = section.dataset.kindSection.split(',').map((value) => value.trim());
+      const matches = kinds.includes(kind);
       section.classList.toggle('hidden', !matches);
     });
   }

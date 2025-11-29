@@ -14,6 +14,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from urllib.parse import urlencode
 
 from files.models import Attachment, File
+from .syndication import available_targets, syndicate_post
 
 from .models import Post, Tag
 
@@ -72,7 +73,7 @@ def posts_by_tag(request, tag):
 
 def post(request, slug):
     post = get_object_or_404(
-        Post.objects.only("title", "content", "slug", "published_on", "tags"),
+        Post.objects.only("title", "content", "slug", "published_on", "tags", "mastodon_url", "bluesky_url"),
         slug=slug,
         deleted=False,
     )
@@ -97,11 +98,27 @@ def post_editor(request, slug=None):
     if selected_kind not in valid_kinds:
         selected_kind = Post.ARTICLE
 
+    configured_targets = available_targets()
+    configured_target_ids = {target.uid for target in configured_targets}
+
     existing_tags = Tag.objects.all()
 
     initial_tags = list(editing_post.tags.values_list("tag", flat=True)) if editing_post else []
     title_initial = editing_post.title if editing_post else ""
     content_initial = editing_post.content if editing_post else ""
+    mastodon_initial = editing_post.mastodon_url if editing_post else ""
+    bluesky_initial = editing_post.bluesky_url if editing_post else ""
+    syndicate_mastodon_raw = (
+        bool(request.POST.get("syndicate_mastodon"))
+        if request.method == "POST" and "mastodon" in configured_target_ids
+        else bool(mastodon_initial)
+    )
+    syndicate_bluesky_raw = (
+        bool(request.POST.get("syndicate_bluesky"))
+        if request.method == "POST" and "bluesky" in configured_target_ids
+        else bool(bluesky_initial)
+    )
+
     context = {
         "hide_nav": True,
         "hide_site_description": True,
@@ -116,6 +133,10 @@ def post_editor(request, slug=None):
         "in_reply_to_value": request.POST.get("in_reply_to", editing_post.in_reply_to if editing_post else "").strip(),
         "new_tags_value": request.POST.get("new_tags", "").strip(),
         "selected_tags": [slug for slug in request.POST.getlist("tags") if slug] or initial_tags,
+        "syndicate_mastodon": syndicate_mastodon_raw,
+        "syndicate_bluesky": syndicate_bluesky_raw,
+        "syndication_targets": configured_targets,
+        "syndication_links": {"mastodon": mastodon_initial, "bluesky": bluesky_initial},
         "manifest_url": static("pwa/post-editor.webmanifest"),
         "form_action": reverse("post_editor_edit", kwargs={"slug": editing_post.slug}) if editing_post else reverse("post_editor"),
         "edit_mode": bool(editing_post),
@@ -181,6 +202,13 @@ def post_editor(request, slug=None):
 
         uploads = request.FILES.getlist("photos")
 
+        syndicate_mastodon = context["syndicate_mastodon"] if selected_kind in (Post.NOTE, Post.PHOTO) else False
+        syndicate_bluesky = context["syndicate_bluesky"] if selected_kind in (Post.NOTE, Post.PHOTO) else False
+
+        if selected_kind not in (Post.NOTE, Post.PHOTO):
+            context["syndicate_mastodon"] = False
+            context["syndicate_bluesky"] = False
+
         errors = []
         if selected_kind == Post.LIKE and not context["like_of_value"]:
             errors.append("Provide a URL for the like.")
@@ -217,6 +245,14 @@ def post_editor(request, slug=None):
         post.like_of = context["like_of_value"] if selected_kind == Post.LIKE else ""
         post.repost_of = context["repost_of_value"] if selected_kind == Post.REPOST else ""
         post.in_reply_to = context["in_reply_to_value"] if selected_kind == Post.REPLY else ""
+        if selected_kind in (Post.NOTE, Post.PHOTO):
+            if not syndicate_mastodon:
+                post.mastodon_url = ""
+            if not syndicate_bluesky:
+                post.bluesky_url = ""
+        else:
+            post.mastodon_url = ""
+            post.bluesky_url = ""
         if not editing_post:
             post.published_on = timezone.now()
         post.save()
@@ -268,6 +304,28 @@ def post_editor(request, slug=None):
                 caption=meta.get("caption", ""),
             )
             Attachment.objects.create(content_object=post, asset=asset, role="photo", sort_order=index)
+
+        if selected_kind in (Post.NOTE, Post.PHOTO) and configured_target_ids:
+            requested_targets = []
+            if syndicate_mastodon and "mastodon" in configured_target_ids:
+                requested_targets.append("mastodon")
+            if syndicate_bluesky and "bluesky" in configured_target_ids:
+                requested_targets.append("bluesky")
+
+            if requested_targets:
+                canonical_url = request.build_absolute_uri(post.get_absolute_url())
+                results = syndicate_post(post, canonical_url, requested_targets)
+                updates = []
+                mastodon_result = results.get("mastodon")
+                bluesky_result = results.get("bluesky")
+                if mastodon_result:
+                    post.mastodon_url = mastodon_result
+                    updates.append("mastodon_url")
+                if bluesky_result:
+                    post.bluesky_url = bluesky_result
+                    updates.append("bluesky_url")
+                if updates:
+                    post.save(update_fields=updates)
 
         return redirect(post.get_absolute_url())
 
