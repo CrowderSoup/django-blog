@@ -37,6 +37,7 @@
   </section>
   <div class="p-content">{{ post.html }}</div>
   {% include 'blog/tags.html' %}
+  {% include 'blog/syndication-links.html' %}
   <a class="u-url" href="/blog/post/{{ post.slug }}">
     <time class="dt-published" datetime="{{ page.published_on }}">
       {{ post.published_on|date:"Y-m-d" }}

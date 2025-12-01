@@ -6,22 +6,24 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 from uuid import uuid4
+
+from django.core.files.base import ContentFile
 from django.http import (
     HttpResponse,
     HttpResponseBadRequest,
     JsonResponse,
 )
+from django.urls import reverse
 from django.utils import timezone
-from django.utils.text import slugify
 from django.utils.decorators import method_decorator
+from django.utils.text import slugify
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
-from django.urls import reverse
-from django.core.files.base import ContentFile
 
 from markdownify import markdownify as html_to_markdown
 
 from blog.models import Post, Tag
+from blog.syndication import available_targets, syndicate_post
 from files.models import Attachment, File
 from .models import Webmention
 from .webmention import send_webmentions_for_post
@@ -90,6 +92,10 @@ def _normalize_property(key: str, values):
                 item = {"url": url, "alt": alt_text}
         normalized_values.append(item)
     return normalized_key, normalized_values
+
+
+def _syndication_targets_config():
+    return [{"uid": target.uid, "name": target.name} for target in available_targets()]
 
 
 def _normalize_payload(request):
@@ -215,6 +221,14 @@ def _build_properties_response(post, requested_props=None):
             photos.append(url)
     if photos:
         props["photo"] = photos
+
+    syndication = []
+    if post.mastodon_url:
+        syndication.append(post.mastodon_url)
+    if post.bluesky_url:
+        syndication.append(post.bluesky_url)
+    if syndication:
+        props["syndication"] = syndication
 
     if requested_props:
         props = {k: v for k, v in props.items() if k in requested_props}
@@ -379,6 +393,35 @@ def _attach_remote_photos(data, post):
         post.save()
 
 
+def _extract_syndication_links(data):
+    syndication_items = data.get("syndication", [])
+    if isinstance(syndication_items, str):
+        syndication_items = [syndication_items]
+
+    mastodon_url = ""
+    bluesky_url = ""
+
+    for item in syndication_items:
+        if not isinstance(item, str):
+            continue
+        lowered = item.lower()
+        if not bluesky_url and ("bsky" in lowered or "bluesky" in lowered):
+            bluesky_url = item
+        if not mastodon_url and "mastodon" in lowered:
+            mastodon_url = item
+
+    return mastodon_url, bluesky_url
+
+
+def _selected_target_ids(data):
+    raw_targets = data.get("mp-syndicate-to", [])
+    if isinstance(raw_targets, str):
+        return [raw_targets]
+    if isinstance(raw_targets, list):
+        return [target for target in raw_targets if isinstance(target, str)]
+    return []
+
+
 def _handle_create_action(request, data):
     insufficient = _require_scope(request, "create")
     if insufficient:
@@ -420,6 +463,31 @@ def _handle_create_action(request, data):
     _apply_categories(post, categories)
     _attach_uploaded_photos(request, post)
     _attach_remote_photos(data, post)
+
+    mastodon_url, bluesky_url = _extract_syndication_links(data)
+    if mastodon_url or bluesky_url:
+        post.mastodon_url = mastodon_url
+        post.bluesky_url = bluesky_url
+        post.save(update_fields=["mastodon_url", "bluesky_url"])
+
+    requested_targets = _selected_target_ids(data)
+    if post.kind in (Post.NOTE, Post.PHOTO) and requested_targets:
+        available_ids = {target.uid for target in available_targets()}
+        requested = [uid for uid in requested_targets if uid in available_ids]
+        if requested:
+            canonical_url = request.build_absolute_uri(post.get_absolute_url())
+            results = syndicate_post(post, canonical_url, requested)
+            update_fields = []
+            mastodon_result = results.get("mastodon")
+            bluesky_result = results.get("bluesky")
+            if mastodon_result:
+                post.mastodon_url = mastodon_result
+                update_fields.append("mastodon_url")
+            if bluesky_result:
+                post.bluesky_url = bluesky_result
+                update_fields.append("bluesky_url")
+            if update_fields:
+                post.save(update_fields=update_fields)
 
     location = request.build_absolute_uri(post.get_absolute_url())
     send_webmentions_for_post(post, location)
@@ -537,14 +605,14 @@ class MicropubView(View):
                         {"type": Post.REPOST, "name": "Repost"},
                         {"type": Post.REPLY, "name": "Reply"},
                     ],
-                    "syndicate-to": [],
+                    "syndicate-to": _syndication_targets_config(),
                 }
             )
         if query == "syndicate-to":
             insufficient = _require_scope(request, None)
             if insufficient:
                 return insufficient
-            return JsonResponse({"syndicate-to": []})
+            return JsonResponse({"syndicate-to": _syndication_targets_config()})
         if query == "source":
             insufficient = _require_scope(request, "read")
             if insufficient:
