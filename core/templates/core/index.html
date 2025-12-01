@@ -21,7 +21,7 @@
 			<a
 				class="elsewhere-link"
 				target="_blank"
-				rel="me"
+        rel="me {% if profile.place == 'bsky' %}atproto{% endif %}"
 				href="{% if profile.place == 'email' %}mailto:{{ profile.profile_url }}{% else %}{{ profile.profile_url }}{% endif %}">
         {% if profile.place == 'x' %}
           {% include 'core/svg/twitter.svg' %}
