@@ -1,12 +1,12 @@
 from django.contrib import admin
+from unfold.admin import ModelAdmin
 from django.db.models import Count, Q
 from .models import Visit
 
 
 @admin.register(Visit)
-class VisitAdmin(admin.ModelAdmin):
+class VisitAdmin(ModelAdmin):
     list_display = ("path", "session_key", "user", "response_status_code", "started_at")
-    date_hierarchy = "started_at"
     search_fields = ("path", "session_key", "user__username", "ip_address")
     list_filter = ("response_status_code", "country", "region")
 

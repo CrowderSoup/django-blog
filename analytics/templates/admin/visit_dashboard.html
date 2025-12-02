@@ -1,105 +1,84 @@
-{% extends "admin/change_list.html" %} {% load i18n %} {% block content_title %}
-<h1>Visit dashboard</h1>
-{% endblock %} {% block result_list %}
-<div class="dashboard" style="margin: 2.5rem auto">
-  <div style="display: flex; gap: 1.5rem; flex-wrap: wrap">
-    <div class="stat-card">
-      <h2>Total page views</h2>
-      <p>{{ stats.total_page_views|default:"0" }}</p>
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls %}
+
+{% block result_list %}
+<div class="mt-10 space-y-8">
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="rounded-lg border border-gray-200 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Total page views</h2>
+      <p class="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-50">{{ stats.total_page_views|default:"0" }}</p>
     </div>
-    <div class="stat-card">
-      <h2>Unique sessions</h2>
-      <p>{{ stats.unique_sessions|default:"0" }}</p>
+    <div class="rounded-lg border border-gray-200 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Unique sessions</h2>
+      <p class="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-50">{{ stats.unique_sessions|default:"0" }}</p>
     </div>
-    <div class="stat-card">
-      <h2>Unique users</h2>
-      <p>{{ stats.unique_users|default:"0" }}</p>
+    <div class="rounded-lg border border-gray-200 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Unique users</h2>
+      <p class="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-50">{{ stats.unique_users|default:"0" }}</p>
     </div>
-    <div class="stat-card">
-      <h2>Unique IPs</h2>
-      <p>{{ stats.unique_ips|default:"0" }}</p>
+    <div class="rounded-lg border border-gray-200 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Unique IPs</h2>
+      <p class="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-50">{{ stats.unique_ips|default:"0" }}</p>
     </div>
   </div>
 
-  <style>
-    .dashboard .stat-card {
-      border: 1px solid #ddd;
-      padding: 1rem 1.25rem;
-      border-radius: 4px;
-      min-width: 180px;
-    }
-    .dashboard .stat-card h2 {
-      margin: 0 0 0.5rem;
-      font-size: 0.9rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: #666;
-    }
-    .dashboard .stat-card p {
-      margin: 0;
-      font-size: 1.5rem;
-      font-weight: bold;
-    }
-    .dashboard table {
-      border-collapse: collapse;
-      width: 100%;
-    }
-    .dashboard table th,
-    .dashboard table td {
-      padding: 0.4rem 0.6rem;
-      border-bottom: 1px solid #eee;
-    }
-  </style>
+  <div class="space-y-3">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-50">Visitors by country</h2>
+    <div class="overflow-hidden rounded-lg border border-gray-200 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+        <thead class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+          <tr>
+            <th scope="col" class="px-4 py-3">Country</th>
+            <th scope="col" class="px-4 py-3">Visits</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+          {% for row in visitors_by_country %}
+          <tr class="dark:odd:bg-gray-800 dark:even:bg-gray-900">
+            <td class="px-4 py-3 text-gray-900 dark:text-gray-100">{{ row.country|default:"(unknown)" }}</td>
+            <td class="px-4 py-3 text-gray-900 dark:text-gray-100">{{ row.count }}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="2" class="px-4 py-3 text-gray-500 dark:text-gray-300">No data yet.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 
-  <h2 style="margin-top: 2rem">Visitors by country</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Country</th>
-        <th>Visits</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in visitors_by_country %}
-      <tr>
-        <td>{{ row.country|default:"(unknown)" }}</td>
-        <td>{{ row.count }}</td>
-      </tr>
-      {% empty %}
-      <tr>
-        <td colspan="2">No data yet.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <h2 style="margin-top: 2rem">Error responses (4xx / 5xx)</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Started at</th>
-        <th>Path</th>
-        <th>Status</th>
-        <th>User</th>
-        <th>IP</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for visit in error_visits %}
-      <tr>
-        <td>{{ visit.started_at }}</td>
-        <td>{{ visit.path }}</td>
-        <td>{{ visit.response_status_code }}</td>
-        <td>{{ visit.user|default:"-" }}</td>
-        <td>{{ visit.ip_address|default:"-" }}</td>
-      </tr>
-      {% empty %}
-      <tr>
-        <td colspan="5">No error responses recorded.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="space-y-3">
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-50">Error responses (4xx / 5xx)</h2>
+    <div class="overflow-hidden rounded-lg border border-gray-200 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+        <thead class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+          <tr>
+            <th scope="col" class="px-4 py-3">Started at</th>
+            <th scope="col" class="px-4 py-3">Path</th>
+            <th scope="col" class="px-4 py-3">Status</th>
+            <th scope="col" class="px-4 py-3">User</th>
+            <th scope="col" class="px-4 py-3">IP</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+          {% for visit in error_visits %}
+          <tr class="">
+            <td class="px-4 py-3 text-gray-900 dark:text-gray-100">{{ visit.started_at }}</td>
+            <td class="px-4 py-3 text-gray-900 dark:text-gray-100">{{ visit.path }}</td>
+            <td class="px-4 py-3 text-gray-900 dark:text-gray-100">{{ visit.response_status_code }}</td>
+            <td class="px-4 py-3 text-gray-900 dark:text-gray-100">{{ visit.user|default:"-" }}</td>
+            <td class="px-4 py-3 text-gray-900 dark:text-gray-100">{{ visit.ip_address|default:"-" }}</td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5" class="px-4 py-3 text-gray-500 dark:text-gray-300">No error responses recorded.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 {{ block.super }} {% endblock %}
