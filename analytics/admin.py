@@ -16,5 +16,6 @@ class VisitAdmin(admin.ModelAdmin):
     list_filter = (
         ("user", admin.EmptyFieldListFilter),
         "started_at",
+        "response_status_code",
     )
     search_fields = ("path", "ip_address", "session_key", "user__username")

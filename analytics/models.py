@@ -16,6 +16,7 @@ class Visit(models.Model):
     country = models.CharField(max_length=2, blank=True)
     region = models.CharField(max_length=64, blank=True)
     city = models.CharField(max_length=128, blank=True)
+    response_status_code = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return self.path

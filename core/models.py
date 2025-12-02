@@ -74,10 +74,10 @@ class Elsewhere(models.Model):
 
 
 class SiteConfiguration(SingletonModel):
-    title = models.CharField(max_length=255)
-    tagline = models.CharField(max_length=1024)
+    title = models.CharField(max_length=255, default="", blank=True)
+    tagline = models.CharField(max_length=1024, default="", blank=True)
     intro = MDTextField(max_length=512, default="")
-    bio = MDTextField()
+    bio = MDTextField(default="", blank=True)
     main_menu = models.ForeignKey(Menu, null=True, on_delete=models.SET_NULL)
 
     def __str__(self):
@@ -85,4 +85,3 @@ class SiteConfiguration(SingletonModel):
 
     class Meta:
         verbose_name = "Site Configuration"
-
