@@ -43,6 +43,7 @@ class AnalyticsMiddleware(MiddlewareMixin):
                 country=geo.get("country", ""),
                 region=geo.get("region", ""),
                 city=geo.get("city", ""),
+                response_status_code=response.status_code
             )
 
             request.visit_id = visit.id
