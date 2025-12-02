@@ -91,6 +91,7 @@ class SiteConfiguration(SingletonModel):
     intro = MDTextField(max_length=512, default="")
     bio = MDTextField(default="", blank=True)
     main_menu = models.ForeignKey(Menu, null=True, on_delete=models.SET_NULL)
+    footer_menu = models.ForeignKey(Menu, null=True, on_delete=models.SET_NULL, related_name="footer_siteconfigurations")
 
     def __str__(self):
         return "Site Configuration"

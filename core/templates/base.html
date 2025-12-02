@@ -46,6 +46,13 @@
       <span> · </span><a href="{% url 'post_editor' %}">Post editor</a>
       {% endif %}
       {% endblock %}
+      {% if footer_menu_items %}
+      <nav>
+        {% for item in footer_menu_items %}
+        <a href="{{ item.url }}">{{ item.text }}</a>
+        {% endfor %}
+      </nav>
+      {% endif %}
     </footer>
   </body>
 </html>
