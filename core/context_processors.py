@@ -8,8 +8,11 @@ from .models import SiteConfiguration
 def site_configuration(request):
     settings = SiteConfiguration.get_solo()
     menu_items = None
+    footer_menu_items = None
     if settings.main_menu is not None:
         menu_items = settings.main_menu.menuitem_set.all()
+    if settings.footer_menu is not None:
+        footer_menu_items = settings.footer_menu.menuitem_set.all()
 
     md = markdown.Markdown(extensions=["fenced_code"])
     settings.intro = mark_safe(md.convert(settings.intro))
@@ -24,5 +27,6 @@ def site_configuration(request):
     return {
         "settings": settings,
         "menu_items": menu_items,
+        "footer_menu_items": footer_menu_items,
         "feed_url": feed_url,
     }
