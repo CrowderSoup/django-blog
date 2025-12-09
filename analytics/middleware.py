@@ -5,6 +5,7 @@ from django.utils.deprecation import MiddlewareMixin
 
 from .models import Visit
 from .utils import get_client_ip, geolocate_ip  # you write these
+from .user_agents import enqueue_user_agent_lookup
 
 class AnalyticsMiddleware(MiddlewareMixin):
     def process_request(self, request):
@@ -46,6 +47,7 @@ class AnalyticsMiddleware(MiddlewareMixin):
                 response_status_code=response.status_code
             )
 
+            enqueue_user_agent_lookup(visit.id, visit.user_agent)
             request.visit_id = visit.id
         except DatabaseError:
             # Clear rollback flag so analytics hiccups don't poison the request transaction.
