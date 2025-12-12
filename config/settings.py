@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 
 import environ
 from core.themes import get_theme_static_dirs
@@ -8,6 +9,7 @@ from core.themes import get_theme_static_dirs
 # ---------------------------------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+RUNNING_TESTS = "test" in sys.argv
 
 env = environ.Env(
     DEBUG=(bool, False),
@@ -122,26 +124,34 @@ TEMPLATES = [
 # Database
 # ---------------------------------------------------------------------------
 
-_DB_ENGINE = env("DB_ENGINE", default="django.db.backends.postgresql")
-
-if _DB_ENGINE == "django.db.backends.sqlite3":
+if RUNNING_TESTS:
     DATABASES = {
         "default": {
-            "ENGINE": _DB_ENGINE,
-            "NAME": env("DB_NAME", default=str(BASE_DIR / "db.sqlite3")),
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
         }
     }
 else:
-    DATABASES = {
-        "default": {
-            "ENGINE": _DB_ENGINE,
-            "NAME": env("DB_NAME"),
-            "USER": env("DB_USER"),
-            "PASSWORD": env("DB_PASS"),
-            "HOST": env("DB_HOST"),
-            "PORT": env("DB_PORT"),
+    _DB_ENGINE = env("DB_ENGINE", default="django.db.backends.postgresql")
+
+    if _DB_ENGINE == "django.db.backends.sqlite3":
+        DATABASES = {
+            "default": {
+                "ENGINE": _DB_ENGINE,
+                "NAME": env("DB_NAME", default=str(BASE_DIR / "db.sqlite3")),
+            }
         }
-    }
+    else:
+        DATABASES = {
+            "default": {
+                "ENGINE": _DB_ENGINE,
+                "NAME": env("DB_NAME"),
+                "USER": env("DB_USER"),
+                "PASSWORD": env("DB_PASS"),
+                "HOST": env("DB_HOST"),
+                "PORT": env("DB_PORT"),
+            }
+        }
 
 # ---------------------------------------------------------------------------
 # Password validation
@@ -175,39 +185,54 @@ USE_TZ = True
 # Storage and files
 # ---------------------------------------------------------------------------
 
-AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
-AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME")
-AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL")
-AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME")
+if RUNNING_TESTS:
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = BASE_DIR / "test_media"
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+            "OPTIONS": {"location": MEDIA_ROOT},
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+else:
+    AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY")
+    AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME")
+    AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL")
+    AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME")
 
-AWS_QUERYSTRING_AUTH = False
-AWS_DEFAULT_ACL = None
-AWS_S3_USE_SSL = False
-AWS_S3_VERIFY = False
-AWS_S3_ADDRESSING_STYLE = "path"
-AWS_DEFAULT_ACL="public-read"
-AWS_S3_OBJECT_PARAMETERS={"CacheControl": "max-age=86400"}
-AWS_S3_CUSTOM_DOMAIN = env("AWS_S3_CUSTOM_DOMAIN", default=None)
+    AWS_QUERYSTRING_AUTH = False
+    AWS_DEFAULT_ACL = None
+    AWS_S3_USE_SSL = False
+    AWS_S3_VERIFY = False
+    AWS_S3_ADDRESSING_STYLE = "path"
+    AWS_DEFAULT_ACL = "public-read"
+    AWS_S3_OBJECT_PARAMETERS = {"CacheControl": "max-age=86400"}
+    AWS_S3_CUSTOM_DOMAIN = env("AWS_S3_CUSTOM_DOMAIN", default=None)
 
-_S3_OPTIONS = {
-    "access_key": AWS_ACCESS_KEY_ID,
-    "secret_key": AWS_SECRET_ACCESS_KEY,
-}
+    _S3_OPTIONS = {
+        "access_key": AWS_ACCESS_KEY_ID,
+        "secret_key": AWS_SECRET_ACCESS_KEY,
+    }
 
-STORAGES = {
-    "default": {
-        "BACKEND": "storages.backends.s3.S3Storage",
-        "OPTIONS": _S3_OPTIONS,
-    },
-    "staticfiles": {
-        "BACKEND": "storages.backends.s3.S3Storage",
-        "OPTIONS": _S3_OPTIONS,
-    },
-}
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": _S3_OPTIONS,
+        },
+        "staticfiles": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": _S3_OPTIONS,
+        },
+    }
 
-if not DEBUG:
-    AWS_S3_VERIFY = True
+    if not DEBUG:
+        AWS_S3_VERIFY = True
+
+    MEDIA_URL = f"{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/"
 
 # ---------------------------------------------------------------------------
 # Static and media
@@ -216,8 +241,6 @@ if not DEBUG:
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static", *get_theme_static_dirs(BASE_DIR)]
-
-MEDIA_URL = f"{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/"
 
 WHITENOISE_MAX_AGE = 31536000
 

@@ -23,7 +23,9 @@ RUN uv sync --no-dev --group prod && \
 COPY . .
 
 # Non root user
-RUN addgroup -S app && adduser -S -G app app
+RUN addgroup -S app && adduser -S -G app app && \
+  mkdir -p /app/themes /app/staticfiles && \
+  chown -R app:app /app
 USER app
 
 EXPOSE 8000
