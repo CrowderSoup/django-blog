@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import shutil
 import tempfile
@@ -14,6 +13,8 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import Storage, default_storage
 from django.utils import timezone
 from django.utils.text import slugify
+
+from .theme_validation import load_theme_metadata, validate_theme_dir
 
 THEME_META_FILENAME = "theme.json"
 THEMES_DIRNAME = "themes"
@@ -207,15 +208,6 @@ def ensure_theme_on_disk(slug: str, *, base_dir: Optional[Path] = None) -> Optio
     return None
 
 
-def _validate_theme_structure(path: Path, metadata: dict) -> None:
-    if not metadata:
-        raise ThemeUploadError("theme.json is missing or empty.")
-    if "label" not in metadata:
-        raise ThemeUploadError("theme.json must include a 'label'.")
-    if not (path / "templates").exists():
-        raise ThemeUploadError("Theme archive must include a templates/ directory.")
-
-
 def _find_theme_root(extracted_path: Path) -> Path:
     """Return the directory that contains theme.json, preferring nested roots."""
     top_level_meta = extracted_path / THEME_META_FILENAME
@@ -238,10 +230,16 @@ def _extract_theme_archive(uploaded_path: Path) -> tuple[str, Path, dict]:
             archive.extractall(destination)
 
         theme_root = _find_theme_root(destination)
-        metadata = _load_metadata(theme_root / THEME_META_FILENAME)
-        _validate_theme_structure(theme_root, metadata)
+        validation = validate_theme_dir(
+            theme_root,
+            meta_filename=THEME_META_FILENAME,
+            require_directory_slug=theme_root != destination,
+        )
+        if not validation.is_valid:
+            raise ThemeUploadError(validation.summary())
+        metadata = validation.metadata
 
-        slug_source = metadata.get("slug") or theme_root.name or uploaded_path.stem
+        slug_source = validation.slug or uploaded_path.stem
         slug = slugify(slug_source)
         if not slug:
             raise ThemeUploadError("Theme slug could not be determined from archive.")
@@ -451,16 +449,6 @@ def delete_theme_path(slug: str, relative_path: str, *, base_dir: Optional[Path]
     clear_template_caches()
 
 
-def _load_metadata(meta_path: Path) -> dict:
-    if not meta_path.exists():
-        return {}
-    try:
-        with meta_path.open() as handle:
-            return json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
 def discover_themes(base_dir: Optional[Path] = None) -> list[ThemeDefinition]:
     """Inspect the themes directory and return discovered themes."""
     themes_root = get_themes_root(base_dir)
@@ -475,7 +463,7 @@ def discover_themes(base_dir: Optional[Path] = None) -> list[ThemeDefinition]:
         if not meta_path.exists():
             continue
 
-        metadata = _load_metadata(meta_path)
+        metadata, _errors = load_theme_metadata(meta_path)
         slug = theme_dir.name
         label = metadata.get("label") or slug.replace("-", " ").title()
         themes.append(
