@@ -5,6 +5,7 @@ import tempfile
 import zipfile
 from datetime import timedelta
 from pathlib import Path
+from typing import Optional
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -27,7 +28,8 @@ from .models import (
     ThemeInstall,
 )
 from .apps import CoreConfig
-from .themes import get_theme, ingest_theme_archive
+from .themes import ThemeUploadError, get_theme, ingest_theme_archive
+from .theme_validation import validate_theme_dir
 from blog.models import Post, Tag
 
 
@@ -216,6 +218,71 @@ class ThemeStartupSyncTests(TestCase):
         self.assertIn("Skipping theme sync on startup", "\n".join(logs.output))
 
 
+class ThemeValidationTests(TestCase):
+    def _build_theme_dir(
+        self,
+        root: Path,
+        *,
+        slug: str = "sample",
+        include_templates: bool = True,
+        include_static: bool = True,
+        metadata: Optional[dict] = None,
+    ) -> Path:
+        theme_dir = root / slug
+        theme_dir.mkdir(parents=True, exist_ok=True)
+        if include_templates:
+            (theme_dir / "templates").mkdir(parents=True, exist_ok=True)
+        if include_static:
+            (theme_dir / "static").mkdir(parents=True, exist_ok=True)
+        payload = metadata or {"slug": slug, "label": "Sample", "version": "1.0"}
+        (theme_dir / "theme.json").write_text(json.dumps(payload))
+        return theme_dir
+
+    def test_validate_theme_dir_passes_valid_theme(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            theme_dir = self._build_theme_dir(Path(tmp_dir))
+
+            result = validate_theme_dir(theme_dir)
+
+        self.assertTrue(result.is_valid)
+        self.assertEqual(result.slug, "sample")
+        self.assertEqual(result.metadata.get("version"), "1.0")
+
+    def test_validate_theme_dir_flags_missing_files_and_slug_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            metadata = {"slug": "other", "label": "Broken", "version": 2}
+            theme_dir = self._build_theme_dir(
+                Path(tmp_dir),
+                slug="folder-slug",
+                include_templates=False,
+                include_static=False,
+                metadata=metadata,
+            )
+
+            result = validate_theme_dir(theme_dir, expected_slug="expected-slug")
+
+        codes = {issue.code for issue in result.errors}
+        self.assertFalse(result.is_valid)
+        self.assertIn("missing_templates", codes)
+        self.assertIn("missing_static", codes)
+        self.assertIn("slug_mismatch_directory", codes)
+        self.assertIn("slug_mismatch_expected", codes)
+        self.assertIn("invalid_version", codes)
+
+    def test_validate_theme_dir_requires_theme_json(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            theme_dir = Path(tmp_dir) / "no-meta"
+            theme_dir.mkdir()
+
+            result = validate_theme_dir(theme_dir)
+
+        codes = {issue.code for issue in result.errors}
+        self.assertFalse(result.is_valid)
+        self.assertIn("missing_meta", codes)
+        self.assertIn("missing_templates", codes)
+        self.assertIn("missing_static", codes)
+
+
 class ThemeInstallTests(TestCase):
     def _theme_archive(self, *, slug: str = "sample", version: str = "1.0") -> SimpleUploadedFile:
         buffer = io.BytesIO()
@@ -230,6 +297,25 @@ class ThemeInstallTests(TestCase):
             archive.writestr("static/style.css", "body{}")
         buffer.seek(0)
         return SimpleUploadedFile("theme.zip", buffer.read(), content_type="application/zip")
+
+    def test_upload_rejects_invalid_theme(self):
+        with tempfile.TemporaryDirectory() as storage_root, tempfile.TemporaryDirectory() as themes_root:
+            storage = FileSystemStorage(location=storage_root)
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, "w") as archive:
+                archive.writestr("theme.json", json.dumps({"slug": "broken", "label": "Broken"}))
+            buffer.seek(0)
+            upload = SimpleUploadedFile("broken.zip", buffer.read(), content_type="application/zip")
+
+            with override_settings(THEMES_ROOT=themes_root, THEME_STORAGE_PREFIX="themes"):
+                with mock.patch("core.themes.get_theme_storage", return_value=storage):
+                    with self.assertRaises(ThemeUploadError) as exc:
+                        ingest_theme_archive(upload)
+
+        message = str(exc.exception)
+        self.assertIn("templates/", message)
+        self.assertIn("static/", message)
+        self.assertFalse((Path(themes_root) / "broken").exists())
 
     def test_upload_creates_theme_install_record(self):
         with tempfile.TemporaryDirectory() as storage_root, tempfile.TemporaryDirectory() as themes_root:
