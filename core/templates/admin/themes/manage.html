@@ -55,6 +55,16 @@
             </div>
         {% else %}
             <p class="text-gray-600">No themes found yet.</p>
+            <form method="post" class="mt-3 space-y-1">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="check_theme_storage">
+                <button type="submit" class="px-4 py-2 rounded border border-gray-300">
+                    Check storage for themes
+                </button>
+                <p class="text-xs text-gray-500">
+                    If storage was unavailable at startup, run this to re-check theme installs and sync any remote themes.
+                </p>
+            </form>
         {% endif %}
     </div>
 </div>

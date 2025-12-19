@@ -11,6 +11,7 @@ from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
 
+from .theme_sync import reconcile_installed_themes
 from .themes import (
     ThemeUploadError,
     create_theme_file,
@@ -21,6 +22,7 @@ from .themes import (
     list_theme_files,
     read_theme_file,
     save_theme_file,
+    sync_themes_from_storage,
 )
 
 ALLOWED_SUFFIXES = (".html", ".htm", ".txt", ".xml", ".md", ".css", ".js", ".json")
@@ -64,6 +66,44 @@ def _theme_choices():
 
 def theme_manager(request: HttpRequest, admin_site) -> HttpResponse:
     upload_form = ThemeUploadForm(request.POST or None, request.FILES or None)
+    if request.method == "POST" and request.POST.get("action") == "check_theme_storage":
+        restored: list[str] = []
+        failures: list[str] = []
+        storage_synced: list[str] = []
+
+        try:
+            from .models import ThemeInstall
+
+            results = reconcile_installed_themes()
+            restored = [result.slug for result in results if result.restored]
+            failures = [result.slug for result in results if result.status == ThemeInstall.STATUS_FAILED]
+        except Exception as exc:  # pragma: no cover - defensive
+            messages.error(request, f"Unable to check theme installs: {exc}")
+
+        try:
+            storage_synced = sync_themes_from_storage()
+        except Exception as exc:  # pragma: no cover - defensive
+            messages.warning(request, f"Unable to check theme storage: {exc}")
+
+        if restored:
+            restored_slugs = sorted(set(restored))
+            restored_list = ", ".join(restored_slugs)
+            messages.success(
+                request, f"Restored {len(restored_slugs)} theme(s) from installs: {restored_list}."
+            )
+        if storage_synced:
+            storage_slugs = sorted(set(storage_synced))
+            storage_list = ", ".join(storage_slugs)
+            messages.success(
+                request, f"Synced {len(storage_slugs)} theme(s) from storage: {storage_list}.",
+            )
+        if failures:
+            messages.warning(request, f"Theme installs still failing for: {', '.join(sorted(set(failures)))}.")
+        elif not any([restored, storage_synced]):
+            messages.info(request, "No themes found in installs or storage to sync.")
+
+        return redirect(reverse("admin:core_theme_list"))
+
     if request.method == "POST" and upload_form.is_valid():
         try:
             theme = ingest_theme_archive(upload_form.cleaned_data["archive"])
