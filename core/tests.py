@@ -336,6 +336,52 @@ class ThemeReconcileCommandTests(TestCase):
                         call_command("theme_reconcile", "--strict")
 
 
+class ThemeListCommandTests(TestCase):
+    def test_list_command_outputs_text(self):
+        ThemeInstall.objects.create(
+            slug="alpha",
+            source_type=ThemeInstall.SOURCE_UPLOAD,
+            last_sync_status=ThemeInstall.STATUS_SUCCESS,
+        )
+
+        out = io.StringIO()
+        call_command("theme_list", stdout=out)
+        output = out.getvalue()
+
+        self.assertIn("SLUG", output)
+        self.assertIn("alpha", output)
+        self.assertIn("upload", output)
+
+    def test_list_command_outputs_json(self):
+        ThemeInstall.objects.create(
+            slug="beta",
+            source_type=ThemeInstall.SOURCE_GIT,
+            source_url="https://user:pass@example.com/themes.git?token=secret",
+            source_ref="main",
+            last_sync_status=ThemeInstall.STATUS_FAILED,
+        )
+
+        out = io.StringIO()
+        call_command("theme_list", "--json", stdout=out)
+        payload = json.loads(out.getvalue())
+
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["slug"], "beta")
+        self.assertEqual(payload[0]["source_ref"], "main")
+        self.assertEqual(payload[0]["source_url"], "https://example.com/themes.git")
+
+    def test_list_command_filters_by_slug(self):
+        ThemeInstall.objects.create(slug="alpha", source_type=ThemeInstall.SOURCE_UPLOAD)
+        ThemeInstall.objects.create(slug="beta", source_type=ThemeInstall.SOURCE_UPLOAD)
+
+        out = io.StringIO()
+        call_command("theme_list", "--slug", "beta", stdout=out)
+        output = out.getvalue()
+
+        self.assertIn("beta", output)
+        self.assertNotIn("alpha", output)
+
+
 class ThemeReconcileAdminActionTests(TestCase):
     def setUp(self):
         super().setUp()
@@ -369,6 +415,65 @@ class ThemeReconcileAdminActionTests(TestCase):
         reconcile.assert_called_once()
         messages = [message.message for message in response.context["messages"]]
         self.assertTrue(any("Reconciled" in message for message in messages))
+
+
+class ThemeInstallAdminViewTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        user = get_user_model().objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="password",
+        )
+        self.client.force_login(user)
+
+    def _assert_no_post_form_in_content(self, response):
+        content = response.content.decode(response.charset or "utf-8")
+        content_start = content.find('<div id="content"')
+        if content_start == -1:
+            content_slice = content
+        else:
+            content_slice = content[content_start:]
+        self.assertNotIn('method="post"', content_slice)
+
+    def test_theme_install_list_filters(self):
+        ThemeInstall.objects.create(
+            slug="alpha",
+            source_type=ThemeInstall.SOURCE_UPLOAD,
+            last_sync_status=ThemeInstall.STATUS_SUCCESS,
+        )
+        ThemeInstall.objects.create(
+            slug="beta",
+            source_type=ThemeInstall.SOURCE_GIT,
+            last_sync_status=ThemeInstall.STATUS_FAILED,
+        )
+
+        url = reverse("admin:core_theme_installs")
+        response = self.client.get(url)
+        self.assertContains(response, "alpha")
+        self.assertContains(response, "beta")
+        self._assert_no_post_form_in_content(response)
+
+        response = self.client.get(url, {"source_type": ThemeInstall.SOURCE_GIT})
+        self.assertContains(response, "beta")
+        self.assertNotContains(response, "alpha")
+
+        response = self.client.get(url, {"status": ThemeInstall.STATUS_SUCCESS})
+        self.assertContains(response, "alpha")
+        self.assertNotContains(response, "beta")
+
+    def test_theme_install_detail_is_read_only(self):
+        install = ThemeInstall.objects.create(
+            slug="gamma",
+            source_type=ThemeInstall.SOURCE_STORAGE,
+            last_sync_status=ThemeInstall.STATUS_PENDING,
+        )
+        url = reverse("admin:core_theme_install_detail", kwargs={"slug": install.slug})
+        response = self.client.get(url)
+
+        self.assertContains(response, "gamma")
+        self.assertContains(response, ThemeInstall.SOURCE_STORAGE)
+        self._assert_no_post_form_in_content(response)
 
 
 class ThemeStorageTests(TestCase):

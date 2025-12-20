@@ -1,0 +1,53 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div class="flex flex-col gap-4">
+    <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold">Theme install: {{ install.slug }}</h1>
+        <a href="{% url 'admin:core_theme_installs' %}" class="text-indigo-600 hover:underline">Back to list</a>
+    </div>
+
+    <div class="p-6 shadow rounded">
+        <table class="min-w-full border border-gray-200">
+            <tbody>
+                <tr class="border-b">
+                    <th class="p-2 text-left text-sm font-semibold">Slug</th>
+                    <td class="p-2 font-mono text-xs">{{ install.slug }}</td>
+                </tr>
+                <tr class="border-b">
+                    <th class="p-2 text-left text-sm font-semibold">Source type</th>
+                    <td class="p-2">{{ install.source_type }}</td>
+                </tr>
+                <tr class="border-b">
+                    <th class="p-2 text-left text-sm font-semibold">Source ref</th>
+                    <td class="p-2 font-mono text-xs">{{ install.source_ref|default:"—" }}</td>
+                </tr>
+                <tr class="border-b">
+                    <th class="p-2 text-left text-sm font-semibold">Source URL</th>
+                    <td class="p-2 font-mono text-xs">{{ source_url|default:"—" }}</td>
+                </tr>
+                <tr class="border-b">
+                    <th class="p-2 text-left text-sm font-semibold">Version</th>
+                    <td class="p-2">{{ install.version|default:"—" }}</td>
+                </tr>
+                <tr class="border-b">
+                    <th class="p-2 text-left text-sm font-semibold">Checksum</th>
+                    <td class="p-2 font-mono text-xs">{{ install.checksum|default:"—" }}</td>
+                </tr>
+                <tr class="border-b">
+                    <th class="p-2 text-left text-sm font-semibold">Installed at</th>
+                    <td class="p-2">{{ install.installed_at|date:"Y-m-d H:i"|default:"—" }}</td>
+                </tr>
+                <tr class="border-b">
+                    <th class="p-2 text-left text-sm font-semibold">Last synced at</th>
+                    <td class="p-2">{{ install.last_synced_at|date:"Y-m-d H:i"|default:"—" }}</td>
+                </tr>
+                <tr>
+                    <th class="p-2 text-left text-sm font-semibold">Last sync status</th>
+                    <td class="p-2">{{ install.last_sync_status|default:"—" }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
