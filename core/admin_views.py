@@ -6,8 +6,9 @@ from typing import Optional
 
 from django import forms
 from django.contrib import messages
+from django.db import models
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import reverse
 
@@ -259,3 +260,59 @@ def theme_file_edit(request: HttpRequest, slug: Optional[str] = None, admin_site
         "selection": selection,
     }
     return TemplateResponse(request, "admin/themes/edit.html", context)
+
+
+def theme_install_list(request: HttpRequest, admin_site) -> HttpResponse:
+    from .models import ThemeInstall
+
+    source_type = (request.GET.get("source_type") or "").strip()
+    status = (request.GET.get("status") or "").strip()
+    query = (request.GET.get("q") or "").strip()
+
+    installs = ThemeInstall.objects.all()
+    if source_type in dict(ThemeInstall.SOURCE_CHOICES):
+        installs = installs.filter(source_type=source_type)
+    if status in dict(ThemeInstall.STATUS_CHOICES):
+        installs = installs.filter(last_sync_status=status)
+    if query:
+        installs = installs.filter(
+            models.Q(slug__icontains=query)
+            | models.Q(source_url__icontains=query)
+            | models.Q(source_ref__icontains=query)
+        )
+
+    rows = [
+        {
+            "install": install,
+            "source_url": install.safe_source_url(),
+            "source_ref": install.source_ref,
+        }
+        for install in installs.order_by("slug")
+    ]
+
+    context = {
+        **admin_site.each_context(request),
+        "title": "Theme installs",
+        "installs": rows,
+        "filters": {
+            "source_type": source_type,
+            "status": status,
+            "q": query,
+        },
+        "source_choices": ThemeInstall.SOURCE_CHOICES,
+        "status_choices": ThemeInstall.STATUS_CHOICES,
+    }
+    return TemplateResponse(request, "admin/themes/installs.html", context)
+
+
+def theme_install_detail(request: HttpRequest, slug: str, admin_site) -> HttpResponse:
+    from .models import ThemeInstall
+
+    install = get_object_or_404(ThemeInstall, slug=slug)
+    context = {
+        **admin_site.each_context(request),
+        "title": f"Theme install: {install.slug}",
+        "install": install,
+        "source_url": install.safe_source_url(),
+    }
+    return TemplateResponse(request, "admin/themes/install_detail.html", context)

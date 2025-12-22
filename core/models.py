@@ -114,6 +114,25 @@ class ThemeInstall(models.Model):
     def __str__(self) -> str:
         return self.slug
 
+    def safe_source_url(self) -> str:
+        if not self.source_url:
+            return ""
+        try:
+            from urllib.parse import urlsplit, urlunsplit
+        except ImportError:
+            return self.source_url
+        try:
+            parts = urlsplit(self.source_url)
+        except ValueError:
+            return self.source_url
+        netloc = parts.netloc
+        if "@" in netloc:
+            netloc = netloc.split("@", 1)[1]
+        return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+    def source_reference(self) -> str:
+        return self.source_ref or self.safe_source_url()
+
 
 class SiteConfiguration(SingletonModel):
     title = models.CharField(max_length=255, default="", blank=True)

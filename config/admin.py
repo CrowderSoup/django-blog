@@ -21,6 +21,16 @@ class CustomAdminSite(UnfoldAdminSite):
                 name="core_theme_list",
             ),
             path(
+                "themes/installs/",
+                self.admin_view(partial(admin_views.theme_install_list, admin_site=self)),
+                name="core_theme_installs",
+            ),
+            path(
+                "themes/installs/<slug:slug>/",
+                self.admin_view(partial(admin_views.theme_install_detail, admin_site=self)),
+                name="core_theme_install_detail",
+            ),
+            path(
                 "themes/<slug:slug>/edit/",
                 self.admin_view(partial(admin_views.theme_file_edit, admin_site=self)),
                 name="core_theme_edit",
@@ -34,6 +44,7 @@ class CustomAdminSite(UnfoldAdminSite):
 
         try:
             theme_url = reverse("admin:core_theme_list")
+            theme_installs_url = reverse("admin:core_theme_installs")
             app_list.append(
                 {
                     "app_label": "themes",
@@ -47,7 +58,14 @@ class CustomAdminSite(UnfoldAdminSite):
                             "perms": {"view": True},
                             "admin_url": theme_url,
                             "view_only": True,
-                        }
+                        },
+                        {
+                            "name": "Theme installs",
+                            "object_name": "ThemeInstall",
+                            "perms": {"view": True},
+                            "admin_url": theme_installs_url,
+                            "view_only": True,
+                        },
                     ],
                 }
             )
