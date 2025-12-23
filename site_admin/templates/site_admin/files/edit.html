@@ -1,0 +1,123 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}Edit file{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-6">
+    <section class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <div class="text-sm uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Files</div>
+        <h1 class="text-2xl font-semibold">Edit file</h1>
+        <p class="mt-1 text-sm text-[color:var(--admin-muted)]">{{ asset }}</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <a
+          href="{% url 'site_admin:file_list' %}"
+          class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+        >
+          Back to files
+        </a>
+        <a
+          href="{{ asset.file.url }}"
+          class="rounded-full bg-[color:var(--admin-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+          target="_blank"
+          rel="noopener"
+        >
+          Open file
+        </a>
+      </div>
+    </section>
+
+    <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+      {% if saved %}
+        <div class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          File updated.
+        </div>
+      {% endif %}
+      {% if form.non_field_errors %}
+        <div class="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+      <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <form method="post" enctype="multipart/form-data" class="space-y-5">
+          {% csrf_token %}
+          <div>
+            <label
+              for="{{ form.kind.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Kind
+            </label>
+            {{ form.kind }}
+            {{ form.kind.errors }}
+          </div>
+          <div>
+            <label
+              for="{{ form.file.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              File
+            </label>
+            {{ form.file }}
+            {{ form.file.errors }}
+          </div>
+          <div>
+            <label
+              for="{{ form.alt_text.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Alt text
+            </label>
+            {{ form.alt_text }}
+            {{ form.alt_text.errors }}
+          </div>
+          <div>
+            <label
+              for="{{ form.caption.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Caption
+            </label>
+            {{ form.caption }}
+            {{ form.caption.errors }}
+          </div>
+          <div>
+            <label
+              for="{{ form.owner.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Owner
+            </label>
+            {{ form.owner }}
+            {{ form.owner.errors }}
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              class="rounded-full bg-[color:var(--admin-accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+            >
+              Save file
+            </button>
+          </div>
+        </form>
+        <div class="space-y-4">
+          <div class="overflow-hidden rounded-2xl border border-[color:var(--admin-border)] bg-white">
+            {% if asset.kind == "image" %}
+              <img src="{{ asset.file.url }}" alt="{{ asset.alt_text|default:asset }}" class="h-56 w-full object-cover" />
+            {% else %}
+              <div class="flex h-56 items-center justify-center bg-[color:var(--admin-bg)]">
+                <span class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
+                  {{ asset.get_kind_display }}
+                </span>
+              </div>
+            {% endif %}
+          </div>
+          <div class="rounded-2xl border border-[color:var(--admin-border)] bg-white p-4 text-xs text-[color:var(--admin-muted)]">
+            <div>Uploaded {{ asset.created_at|date:"M j, Y" }}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+{% endblock %}

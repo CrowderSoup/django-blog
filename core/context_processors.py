@@ -23,7 +23,11 @@ def site_configuration(request):
             or settings.site_author.get_username()
             or ""
         )
-        site_author_hcard = settings.site_author.hcards.order_by("pk").first()
+        site_author_hcard = (
+            settings.site_author.hcards.prefetch_related("photos", "urls")
+            .order_by("pk")
+            .first()
+        )
 
     if site_author_hcard and site_author_hcard.name:
         site_author_display_name = site_author_hcard.name

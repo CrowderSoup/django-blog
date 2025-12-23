@@ -1,13 +1,14 @@
 import markdown
 
 from django.conf import settings
+from django.core.validators import EmailValidator
 from django.db import models
 from django.utils.text import slugify
 from django.utils.safestring import mark_safe
 from django.contrib.contenttypes.fields import GenericRelation
 
 from solo.models import SingletonModel
-from files.models import Attachment
+from files.models import Attachment, File
 
 
 class Page(models.Model):
@@ -230,6 +231,15 @@ class HCard(models.Model):
     def __str__(self):
         return self.name or self.nickname or f"HCard {self.pk}"
 
+    @property
+    def primary_photo(self):
+        return self.photos.order_by("sort_order", "id").first()
+
+    @property
+    def primary_photo_url(self):
+        photo = self.primary_photo
+        return photo.url if photo else ""
+
 
 class HCardEmail(models.Model):
     hcard = models.ForeignKey(HCard, on_delete=models.CASCADE, related_name="emails")
@@ -264,6 +274,17 @@ class HCardUrl(models.Model):
     def __str__(self):
         return self.value
 
+    def clean_fields(self, exclude=None):
+        exclude = set(exclude or [])
+        if self.kind == self.EMAIL:
+            exclude.add("value")
+        super().clean_fields(exclude=exclude)
+        if self.kind == self.EMAIL:
+            value = (self.value or "").strip()
+            self.value = value
+            validator = EmailValidator()
+            validator(value)
+
     @property
     def href(self):
         if self.kind == self.EMAIL and self.value and not self.value.startswith("mailto:"):
@@ -273,10 +294,27 @@ class HCardUrl(models.Model):
 
 class HCardPhoto(models.Model):
     hcard = models.ForeignKey(HCard, on_delete=models.CASCADE, related_name="photos")
+    asset = models.ForeignKey(
+        File,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="hcard_photos",
+    )
     value = models.URLField(max_length=2000)
+    sort_order = models.PositiveIntegerField(default=0)
 
     def __str__(self):
         return self.value
+
+    @property
+    def url(self):
+        if self.asset_id:
+            return self.asset.file.url
+        return self.value
+
+    class Meta:
+        ordering = ["sort_order", "id"]
 
 
 class HCardLogo(models.Model):

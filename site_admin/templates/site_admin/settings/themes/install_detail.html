@@ -1,0 +1,68 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}Theme install{% endblock %}
+
+{% block content %}
+  <div class="site-settings-layout grid gap-6 lg:grid-cols-[220px_1fr]">
+    {% include "site_admin/settings/_sidebar.html" %}
+    <div class="flex flex-col gap-6">
+      <section class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div class="text-sm uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Site settings</div>
+          <h1 class="text-2xl font-semibold">Theme install: {{ install.slug }}</h1>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <a
+            href="{% url 'site_admin:theme_settings' %}"
+            class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+          >
+            Back to themes
+          </a>
+        </div>
+      </section>
+
+      <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+        <table class="min-w-full border border-[color:var(--admin-border)] text-sm">
+          <tbody>
+            <tr class="border-t border-[color:var(--admin-border)]">
+              <th class="p-3 text-left font-semibold">Slug</th>
+              <td class="p-3 font-mono text-xs">{{ install.slug }}</td>
+            </tr>
+            <tr class="border-t border-[color:var(--admin-border)]">
+              <th class="p-3 text-left font-semibold">Source type</th>
+              <td class="p-3">{{ install.source_type }}</td>
+            </tr>
+            <tr class="border-t border-[color:var(--admin-border)]">
+              <th class="p-3 text-left font-semibold">Source ref</th>
+              <td class="p-3 font-mono text-xs">{{ install.source_ref|default:"-" }}</td>
+            </tr>
+            <tr class="border-t border-[color:var(--admin-border)]">
+              <th class="p-3 text-left font-semibold">Source URL</th>
+              <td class="p-3 font-mono text-xs">{{ source_url|default:"-" }}</td>
+            </tr>
+            <tr class="border-t border-[color:var(--admin-border)]">
+              <th class="p-3 text-left font-semibold">Version</th>
+              <td class="p-3">{{ install.version|default:"-" }}</td>
+            </tr>
+            <tr class="border-t border-[color:var(--admin-border)]">
+              <th class="p-3 text-left font-semibold">Checksum</th>
+              <td class="p-3 font-mono text-xs">{{ install.checksum|default:"-" }}</td>
+            </tr>
+            <tr class="border-t border-[color:var(--admin-border)]">
+              <th class="p-3 text-left font-semibold">Installed at</th>
+              <td class="p-3">{{ install.installed_at|date:"Y-m-d H:i"|default:"-" }}</td>
+            </tr>
+            <tr class="border-t border-[color:var(--admin-border)]">
+              <th class="p-3 text-left font-semibold">Last synced at</th>
+              <td class="p-3">{{ install.last_synced_at|date:"Y-m-d H:i"|default:"-" }}</td>
+            </tr>
+            <tr class="border-t border-[color:var(--admin-border)]">
+              <th class="p-3 text-left font-semibold">Last sync status</th>
+              <td class="p-3">{{ install.last_sync_status|default:"-" }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+{% endblock %}

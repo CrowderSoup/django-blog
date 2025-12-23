@@ -1,0 +1,22 @@
+<div id="post-form-messages" class="space-y-3">
+  {% if saved %}
+    <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+      Post saved. You can keep editing or jump back to the list.
+    </div>
+  {% endif %}
+  {% if form.errors %}
+    <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+      <p class="font-semibold">Please fix the errors below:</p>
+      <ul class="mt-2 list-disc space-y-1 pl-5">
+        {% for field in form %}
+          {% for error in field.errors %}
+            <li>{{ field.label }}: {{ error }}</li>
+          {% endfor %}
+        {% endfor %}
+        {% for error in form.non_field_errors %}
+          <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+</div>

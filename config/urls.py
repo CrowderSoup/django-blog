@@ -1,13 +1,12 @@
 from django.conf import settings
-from django.contrib import admin
 from django.urls import path, include
 from django.conf.urls.static import static
 
 urlpatterns = [
     path('', include('core.urls')),
     path('blog/', include('blog.urls')),
+    path('admin/', include('site_admin.urls')),
     path('', include('micropub.urls')),
-    path('admin/', admin.site.urls),
     path("analytics/", include("analytics.urls")),
 ]
 
