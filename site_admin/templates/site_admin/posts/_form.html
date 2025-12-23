@@ -1,0 +1,578 @@
+<form
+  id="post-form"
+  method="post"
+  enctype="multipart/form-data"
+  class="flex flex-col gap-6"
+  hx-post="{% if post %}{% url 'site_admin:post_edit' slug=post.slug %}{% else %}{% url 'site_admin:post_create' %}{% endif %}"
+  hx-target="#post-form-messages"
+  hx-swap="outerHTML"
+  data-photo-upload-url="{{ photo_upload_url }}"
+  data-photo-delete-url="{{ photo_delete_url }}"
+>
+  {% csrf_token %}
+  {% include "site_admin/posts/_form_messages.html" %}
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div class="space-y-6">
+      <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm">
+        <label
+          for="{{ form.kind.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--admin-muted)]"
+        >
+          Post type
+        </label>
+        <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {% for kind, label in form.fields.kind.choices %}
+            <button
+              type="button"
+              class="kind-pill flex items-center justify-center rounded-full border border-[color:var(--admin-border)] px-3 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:border-[color:var(--admin-accent)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--admin-accent)]"
+              data-kind-value="{{ kind }}"
+              aria-pressed="false"
+            >
+              {{ label }}
+            </button>
+          {% endfor %}
+        </div>
+        <p id="kind-hint" class="mt-3 text-xs text-[color:var(--admin-muted)]">
+          Choose the right flavor for this post.
+        </p>
+        <div class="sr-only">
+          {{ form.kind }}
+        </div>
+      </div>
+
+      <div>
+        <label
+          for="{{ form.title.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Title
+        </label>
+        {{ form.title }}
+        {{ form.title.errors }}
+      </div>
+      <div>
+        <label
+          for="{{ form.content.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Content
+        </label>
+        {{ form.content }}
+        <p class="mt-1 text-xs text-[color:var(--admin-muted)]" id="content-helper">
+          Write the caption, note, or long-form text here.
+        </p>
+        {{ form.content.errors }}
+      </div>
+
+      <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm" data-kind-section="photo">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <label
+              for="photo-uploader"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Photos
+            </label>
+            <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Drop a few images and add alt text or captions.</p>
+          </div>
+          <button
+            type="button"
+            class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+            data-photo-trigger
+          >
+            Upload photos
+          </button>
+        </div>
+        <div
+          class="mt-4 flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] px-4 py-6 text-center text-sm text-[color:var(--admin-muted)] transition"
+          data-photo-dropzone
+          role="button"
+          tabindex="0"
+          aria-label="Upload photos"
+        >
+          <span class="text-sm font-semibold text-[color:var(--admin-ink)]">Drop images here</span>
+          <span class="text-xs">or click to browse</span>
+        </div>
+        <label for="photo-uploader" class="sr-only">Upload photos</label>
+        <input
+          type="file"
+          id="photo-uploader"
+          name="photos"
+          accept="image/*"
+          multiple
+          class="sr-only"
+        >
+        <div id="photo-grid" class="mt-4 grid gap-4 sm:grid-cols-2"></div>
+        <div id="photo-empty" class="mt-3 text-xs text-[color:var(--admin-muted)]">
+          No photos yet. Photo posts can be just images and a short caption.
+        </div>
+        <div id="photo-metadata-fields"></div>
+      </div>
+
+      <div>
+        <label
+          for="{{ form.tags_text.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Tags
+        </label>
+        {{ form.tags_text }}
+        <p class="mt-1 text-xs text-[color:var(--admin-muted)]">{{ form.tags_text.help_text }}</p>
+        {{ form.tags_text.errors }}
+      </div>
+    </div>
+    <div class="space-y-5">
+      <div data-kind-section="like">
+        <label
+          for="{{ form.like_of.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Like URL
+        </label>
+        {{ form.like_of }}
+        <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Required for like posts.</p>
+        {{ form.like_of.errors }}
+      </div>
+      <div data-kind-section="repost">
+        <label
+          for="{{ form.repost_of.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Repost URL
+        </label>
+        {{ form.repost_of }}
+        <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Required for reposts.</p>
+        {{ form.repost_of.errors }}
+      </div>
+      <div data-kind-section="reply">
+        <label
+          for="{{ form.in_reply_to.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Reply URL
+        </label>
+        {{ form.in_reply_to }}
+        <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Required for replies.</p>
+        {{ form.in_reply_to.errors }}
+      </div>
+      <div>
+        <label
+          for="{{ form.published_on.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Publish time
+        </label>
+        {{ form.published_on }}
+        {{ form.published_on.errors }}
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="flex items-center gap-2 text-sm font-semibold text-[color:var(--admin-muted)]">
+          {{ form.save_as_draft }}
+          <span>Save as draft</span>
+        </label>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="flex items-center gap-2 text-sm font-semibold text-[color:var(--admin-warn)]">
+          {{ form.deleted }}
+          <span>Mark as deleted</span>
+        </label>
+      </div>
+      <div>
+        <label
+          for="{{ form.slug.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Slug
+        </label>
+        {{ form.slug }}
+        <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Leave blank to auto-generate.</p>
+        {{ form.slug.errors }}
+      </div>
+    </div>
+  </div>
+  <div class="flex flex-wrap items-center gap-3">
+    <button
+      type="submit"
+      class="rounded-full bg-[color:var(--admin-accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+    >
+      Save post
+    </button>
+    {% if post %}
+      <span class="text-xs text-[color:var(--admin-muted)]">
+        {% if post.published_on %}Published{% else %}Draft{% endif %}
+      </span>
+    {% endif %}
+  </div>
+</form>
+
+<script id="existing-photos-data" type="application/json">{{ existing_photos_json|safe }}</script>
+
+<script>
+(function () {
+  const form = document.getElementById("post-form");
+  if (!form || form.dataset.photoInit === "1") return;
+  form.dataset.photoInit = "1";
+
+  const kindSelect = form.querySelector('select[name="kind"]');
+  const kindPills = Array.from(form.querySelectorAll("[data-kind-value]"));
+  const kindHint = document.getElementById("kind-hint");
+  const contentHelper = document.getElementById("content-helper");
+  const kindSections = Array.from(form.querySelectorAll("[data-kind-section]"));
+  const fileInput = form.querySelector("#photo-uploader");
+  const dropzone = form.querySelector("[data-photo-dropzone]");
+  const photoGrid = form.querySelector("#photo-grid");
+  const photoEmpty = form.querySelector("#photo-empty");
+  const metadataFields = form.querySelector("#photo-metadata-fields");
+  const existingDataEl = document.getElementById("existing-photos-data");
+  const uploadUrl = form.dataset.photoUploadUrl;
+  const deleteUrl = form.dataset.photoDeleteUrl;
+
+  const hints = {
+    article: "Long-form writing with a title. Markdown works well here.",
+    note: "Quick thoughts. Title optional.",
+    photo: "Add photos and a caption. Keep it short and visual.",
+    like: "Link to something you enjoyed.",
+    repost: "Share someone else's post with credit.",
+    reply: "Respond directly with a target URL.",
+  };
+
+  const contentHints = {
+    article: "Write the story, outline, or essay here.",
+    note: "Write the short post here.",
+    photo: "Add a caption or short description for the photo set.",
+    like: "Optional commentary for the like.",
+    repost: "Optional commentary for the repost.",
+    reply: "Write your reply here.",
+  };
+
+  let photoData = [];
+  const removedExisting = new Set();
+
+  function getCsrfToken() {
+    const match = document.cookie.match(/csrftoken=([^;]+)/);
+    return match ? match[1] : "";
+  }
+
+  function setActivePill(kind) {
+    kindPills.forEach((pill) => {
+      const isActive = pill.dataset.kindValue === kind;
+      pill.setAttribute("aria-pressed", isActive ? "true" : "false");
+      pill.classList.toggle("bg-[color:var(--admin-accent)]", isActive);
+      pill.classList.toggle("text-white", isActive);
+      pill.classList.toggle("border-[color:var(--admin-accent)]", isActive);
+      pill.classList.toggle("border-[color:var(--admin-border)]", !isActive);
+      pill.classList.toggle("text-[color:var(--admin-ink)]", !isActive);
+    });
+  }
+
+  function shouldShowSection(section, kind) {
+    const tokens = section.dataset.kindSection.split(" ");
+    if (tokens.includes("photo")) {
+      return kind === "photo" || kind === "article" || photoData.length > 0;
+    }
+    return tokens.includes(kind);
+  }
+
+  function setKindState(kind) {
+    if (!kind) return;
+    if (kindSelect && kindSelect.value !== kind) {
+      kindSelect.value = kind;
+    }
+    kindHint.textContent = hints[kind] || hints.note;
+    contentHelper.textContent = contentHints[kind] || contentHints.note;
+    setActivePill(kind);
+    kindSections.forEach((section) => {
+      const show = shouldShowSection(section, kind);
+      section.classList.toggle("hidden", !show);
+    });
+  }
+
+  kindPills.forEach((pill) => {
+    pill.addEventListener("click", () => setKindState(pill.dataset.kindValue));
+  });
+
+  if (kindSelect) {
+    kindSelect.addEventListener("change", () => setKindState(kindSelect.value));
+    setKindState(kindSelect.value);
+  }
+
+  try {
+    if (existingDataEl && existingDataEl.textContent.trim()) {
+      const parsed = JSON.parse(existingDataEl.textContent);
+      photoData = parsed.map((item, idx) => ({
+        kind: item.kind || "existing",
+        id: item.id,
+        url: item.url,
+        alt: item.alt || "",
+        caption: item.caption || "",
+        order: item.order ?? idx,
+      }));
+    }
+  } catch (e) {
+    photoData = [];
+  }
+
+  function renderPhotos() {
+    photoGrid.innerHTML = "";
+    if (!photoData.length) {
+      photoEmpty.classList.remove("hidden");
+      return;
+    }
+    photoEmpty.classList.add("hidden");
+    photoData.forEach((item, idx) => {
+      item.order = idx;
+      photoGrid.appendChild(buildCard(item, idx));
+    });
+    if (kindSelect) {
+      setKindState(kindSelect.value);
+    }
+  }
+
+  function buildCard(item, idx) {
+    const card = document.createElement("div");
+    card.className =
+      "flex flex-col gap-3 rounded-2xl border border-[color:var(--admin-border)] bg-white p-3 shadow-sm";
+
+    const img = document.createElement("img");
+    img.src = item.url;
+    img.alt = "Selected image preview";
+    img.className = "h-40 w-full rounded-xl object-cover bg-[color:var(--admin-bg)]";
+
+    const meta = document.createElement("div");
+    meta.className = "flex flex-col gap-2";
+
+    const altInput = document.createElement("input");
+    altInput.type = "text";
+    altInput.placeholder = "Alt text";
+    altInput.setAttribute("aria-label", "Alt text");
+    altInput.value = item.alt || "";
+    altInput.className =
+      "w-full rounded-xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-xs focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]";
+    altInput.addEventListener("input", (event) => {
+      item.alt = event.target.value;
+    });
+
+    const captionInput = document.createElement("textarea");
+    captionInput.placeholder = "Caption";
+    captionInput.setAttribute("aria-label", "Caption");
+    captionInput.value = item.caption || "";
+    captionInput.className =
+      "w-full rounded-xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-xs focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]";
+    captionInput.rows = 2;
+    captionInput.addEventListener("input", (event) => {
+      item.caption = event.target.value;
+    });
+
+    meta.appendChild(altInput);
+    meta.appendChild(captionInput);
+
+    const actions = document.createElement("div");
+    actions.className = "flex flex-wrap gap-2 text-xs";
+
+    const up = document.createElement("button");
+    up.type = "button";
+    up.textContent = "Move up";
+    up.disabled = idx === 0;
+    up.className =
+      "rounded-full border border-[color:var(--admin-border)] px-3 py-1 font-semibold text-[color:var(--admin-ink)] disabled:cursor-not-allowed disabled:opacity-60";
+    up.addEventListener("click", () => moveCard(idx, -1));
+
+    const down = document.createElement("button");
+    down.type = "button";
+    down.textContent = "Move down";
+    down.disabled = idx === photoData.length - 1;
+    down.className =
+      "rounded-full border border-[color:var(--admin-border)] px-3 py-1 font-semibold text-[color:var(--admin-ink)] disabled:cursor-not-allowed disabled:opacity-60";
+    down.addEventListener("click", () => moveCard(idx, 1));
+
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.textContent = "Copy URL";
+    copy.className =
+      "rounded-full border border-[color:var(--admin-border)] px-3 py-1 font-semibold text-[color:var(--admin-ink)]";
+    copy.addEventListener("click", () => copyUrlToClipboard(item.url));
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Remove";
+    remove.className =
+      "rounded-full border border-rose-200 px-3 py-1 font-semibold text-rose-600";
+    remove.addEventListener("click", async () => {
+      if (item.kind === "existing") {
+        removedExisting.add(item.id);
+        photoData = photoData.filter((photo) => photo !== item);
+        renderPhotos();
+        return;
+      }
+
+      try {
+        await deleteRemotePhoto(item.id);
+        photoData = photoData.filter((photo) => photo !== item);
+        renderPhotos();
+      } catch (error) {
+        alert(error.message || "Unable to delete photo.");
+      }
+    });
+
+    actions.appendChild(up);
+    actions.appendChild(down);
+    actions.appendChild(copy);
+    actions.appendChild(remove);
+
+    card.appendChild(img);
+    card.appendChild(meta);
+    card.appendChild(actions);
+    return card;
+  }
+
+  function moveCard(currentIndex, delta) {
+    const target = currentIndex + delta;
+    if (target < 0 || target >= photoData.length) return;
+    const temp = photoData[currentIndex];
+    photoData[currentIndex] = photoData[target];
+    photoData[target] = temp;
+    renderPhotos();
+  }
+
+  async function uploadPhoto(file) {
+    const formData = new FormData();
+    formData.append("photo", file);
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      headers: { "X-CSRFToken": getCsrfToken() },
+      body: formData,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.id || !data.url) {
+      throw new Error(data.error || "Upload failed.");
+    }
+    return data;
+  }
+
+  async function deleteRemotePhoto(id) {
+    const formData = new FormData();
+    formData.append("id", id);
+    const response = await fetch(deleteUrl, {
+      method: "POST",
+      headers: { "X-CSRFToken": getCsrfToken() },
+      body: formData,
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Delete failed.");
+    }
+  }
+
+  async function copyUrlToClipboard(url) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url);
+        return;
+      }
+    } catch (e) {}
+
+    const tempInput = document.createElement("input");
+    tempInput.value = url;
+    document.body.appendChild(tempInput);
+    tempInput.select();
+    document.execCommand("copy");
+    document.body.removeChild(tempInput);
+  }
+
+  async function handleUploads(files) {
+    for (const file of files) {
+      try {
+        const uploaded = await uploadPhoto(file);
+        photoData.push({
+          kind: "uploaded",
+          id: uploaded.id,
+          url: uploaded.url,
+          alt: "",
+          caption: "",
+        });
+        renderPhotos();
+      } catch (error) {
+        alert(error.message || "Upload failed.");
+      }
+    }
+  }
+
+  function openFileDialog() {
+    fileInput.click();
+  }
+
+  if (fileInput && dropzone) {
+    dropzone.addEventListener("click", openFileDialog);
+    dropzone.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openFileDialog();
+      }
+    });
+    const trigger = form.querySelector("[data-photo-trigger]");
+    if (trigger) {
+      trigger.addEventListener("click", openFileDialog);
+    }
+
+    fileInput.addEventListener("change", () => {
+      const files = Array.from(fileInput.files || []);
+      if (!files.length) return;
+      handleUploads(files);
+      fileInput.value = "";
+    });
+
+    dropzone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      dropzone.classList.add("border-[color:var(--admin-accent)]");
+    });
+
+    dropzone.addEventListener("dragleave", () => {
+      dropzone.classList.remove("border-[color:var(--admin-accent)]");
+    });
+
+    dropzone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      dropzone.classList.remove("border-[color:var(--admin-accent)]");
+      const files = Array.from(event.dataTransfer.files || []).filter((file) =>
+        file.type.startsWith("image/")
+      );
+      if (files.length) {
+        handleUploads(files);
+      }
+    });
+  }
+
+  function syncMetadataFields() {
+    metadataFields.innerHTML = "";
+    const makeHidden = (name, value) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      metadataFields.appendChild(input);
+    };
+
+    photoData.forEach((item, position) => {
+      if (item.kind === "existing") {
+        if (removedExisting.has(item.id)) return;
+        makeHidden("existing_ids", item.id);
+        makeHidden("existing_alts", item.alt || "");
+        makeHidden("existing_captions", item.caption || "");
+        makeHidden("existing_positions", position);
+      } else {
+        makeHidden("uploaded_ids", item.id);
+        makeHidden("uploaded_alts", item.alt || "");
+        makeHidden("uploaded_captions", item.caption || "");
+        makeHidden("uploaded_positions", position);
+      }
+    });
+
+    removedExisting.forEach((id) => makeHidden("existing_remove_ids", id));
+  }
+
+  form.addEventListener("submit", syncMetadataFields);
+  form.addEventListener("htmx:beforeRequest", syncMetadataFields);
+
+  renderPhotos();
+})();
+</script>

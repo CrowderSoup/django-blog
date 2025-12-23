@@ -24,7 +24,7 @@
 
     {% block head %}{% endblock %}
   </head>
-  <body>
+  <body data-site-admin-bar-url="{% url 'site_admin:admin_bar' %}">
     <header>
       <h1>$❯ {{ settings.title }}</h1>
       {% if not hide_site_description %}
@@ -42,9 +42,6 @@
     <footer>
       <span>© {{ now|date:"Y" }} <a href="{% static 'pubkey.txt' %}" rel="me pgpkey">{% author_hcard_name %}.</a></span>
       {% block footer_extra %}
-      {% if user.is_authenticated and user.is_staff %}
-      <span> · </span><a href="{% url 'post_editor' %}">Post editor</a>
-      {% endif %}
       {% endblock %}
       {% if footer_menu_items %}
       <nav>
@@ -54,5 +51,6 @@
       </nav>
       {% endif %}
     </footer>
+    <script src="{% static 'js/site_admin_bar.js' %}"></script>
   </body>
 </html>

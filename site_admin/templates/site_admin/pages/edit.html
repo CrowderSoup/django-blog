@@ -1,0 +1,50 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}{% if page %}Edit page{% else %}New page{% endif %}{% endblock %}
+
+{% block head %}{{ form.media }}{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-6">
+    <section class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <div class="text-sm uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Pages</div>
+        <h1 class="text-2xl font-semibold">
+          {% if page %}Edit page{% else %}New page{% endif %}
+        </h1>
+        {% if page %}
+          <p class="mt-1 text-sm text-[color:var(--admin-muted)]">Slug: {{ page.slug }}</p>
+        {% endif %}
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <a
+          href="{% url 'site_admin:page_list' %}"
+          class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+        >
+          Back to pages
+        </a>
+        {% if page %}
+          <a
+            href="{% url 'page' slug=page.slug %}"
+            class="rounded-full bg-[color:var(--admin-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+          >
+            View page
+          </a>
+          <form method="post" action="{% url 'site_admin:page_delete' slug=page.slug %}">
+            {% csrf_token %}
+            <button
+              type="submit"
+              class="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+            >
+              Delete page
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+      {% include "site_admin/pages/_form.html" %}
+    </section>
+  </div>
+{% endblock %}

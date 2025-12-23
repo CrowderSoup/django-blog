@@ -1,5 +1,7 @@
 :root {
   --accent: #2ec838;
+  --site-admin-bar-bg: var(--bg);
+  --site-admin-bar-hamburger-bg: #6b6a69;
 }
 
 a {
@@ -38,7 +40,11 @@ nav.tags {
   padding: 2rem;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 0.75rem;
-  background: linear-gradient(135deg, rgba(46, 200, 56, 0.08), rgba(0, 0, 0, 0));
+  background: linear-gradient(
+    135deg,
+    rgba(46, 200, 56, 0.08),
+    rgba(0, 0, 0, 0)
+  );
 }
 
 .error-page .error-code {

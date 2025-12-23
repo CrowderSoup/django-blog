@@ -1,0 +1,50 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}{% if post %}Edit post{% else %}New post{% endif %}{% endblock %}
+
+{% block head %}{{ form.media }}{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-6">
+    <section class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <div class="text-sm uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Posts</div>
+        <h1 class="text-2xl font-semibold">
+          {% if post %}Edit post{% else %}New post{% endif %}
+        </h1>
+        {% if post %}
+          <p class="mt-1 text-sm text-[color:var(--admin-muted)]">Slug: {{ post.slug }}</p>
+        {% endif %}
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <a
+          href="{% url 'site_admin:post_list' %}"
+          class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+        >
+          Back to posts
+        </a>
+        {% if post %}
+          <a
+            href="{{ post.get_absolute_url }}"
+            class="rounded-full bg-[color:var(--admin-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+          >
+            View post
+          </a>
+          <form method="post" action="{% url 'site_admin:post_permanent_delete' slug=post.slug %}">
+            {% csrf_token %}
+            <button
+              type="submit"
+              class="rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+            >
+              Permanently delete
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+      {% include "site_admin/posts/_form.html" %}
+    </section>
+  </div>
+{% endblock %}

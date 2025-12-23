@@ -1,0 +1,53 @@
+{% if saved %}
+  <div class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+    Redirect saved.
+  </div>
+{% endif %}
+{% if form.non_field_errors %}
+  <div class="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+    {{ form.non_field_errors }}
+  </div>
+{% endif %}
+<form method="post" class="space-y-5">
+  {% csrf_token %}
+  <div>
+    <label
+      for="{{ form.from_path.id_for_label }}"
+      class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+    >
+      From path
+    </label>
+    {{ form.from_path }}
+    {{ form.from_path.errors }}
+    <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Matches the URL path, like <code>/about/</code>.</p>
+  </div>
+  <div>
+    <label
+      for="{{ form.to_path.id_for_label }}"
+      class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+    >
+      To path
+    </label>
+    {{ form.to_path }}
+    {{ form.to_path.errors }}
+    <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Use a path or full URL.</p>
+  </div>
+  <div>
+    <label
+      for="{{ form.redirect_type.id_for_label }}"
+      class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+    >
+      Redirect type
+    </label>
+    {{ form.redirect_type }}
+    {{ form.redirect_type.errors }}
+  </div>
+  <div class="flex flex-wrap items-center gap-3">
+    <button
+      type="submit"
+      class="rounded-full bg-[color:var(--admin-accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+    >
+      Save redirect
+    </button>
+  </div>
+</form>

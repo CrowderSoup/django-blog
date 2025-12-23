@@ -1,0 +1,442 @@
+<style data-site-admin-bar-styles>
+  @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
+  .site-admin-bar {
+    --admin-muted: #6b6a69;
+    --admin-accent: #0f766e;
+    --admin-accent-strong: #0a5b55;
+    --admin-warn: #b45309;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    color: #1b1b1b;
+    font-family: "Space Grotesk", ui-sans-serif, system-ui;
+    background: var(--site-admin-bar-bg, var(--admin-bg, #f6f2ec));
+  }
+
+  .site-admin-bar__inner {
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .site-admin-bar__eyebrow {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--admin-muted);
+  }
+
+  .site-admin-bar__nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    align-items: center;
+  }
+
+  .site-admin-bar__nav-link {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .site-admin-bar__nav-pill {
+    text-decoration: none;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    transition: background 0.2s ease;
+  }
+
+  .site-admin-bar__user {
+    font-size: 0.875rem;
+    color: var(--admin-muted);
+  }
+
+  .site-admin-bar__user strong {
+    font-weight: 600;
+  }
+
+  .site-admin-bar__user-row {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+  }
+
+  .site-admin-bar__create {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 999px;
+    border: 1px solid rgba(15, 23, 42, 0.2);
+    color: #1b1b1b;
+    text-decoration: none;
+    font-size: 1.1rem;
+    font-weight: 600;
+    line-height: 1;
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  .site-admin-bar__create:hover {
+    background: rgba(15, 118, 110, 0.1);
+    border-color: rgba(15, 118, 110, 0.4);
+  }
+
+  .site-admin-bar__menu {
+    position: relative;
+  }
+
+  .site-admin-bar__mobile {
+    display: none;
+    position: relative;
+    margin-left: auto;
+  }
+
+  .site-admin-bar__hamburger {
+    list-style: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--admin-accent);
+    background: var(--site-admin-bar-hamburger-bg, #fff);
+  }
+
+  .site-admin-bar__hamburger::-webkit-details-marker {
+    display: none;
+  }
+
+  .site-admin-bar__hamburger-lines,
+  .site-admin-bar__hamburger-lines::before,
+  .site-admin-bar__hamburger-lines::after {
+    content: "";
+    display: block;
+    width: 1.25rem;
+    height: 2px;
+    background: #1b1b1b;
+    border-radius: 999px;
+  }
+
+  .site-admin-bar__hamburger-lines::before {
+    transform: translateY(-6px);
+  }
+
+  .site-admin-bar__hamburger-lines::after {
+    transform: translateY(4px);
+  }
+
+  .site-admin-bar__mobile-panel {
+    position: absolute;
+    right: 0;
+    margin-top: 0.5rem;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 0.75rem;
+    padding: 0.5rem;
+    min-width: 14rem;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  }
+
+  .site-admin-bar__mobile-section {
+    padding: 0.35rem 0.5rem;
+  }
+
+  .site-admin-bar__mobile-section + .site-admin-bar__mobile-section {
+    border-top: 1px solid rgba(15, 23, 42, 0.1);
+    margin-top: 0.35rem;
+  }
+
+  .site-admin-bar__mobile-link {
+    display: block;
+    padding: 0.4rem 0.25rem;
+    color: #1b1b1b;
+    text-decoration: none;
+    font-size: 0.875rem;
+    border-radius: 0.35rem;
+  }
+
+  .site-admin-bar__mobile-link:hover {
+    background: rgba(15, 118, 110, 0.1);
+  }
+
+  .site-admin-bar__mobile-label {
+    font-size: 0.75rem;
+    color: var(--admin-muted);
+    margin-bottom: 0.35rem;
+  }
+
+  .site-admin-bar__menu > summary {
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .site-admin-bar__menu > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .site-admin-bar__menu > summary::after {
+    content: "▾";
+    margin-left: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--admin-muted);
+  }
+
+  .site-admin-bar__menu-panel {
+    position: absolute;
+    right: 0;
+    margin-top: 0.5rem;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 0.75rem;
+    padding: 0.35rem;
+    min-width: 10rem;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  }
+
+  .site-admin-bar__menu-link {
+    display: block;
+    padding: 0.45rem 0.75rem;
+    border-radius: 0.5rem;
+    color: #1b1b1b;
+    text-decoration: none;
+    font-size: 0.875rem;
+    white-space: nowrap;
+  }
+
+  .site-admin-bar__menu-link:hover {
+    background: rgba(15, 118, 110, 0.1);
+  }
+
+  .site-admin-bar__menu-button {
+    display: block;
+    width: 100%;
+    padding: 0.45rem 0.75rem;
+    border-radius: 0.5rem;
+    border: none;
+    background: none;
+    color: #1b1b1b;
+    text-align: left;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .site-admin-bar__menu-button:hover {
+    background: rgba(15, 118, 110, 0.1);
+  }
+
+  .site-admin-bar__menu-button--logout {
+    color: var(--admin-warn);
+  }
+
+  .site-admin-bar__menu-button--logout:hover {
+    background: rgba(180, 83, 9, 0.12);
+  }
+
+  .site-admin-bar__mobile-link--logout {
+    color: var(--admin-warn);
+  }
+
+  .site-admin-bar__mobile-link--logout:hover {
+    background: rgba(180, 83, 9, 0.12);
+  }
+
+  @media (max-width: 720px) {
+    .site-admin-bar__inner {
+      flex-direction: row;
+      align-items: center;
+    }
+
+    .site-admin-bar__nav {
+      display: none;
+    }
+
+    .site-admin-bar__menu,
+    .site-admin-bar__user-row {
+      display: none;
+    }
+
+    .site-admin-bar__mobile {
+      display: block;
+    }
+  }
+</style>
+
+<div class="site-admin-bar" data-site-admin-bar>
+  <div class="site-admin-bar__inner">
+    <div>
+      <div class="site-admin-bar__eyebrow">
+        Admin: {{ settings.title|default:"Site" }}
+      </div>
+    </div>
+    <nav class="site-admin-bar__nav">
+      <a
+        href="{% url 'site_admin:dashboard' %}"
+        class="site-admin-bar__nav-pill"
+      >
+        Dashboard
+      </a>
+      {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
+      <a
+        href="{% url 'site_admin:page_list' %}"
+        class="site-admin-bar__nav-pill"
+      >
+        Pages
+      </a>
+      <a
+        href="{% url 'site_admin:post_list' %}"
+        class="site-admin-bar__nav-pill"
+      >
+        Posts
+      </a>
+      <a
+        href="{% url 'site_admin:file_list' %}"
+        class="site-admin-bar__nav-pill"
+      >
+        Files
+      </a>
+      {% endif %}
+    </nav>
+    <details class="site-admin-bar__mobile">
+      <summary class="site-admin-bar__hamburger" aria-label="Open admin menu">
+        <span class="site-admin-bar__hamburger-lines"></span>
+      </summary>
+      <div class="site-admin-bar__mobile-panel">
+        <div class="site-admin-bar__mobile-section">
+          <div class="site-admin-bar__mobile-label">Navigation</div>
+          <a
+            href="{% url 'site_admin:dashboard' %}"
+            class="site-admin-bar__mobile-link"
+          >
+            Dashboard
+          </a>
+          {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
+          <a
+            href="{% url 'site_admin:page_list' %}"
+            class="site-admin-bar__mobile-link"
+          >
+            Pages
+          </a>
+          <a
+            href="{% url 'site_admin:post_list' %}"
+            class="site-admin-bar__mobile-link"
+          >
+            Posts
+          </a>
+          <a
+            href="{% url 'site_admin:file_list' %}"
+            class="site-admin-bar__mobile-link"
+          >
+            Files
+          </a>
+          {% endif %}
+        </div>
+        <div class="site-admin-bar__mobile-section">
+          <div class="site-admin-bar__mobile-label">
+            Signed in as {{ request.user.get_username }}
+          </div>
+          {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
+          <a
+            href="{% url 'site_admin:site_settings' %}"
+            class="site-admin-bar__mobile-link"
+          >
+            Site settings
+          </a>
+          <a
+            href="{% url 'site_admin:analytics_dashboard' %}"
+            class="site-admin-bar__mobile-link"
+          >
+            Analytics
+          </a>
+          <a
+            href="{% url 'site_admin:profile_edit' %}"
+            class="site-admin-bar__mobile-link"
+          >
+            Profile
+          </a>
+          <a href="{% url 'index' %}" class="site-admin-bar__mobile-link">
+            View Site
+          </a>
+          {% else %}
+          <a
+            href="{% url 'site_admin:post_create' %}"
+            class="site-admin-bar__mobile-link"
+          >
+            New post
+          </a>
+          {% endif %}
+          <form method="post" action="{% url 'site_admin:logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="site-admin-bar__mobile-link site-admin-bar__mobile-link--logout">
+              Log out
+            </button>
+          </form>
+        </div>
+      </div>
+    </details>
+    {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
+    <details class="site-admin-bar__menu">
+      <summary class="site-admin-bar__user">
+        Signed in as <strong>{{ request.user.get_username }}</strong>
+      </summary>
+      <div class="site-admin-bar__menu-panel">
+        <a
+          href="{% url 'site_admin:site_settings' %}"
+          class="site-admin-bar__menu-link"
+        >
+          Site settings
+        </a>
+        <a
+          href="{% url 'site_admin:analytics_dashboard' %}"
+          class="site-admin-bar__menu-link"
+        >
+          Analytics
+        </a>
+        <a
+          href="{% url 'site_admin:profile_edit' %}"
+          class="site-admin-bar__menu-link"
+        >
+          Profile
+        </a>
+        <a href="{% url 'index' %}" class="site-admin-bar__menu-link">
+          View Site
+        </a>
+        <form method="post" action="{% url 'site_admin:logout' %}">
+          {% csrf_token %}
+          <button type="submit" class="site-admin-bar__menu-button site-admin-bar__menu-button--logout">
+            Log out
+          </button>
+        </form>
+      </div>
+    </details>
+    {% else %}
+    <div class="site-admin-bar__user-row">
+      <div class="site-admin-bar__user">
+        Signed in as <strong>{{ request.user.get_username }}</strong>
+      </div>
+      <a
+        href="{% url 'site_admin:post_create' %}"
+        class="site-admin-bar__create"
+        aria-label="Create new post"
+        title="New post"
+      >
+        +
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>

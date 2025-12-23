@@ -1,0 +1,310 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}Analytics{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-6">
+    <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-semibold">Analytics</h1>
+          <p class="mt-1 text-sm text-[color:var(--admin-muted)]">
+            Site activity from {{ start_date|date:"M j, Y" }} to {{ end_date|date:"M j, Y" }}.
+          </p>
+        </div>
+        <a
+          href="{% url 'site_admin:dashboard' %}"
+          class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+        >
+          Back to dashboard
+        </a>
+      </div>
+      <div class="mt-4 flex flex-wrap items-end justify-between gap-3">
+        <div class="flex flex-wrap items-end gap-2 text-sm">
+          {% for preset in presets.values %}
+            <a
+              href="{% url 'site_admin:analytics_dashboard' %}?start={{ preset.start }}&end={{ preset.end }}"
+              class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)] transition hover:bg-[color:var(--admin-bg)]"
+            >
+              {{ preset.label }}
+            </a>
+          {% endfor %}
+        </div>
+        <form method="get" class="flex flex-wrap items-end gap-2">
+            <label for="analytics-start" class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
+              <span>Start date</span>
+              <input
+                type="date"
+                name="start"
+                value="{{ start_date|date:'Y-m-d' }}"
+                id="analytics-start"
+                class="w-40 rounded-full border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm"
+              />
+            </label>
+            <label for="analytics-end" class="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
+              <span>End date</span>
+              <input
+                type="date"
+                name="end"
+                value="{{ end_date|date:'Y-m-d' }}"
+                id="analytics-end"
+                class="w-40 rounded-full border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm"
+              />
+            </label>
+            <button
+              type="submit"
+              class="rounded-full bg-[color:var(--admin-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+            >
+              Update
+            </button>
+        </form>
+      </div>
+      <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4">
+          <div class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Page views</div>
+          <div class="mt-2 text-2xl font-semibold">
+            {{ stats.total_page_views|default:0 }}
+          </div>
+        </div>
+        <div class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4">
+          <div class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Sessions</div>
+          <div class="mt-2 text-2xl font-semibold">
+            {{ stats.unique_sessions|default:0 }}
+          </div>
+        </div>
+        <div class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4">
+          <div class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Users</div>
+          <div class="mt-2 text-2xl font-semibold">
+            {{ stats.unique_users|default:0 }}
+          </div>
+        </div>
+        <div class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4">
+          <div class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Avg. time (sec)</div>
+          <div class="mt-2 text-2xl font-semibold">
+            {{ stats.avg_duration|default:0|floatformat:0 }}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid gap-6 lg:grid-cols-[2fr,1fr]">
+      <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Traffic trend</h2>
+          <span class="text-sm text-[color:var(--admin-muted)]">Views vs sessions</span>
+        </div>
+        <div class="mt-4 h-64">
+          <canvas id="analytics-trend-chart" class="h-full w-full" role="img" aria-label="Traffic trend chart"></canvas>
+        </div>
+      </div>
+      <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+        <h2 class="text-lg font-semibold">Visitors by country</h2>
+        <div class="mt-4 h-64">
+          <canvas id="analytics-country-chart" class="h-full w-full" role="img" aria-label="Visitors by country chart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid gap-6 lg:grid-cols-[2fr,1fr]">
+      <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+        <h2 class="text-lg font-semibold">Top pages</h2>
+        <div class="mt-4 h-64">
+          <canvas id="analytics-pages-chart" class="h-full w-full" role="img" aria-label="Top pages chart"></canvas>
+        </div>
+      </div>
+      <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+        <h2 class="text-lg font-semibold">Top referrers</h2>
+        <div class="mt-4 space-y-3 text-sm">
+          {% for row in top_referrers %}
+            <div class="flex items-center justify-between gap-3">
+              <div class="truncate text-[color:var(--admin-ink)]" title="{{ row.referrer }}">
+                {{ row.referrer }}
+              </div>
+              <div class="rounded-full bg-[color:var(--admin-bg)] px-2 py-1 text-xs font-semibold text-[color:var(--admin-muted)]">
+                {{ row.count }}
+              </div>
+            </div>
+          {% empty %}
+            <p class="text-sm text-[color:var(--admin-muted)]">No referrers yet.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Errors (4xx / 5xx)</h2>
+        <span class="text-sm text-[color:var(--admin-muted)]">Most frequent errors</span>
+      </div>
+      <div class="mt-4 overflow-hidden rounded-2xl border border-[color:var(--admin-border)]">
+        <table class="min-w-full text-left text-sm">
+          <thead class="bg-[color:var(--admin-bg)] text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
+            <tr>
+              <th scope="col" class="px-4 py-3">Path</th>
+              <th scope="col" class="px-4 py-3">Status</th>
+              <th scope="col" class="px-4 py-3">Count</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[color:var(--admin-border)]">
+            {% for row in error_visits %}
+              <tr>
+                <td class="px-4 py-3 text-[color:var(--admin-ink)]">{{ row.path|default:"(unknown)" }}</td>
+                <td class="px-4 py-3 text-[color:var(--admin-ink)]">{{ row.response_status_code|default:"-" }}</td>
+                <td class="px-4 py-3 text-[color:var(--admin-ink)]">{{ row.count }}</td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="3" class="px-4 py-3 text-[color:var(--admin-muted)]">No error responses recorded.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+{% endblock %}
+
+{% block body_end %}
+  {{ daily_labels|json_script:"analytics-daily-labels" }}
+  {{ daily_views|json_script:"analytics-daily-views" }}
+  {{ daily_sessions|json_script:"analytics-daily-sessions" }}
+  {{ top_paths|json_script:"analytics-top-paths" }}
+  {{ countries|json_script:"analytics-countries" }}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    const labels = JSON.parse(
+      document.getElementById("analytics-daily-labels").textContent
+    );
+    const views = JSON.parse(
+      document.getElementById("analytics-daily-views").textContent
+    );
+    const sessions = JSON.parse(
+      document.getElementById("analytics-daily-sessions").textContent
+    );
+    const topPaths = JSON.parse(
+      document.getElementById("analytics-top-paths").textContent
+    );
+    const countries = JSON.parse(
+      document.getElementById("analytics-countries").textContent
+    );
+
+    const trendCtx = document.getElementById("analytics-trend-chart");
+    if (trendCtx && window.Chart) {
+      new Chart(trendCtx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Page views",
+              data: views,
+              borderColor: "#0f766e",
+              backgroundColor: "rgba(15, 118, 110, 0.15)",
+              borderWidth: 2,
+              tension: 0.35,
+              fill: true,
+            },
+            {
+              label: "Sessions",
+              data: sessions,
+              borderColor: "#b45309",
+              backgroundColor: "rgba(180, 83, 9, 0.12)",
+              borderWidth: 2,
+              tension: 0.35,
+              fill: true,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "bottom" },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: "#6b6a69" },
+            },
+            y: {
+              grid: { color: "rgba(229, 223, 214, 0.6)" },
+              ticks: { color: "#6b6a69", precision: 0 },
+            },
+          },
+        },
+      });
+    }
+
+    const pagesCtx = document.getElementById("analytics-pages-chart");
+    if (pagesCtx && window.Chart) {
+      const pageLabels = topPaths.map((row) => row.path || "(unknown)");
+      const pageCounts = topPaths.map((row) => row.count || 0);
+      new Chart(pagesCtx, {
+        type: "bar",
+        data: {
+          labels: pageLabels,
+          datasets: [
+            {
+              label: "Views",
+              data: pageCounts,
+              backgroundColor: "rgba(15, 118, 110, 0.2)",
+              borderColor: "#0f766e",
+              borderWidth: 1,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+          },
+          scales: {
+            x: {
+              ticks: { color: "#6b6a69" },
+              grid: { display: false },
+            },
+            y: {
+              ticks: { color: "#6b6a69", precision: 0 },
+              grid: { color: "rgba(229, 223, 214, 0.6)" },
+            },
+          },
+        },
+      });
+    }
+
+    const countryCtx = document.getElementById("analytics-country-chart");
+    if (countryCtx && window.Chart) {
+      const countryLabels = countries.map((row) => row.country || "(unknown)");
+      const countryCounts = countries.map((row) => row.count || 0);
+      new Chart(countryCtx, {
+        type: "doughnut",
+        data: {
+          labels: countryLabels,
+          datasets: [
+            {
+              data: countryCounts,
+              backgroundColor: [
+                "#0f766e",
+                "#b45309",
+                "#0f172a",
+                "#f59e0b",
+                "#14b8a6",
+                "#9f1239",
+                "#64748b",
+                "#7c3aed",
+              ],
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "bottom" },
+          },
+        },
+      });
+    }
+  </script>
+{% endblock %}

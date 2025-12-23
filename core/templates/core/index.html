@@ -3,13 +3,23 @@
   <section class="author">
     <aside>
       <figure class="author-image-container">
-        <img
-          class="u-photo"
-          alt="{{ site_author_display_name|default:settings.title|default:'Site author' }} avatar"
-          src="{% static 'space.jpeg' %}"
-          height="90"
-          width="90"
-        />
+        {% if site_author_hcard and site_author_hcard.primary_photo_url %}
+          <img
+            class="u-photo"
+            alt="{{ site_author_display_name|default:settings.title|default:'Site author' }} avatar"
+            src="{{ site_author_hcard.primary_photo_url }}"
+            height="90"
+            width="90"
+          />
+        {% else %}
+          <img
+            class="u-photo"
+            alt="{{ site_author_display_name|default:settings.title|default:'Site author' }} avatar"
+            src="{% static 'space.jpeg' %}"
+            height="90"
+            width="90"
+          />
+        {% endif %}
       </figure>
     </aside>
     <div class="author-box">

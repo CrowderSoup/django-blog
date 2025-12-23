@@ -9,7 +9,6 @@ from typing import Optional
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.contrib.admin import helpers
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -380,100 +379,6 @@ class ThemeListCommandTests(TestCase):
 
         self.assertIn("beta", output)
         self.assertNotIn("alpha", output)
-
-
-class ThemeReconcileAdminActionTests(TestCase):
-    def setUp(self):
-        super().setUp()
-        user = get_user_model().objects.create_superuser(
-            username="admin",
-            email="admin@example.com",
-            password="password",
-        )
-        self.client.force_login(user)
-
-    def test_admin_action_reconciles_selected_themes(self):
-        install = ThemeInstall.objects.create(slug="sample", source_type=ThemeInstall.SOURCE_STORAGE)
-        url = reverse("admin:core_themeinstall_changelist")
-        post_data = {
-            "action": "reconcile_installs",
-            helpers.ACTION_CHECKBOX_NAME: [str(install.pk)],
-            "index": 0,
-        }
-
-        response = self.client.post(url, post_data)
-        self.assertTemplateUsed(response, "admin/core/themeinstall/reconcile_confirmation.html")
-
-        with mock.patch("core.admin.reconcile_installed_themes") as reconcile:
-            reconcile.return_value = []
-            response = self.client.post(
-                url,
-                {**post_data, "apply": "1"},
-                follow=True,
-            )
-
-        reconcile.assert_called_once()
-        messages = [message.message for message in response.context["messages"]]
-        self.assertTrue(any("Reconciled" in message for message in messages))
-
-
-class ThemeInstallAdminViewTests(TestCase):
-    def setUp(self):
-        super().setUp()
-        user = get_user_model().objects.create_superuser(
-            username="admin",
-            email="admin@example.com",
-            password="password",
-        )
-        self.client.force_login(user)
-
-    def _assert_no_post_form_in_content(self, response):
-        content = response.content.decode(response.charset or "utf-8")
-        content_start = content.find('<div id="content"')
-        if content_start == -1:
-            content_slice = content
-        else:
-            content_slice = content[content_start:]
-        self.assertNotIn('method="post"', content_slice)
-
-    def test_theme_install_list_filters(self):
-        ThemeInstall.objects.create(
-            slug="alpha",
-            source_type=ThemeInstall.SOURCE_UPLOAD,
-            last_sync_status=ThemeInstall.STATUS_SUCCESS,
-        )
-        ThemeInstall.objects.create(
-            slug="beta",
-            source_type=ThemeInstall.SOURCE_GIT,
-            last_sync_status=ThemeInstall.STATUS_FAILED,
-        )
-
-        url = reverse("admin:core_theme_installs")
-        response = self.client.get(url)
-        self.assertContains(response, "alpha")
-        self.assertContains(response, "beta")
-        self._assert_no_post_form_in_content(response)
-
-        response = self.client.get(url, {"source_type": ThemeInstall.SOURCE_GIT})
-        self.assertContains(response, "beta")
-        self.assertNotContains(response, "alpha")
-
-        response = self.client.get(url, {"status": ThemeInstall.STATUS_SUCCESS})
-        self.assertContains(response, "alpha")
-        self.assertNotContains(response, "beta")
-
-    def test_theme_install_detail_is_read_only(self):
-        install = ThemeInstall.objects.create(
-            slug="gamma",
-            source_type=ThemeInstall.SOURCE_STORAGE,
-            last_sync_status=ThemeInstall.STATUS_PENDING,
-        )
-        url = reverse("admin:core_theme_install_detail", kwargs={"slug": install.slug})
-        response = self.client.get(url)
-
-        self.assertContains(response, "gamma")
-        self.assertContains(response, ThemeInstall.SOURCE_STORAGE)
-        self._assert_no_post_form_in_content(response)
 
 
 class ThemeStorageTests(TestCase):

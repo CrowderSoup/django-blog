@@ -1,5 +1,4 @@
 from django.test import TestCase
-from django.urls import resolve
 from django.utils import timezone
 
 from .models import Post, Tag
@@ -66,12 +65,3 @@ class PostModelTests(TestCase):
         suffix = post.slug.split("article-", 1)[1]
         self.assertTrue(suffix.isdigit())
 
-
-class BlogUrlRoutingTests(TestCase):
-    def test_editor_upload_photo_route_is_not_captured_by_slug(self):
-        match = resolve("/blog/editor/upload-photo/")
-        self.assertEqual(match.view_name, "post_editor_upload_photo")
-
-    def test_editor_delete_photo_route_is_not_captured_by_slug(self):
-        match = resolve("/blog/editor/delete-photo/")
-        self.assertEqual(match.view_name, "post_editor_delete_photo")

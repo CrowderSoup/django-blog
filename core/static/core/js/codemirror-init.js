@@ -58,4 +58,9 @@
     if (!event.target) return;
     initWithin(event.target);
   });
+  document.addEventListener("htmx:afterSwap", (event) => {
+    const target = event.detail?.target || event.target;
+    if (!target || !(target instanceof Element)) return;
+    initWithin(target);
+  });
 })();

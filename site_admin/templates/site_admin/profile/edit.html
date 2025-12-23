@@ -1,0 +1,28 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}Profile{% endblock %}
+
+{% block head %}{{ form.media }}{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-6">
+    <section class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <div class="text-sm uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Account</div>
+        <h1 class="text-2xl font-semibold">Profile</h1>
+      </div>
+      <div class="flex flex-wrap items-center gap-3">
+        <a
+          href="{% url 'site_admin:dashboard' %}"
+          class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+        >
+          Back to dashboard
+        </a>
+      </div>
+    </section>
+
+    <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+      {% include "site_admin/profile/_form.html" %}
+    </section>
+  </div>
+{% endblock %}

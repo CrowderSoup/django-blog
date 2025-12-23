@@ -1,0 +1,72 @@
+<form
+  id="page-form"
+  method="post"
+  class="flex flex-col gap-6"
+  hx-post="{% if page %}{% url 'site_admin:page_edit' slug=page.slug %}{% else %}{% url 'site_admin:page_create' %}{% endif %}"
+  hx-target="#page-form-messages"
+  hx-swap="outerHTML"
+>
+  {% csrf_token %}
+  {% include "site_admin/pages/_form_messages.html" %}
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div class="space-y-6">
+      <div>
+        <label
+          for="{{ form.title.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Title
+        </label>
+        {{ form.title }}
+        {{ form.title.errors }}
+      </div>
+      <div>
+        <label
+          for="{{ form.content.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Content
+        </label>
+        {{ form.content }}
+        <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Write the page body in Markdown.</p>
+        {{ form.content.errors }}
+      </div>
+    </div>
+    <div class="space-y-5">
+      <div>
+        <label
+          for="{{ form.published_on.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Publish time
+        </label>
+        {{ form.published_on }}
+        {{ form.published_on.errors }}
+      </div>
+      <div>
+        <label
+          for="{{ form.slug.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Slug
+        </label>
+        {{ form.slug }}
+        <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Leave blank to auto-generate.</p>
+        {{ form.slug.errors }}
+      </div>
+    </div>
+  </div>
+  <div class="flex flex-wrap items-center gap-3">
+    <button
+      type="submit"
+      class="rounded-full bg-[color:var(--admin-accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+    >
+      Save page
+    </button>
+    {% if page %}
+      <span class="text-xs text-[color:var(--admin-muted)]">
+        Published {{ page.published_on|date:"M j, Y" }}
+      </span>
+    {% endif %}
+  </div>
+</form>

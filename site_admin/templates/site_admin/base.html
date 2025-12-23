@@ -1,0 +1,83 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{% block title %}Admin{% endblock %} · {{ settings.title }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Space Grotesk", "ui-sans-serif", "system-ui"],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      :root {
+        --admin-bg: #f6f2ec;
+        --admin-surface: #ffffff;
+        --admin-ink: #1b1b1b;
+        --admin-muted: #6b6a69;
+        --admin-accent: #0f766e;
+        --admin-accent-strong: #0a5b55;
+        --admin-border: #e5dfd6;
+        --admin-warn: #b45309;
+        --site-admin-bar-bg: var(--admin-bg);
+      }
+
+      .errorlist {
+        margin-top: 0.35rem;
+        color: #b91c1c;
+        font-size: 0.75rem;
+        list-style: none;
+        padding: 0;
+      }
+
+      .errorlist li {
+        margin: 0;
+      }
+    </style>
+    {% block head %}{% endblock %}
+  </head>
+  <body class="min-h-screen bg-[color:var(--admin-bg)] text-[color:var(--admin-ink)]">
+    {% include "site_admin/_admin_bar.html" %}
+    <main class="mx-auto max-w-6xl px-4 py-8">
+      {% block content %}{% endblock %}
+    </main>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script>
+      function getCookie(name) {
+        if (!document.cookie) {
+          return null;
+        }
+        const csrfCookie = document.cookie
+          .split(";")
+          .map((cookie) => cookie.trim())
+          .find((cookie) => cookie.startsWith(name + "="));
+        if (!csrfCookie) {
+          return null;
+        }
+        return decodeURIComponent(csrfCookie.split("=")[1]);
+      }
+
+      document.body.addEventListener("htmx:configRequest", (event) => {
+        const token = getCookie("csrftoken");
+        if (token) {
+          event.detail.headers["X-CSRFToken"] = token;
+        }
+      });
+    </script>
+    {% block body_end %}{% endblock %}
+  </body>
+</html>

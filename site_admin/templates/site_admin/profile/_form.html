@@ -1,0 +1,800 @@
+<form
+  method="post"
+  enctype="multipart/form-data"
+  class="flex flex-col gap-6"
+  data-profile-photo-upload-url="{{ photo_upload_url }}"
+  data-profile-photo-delete-url="{{ photo_delete_url }}"
+>
+  {% csrf_token %}
+  {% if saved %}
+    <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+      Profile saved.
+    </div>
+  {% endif %}
+  {% if form.non_field_errors %}
+    <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+      {{ form.non_field_errors }}
+    </div>
+  {% endif %}
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div class="space-y-5">
+        <div>
+        <label
+          for="{{ form.name.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Display name
+        </label>
+        {{ form.name }}
+        {{ form.name.errors }}
+      </div>
+      <div>
+        <label
+          for="{{ form.nickname.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Nickname
+        </label>
+        {{ form.nickname }}
+        {{ form.nickname.errors }}
+      </div>
+      <div>
+        <label
+          for="{{ form.note.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Bio
+        </label>
+        {{ form.note }}
+        {{ form.note.errors }}
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label
+            for="{{ form.uid.id_for_label }}"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            Profile URL
+          </label>
+          {{ form.uid }}
+          {{ form.uid.errors }}
+        </div>
+        <div>
+          <label
+            for="{{ form.org_name.id_for_label }}"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            Organization
+          </label>
+          {{ form.org_name }}
+          {{ form.org_name.errors }}
+        </div>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label
+            for="{{ form.job_title.id_for_label }}"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            Job title
+          </label>
+          {{ form.job_title }}
+          {{ form.job_title.errors }}
+        </div>
+        <div>
+          <label
+            for="{{ form.role.id_for_label }}"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            Role
+          </label>
+          {{ form.role }}
+          {{ form.role.errors }}
+        </div>
+      </div>
+    </div>
+    <div class="space-y-5">
+      <div>
+        <label
+          for="{{ form.locality.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          City
+        </label>
+        {{ form.locality }}
+        {{ form.locality.errors }}
+      </div>
+      <div>
+        <label
+          for="{{ form.region.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Region
+        </label>
+        {{ form.region }}
+        {{ form.region.errors }}
+      </div>
+      <div>
+        <label
+          for="{{ form.country_name.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Country
+        </label>
+        {{ form.country_name }}
+        {{ form.country_name.errors }}
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label
+            for="{{ form.bday.id_for_label }}"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            Birthday
+          </label>
+          {{ form.bday }}
+          {{ form.bday.errors }}
+        </div>
+        <div>
+          <label
+            for="{{ form.anniversary.id_for_label }}"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            Anniversary
+          </label>
+          {{ form.anniversary }}
+          {{ form.anniversary.errors }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="space-y-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Profile photos</div>
+        <p class="text-sm text-[color:var(--admin-muted)]">Upload one or more photos. The first photo is your current profile photo.</p>
+      </div>
+      <button
+        type="button"
+        class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+        data-profile-photo-trigger
+      >
+        Upload photos
+      </button>
+    </div>
+    <div
+      class="flex min-h-[140px] flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] px-4 py-6 text-center text-sm text-[color:var(--admin-muted)] transition"
+      data-profile-photo-dropzone
+      role="button"
+      tabindex="0"
+      aria-label="Upload profile photos"
+    >
+      <span class="text-sm font-semibold text-[color:var(--admin-ink)]">Drop images here</span>
+      <span class="text-xs">or click to browse</span>
+    </div>
+    <label for="profile-photo-uploader" class="sr-only">Upload profile photos</label>
+    <input
+      type="file"
+      id="profile-photo-uploader"
+      name="photos"
+      accept="image/*"
+      multiple
+      class="sr-only"
+    >
+    <div id="profile-photo-grid" class="grid gap-4 sm:grid-cols-2"></div>
+    <div id="profile-photo-empty" class="text-xs text-[color:var(--admin-muted)]">
+      No profile photos yet. Add at least one to set your current profile photo.
+    </div>
+    <div id="profile-photo-metadata-fields"></div>
+  </section>
+
+  <section class="space-y-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Profile links</div>
+        <p class="text-sm text-[color:var(--admin-muted)]">Add links that should show in your h-card and rel=me list.</p>
+      </div>
+      <button
+        type="button"
+        class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+        data-add-hcard-url
+      >
+        Add link
+      </button>
+    </div>
+    {{ url_formset.management_form }}
+    {% if url_formset.non_form_errors %}
+      <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        {{ url_formset.non_form_errors }}
+      </div>
+    {% endif %}
+    <div class="space-y-4" data-hcard-url-items>
+      {% for url_form in url_formset.forms %}
+        <div class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4" data-hcard-url-item>
+          {{ url_form.id }}
+          <div class="grid gap-4 md:grid-cols-2">
+            <div>
+              <label
+                for="{{ url_form.value.id_for_label }}"
+                class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+              >
+                URL
+              </label>
+              {{ url_form.value }}
+              {{ url_form.value.errors }}
+            </div>
+            <div>
+              <label
+                for="{{ url_form.kind.id_for_label }}"
+                class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+              >
+                Kind
+              </label>
+              {{ url_form.kind }}
+              {{ url_form.kind.errors }}
+            </div>
+          </div>
+          <div class="mt-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-warn)] transition hover:bg-[color:var(--admin-bg)]"
+              {% if url_form.instance.pk %}
+                hx-post="{% url 'site_admin:profile_url_delete' url_id=url_form.instance.pk %}"
+                hx-target="closest [data-hcard-url-item]"
+                hx-swap="delete"
+                hx-confirm="Remove this profile link?"
+              {% else %}
+                data-remove-hcard-url
+              {% endif %}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18"></path>
+                <path d="M8 6V4h8v2"></path>
+                <path d="M6 6l1 14h10l1-14"></path>
+              </svg>
+              <span class="hcard-item__label">Remove item</span>
+              <span class="hcard-item__deleting hidden text-[color:var(--admin-muted)]">Deleting...</span>
+            </button>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="rounded-2xl border border-dashed border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] px-4 py-5 text-center text-sm text-[color:var(--admin-muted)]{% if url_formset.total_form_count %} hidden{% endif %}" data-hcard-url-empty>
+      No profile links yet. Add your first link.
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Email addresses</div>
+        <p class="text-sm text-[color:var(--admin-muted)]">Optional emails to attach to your h-card.</p>
+      </div>
+      <button
+        type="button"
+        class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+        data-add-hcard-email
+      >
+        Add email
+      </button>
+    </div>
+    {{ email_formset.management_form }}
+    {% if email_formset.non_form_errors %}
+      <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        {{ email_formset.non_form_errors }}
+      </div>
+    {% endif %}
+    <div class="space-y-4" data-hcard-email-items>
+      {% for email_form in email_formset.forms %}
+        <div class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4" data-hcard-email-item>
+          {{ email_form.id }}
+          <div>
+            <label
+              for="{{ email_form.value.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Email
+            </label>
+            {{ email_form.value }}
+            {{ email_form.value.errors }}
+          </div>
+          <div class="mt-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-warn)] transition hover:bg-[color:var(--admin-bg)]"
+              {% if email_form.instance.pk %}
+                hx-post="{% url 'site_admin:profile_email_delete' email_id=email_form.instance.pk %}"
+                hx-target="closest [data-hcard-email-item]"
+                hx-swap="delete"
+                hx-confirm="Remove this email address?"
+              {% else %}
+                data-remove-hcard-email
+              {% endif %}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18"></path>
+                <path d="M8 6V4h8v2"></path>
+                <path d="M6 6l1 14h10l1-14"></path>
+              </svg>
+              <span class="hcard-item__label">Remove item</span>
+              <span class="hcard-item__deleting hidden text-[color:var(--admin-muted)]">Deleting...</span>
+            </button>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <div class="rounded-2xl border border-dashed border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] px-4 py-5 text-center text-sm text-[color:var(--admin-muted)]{% if email_formset.total_form_count %} hidden{% endif %}" data-hcard-email-empty>
+      No email addresses yet. Add your first email.
+    </div>
+  </section>
+
+  <div class="flex flex-wrap items-center gap-3">
+    <button
+      type="submit"
+      class="rounded-full bg-[color:var(--admin-accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+    >
+      Save profile
+    </button>
+  </div>
+</form>
+
+<script id="existing-profile-photos-data" type="application/json">{{ existing_photos_json|safe }}</script>
+
+<template id="hcard-url-template">
+  <div class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4" data-hcard-url-item>
+    {{ url_formset.empty_form.id }}
+    <div class="grid gap-4 md:grid-cols-2">
+      <div>
+        <label
+          for="{{ url_formset.empty_form.value.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          URL
+        </label>
+        {{ url_formset.empty_form.value }}
+      </div>
+      <div>
+        <label
+          for="{{ url_formset.empty_form.kind.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Kind
+        </label>
+        {{ url_formset.empty_form.kind }}
+      </div>
+    </div>
+    <div class="mt-3 flex items-center justify-between gap-2">
+      <button
+        type="button"
+        class="inline-flex items-center gap-2 rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-warn)] transition hover:bg-[color:var(--admin-bg)]"
+        data-remove-hcard-url
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18"></path>
+          <path d="M8 6V4h8v2"></path>
+          <path d="M6 6l1 14h10l1-14"></path>
+        </svg>
+        Remove item
+      </button>
+    </div>
+  </div>
+</template>
+
+<template id="hcard-email-template">
+  <div class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4" data-hcard-email-item>
+    {{ email_formset.empty_form.id }}
+    <div>
+      <label
+        for="{{ email_formset.empty_form.value.id_for_label }}"
+        class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+      >
+        Email
+      </label>
+      {{ email_formset.empty_form.value }}
+    </div>
+    <div class="mt-3 flex items-center justify-between gap-2">
+      <button
+        type="button"
+        class="inline-flex items-center gap-2 rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-warn)] transition hover:bg-[color:var(--admin-bg)]"
+        data-remove-hcard-email
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18"></path>
+          <path d="M8 6V4h8v2"></path>
+          <path d="M6 6l1 14h10l1-14"></path>
+        </svg>
+        Remove item
+      </button>
+    </div>
+  </div>
+</template>
+
+<style>
+  .htmx-request .hcard-item__label {
+    display: none;
+  }
+
+  .htmx-request .hcard-item__deleting {
+    display: inline;
+  }
+</style>
+
+<script>
+(function () {
+  const form = document.querySelector("form");
+  if (!form || form.dataset.hcardInit === "1") return;
+  form.dataset.hcardInit = "1";
+
+  const addUrlButton = form.querySelector("[data-add-hcard-url]");
+  const addEmailButton = form.querySelector("[data-add-hcard-email]");
+  const urlContainer = form.querySelector("[data-hcard-url-items]");
+  const emailContainer = form.querySelector("[data-hcard-email-items]");
+  const urlEmptyState = form.querySelector("[data-hcard-url-empty]");
+  const emailEmptyState = form.querySelector("[data-hcard-email-empty]");
+  const urlTemplate = document.getElementById("hcard-url-template");
+  const emailTemplate = document.getElementById("hcard-email-template");
+
+  function updateEmptyState(container, emptyState, itemSelector) {
+    if (!container || !emptyState) return;
+    const count = container.querySelectorAll(itemSelector).length;
+    emptyState.classList.toggle("hidden", count > 0);
+  }
+
+  function reindexForms(container, prefix, itemSelector) {
+    if (!container) return;
+    const totalForms = form.querySelector(`#id_${prefix}-TOTAL_FORMS`);
+    const initialForms = form.querySelector(`#id_${prefix}-INITIAL_FORMS`);
+    const forms = Array.from(container.querySelectorAll(itemSelector));
+
+    forms.forEach((formEl, index) => {
+      formEl.querySelectorAll("input, select, textarea, label").forEach((field) => {
+        if (field.name) {
+          field.name = field.name.replace(new RegExp(`${prefix}-\\d+-`, "g"), `${prefix}-${index}-`);
+        }
+        if (field.id) {
+          field.id = field.id.replace(new RegExp(`${prefix}-\\d+-`, "g"), `${prefix}-${index}-`);
+        }
+        if (field.htmlFor) {
+          field.htmlFor = field.htmlFor.replace(new RegExp(`${prefix}-\\d+-`, "g"), `${prefix}-${index}-`);
+        }
+      });
+    });
+
+    if (totalForms) {
+      totalForms.value = forms.length;
+    }
+    if (initialForms) {
+      const existingCount = forms.filter((formEl) => {
+        const idInput = formEl.querySelector('input[name$="-id"]');
+        return idInput && idInput.value;
+      }).length;
+      initialForms.value = existingCount;
+    }
+  }
+
+  function removeItem(button, container, prefix, itemSelector) {
+    const row = button.closest(itemSelector);
+    if (!row) return;
+    row.remove();
+    reindexForms(container, prefix, itemSelector);
+    updateEmptyState(container, prefix === "urls" ? urlEmptyState : emailEmptyState, itemSelector);
+  }
+
+  function addItem(container, prefix, itemSelector, template) {
+    if (!container || !template) return;
+    const totalForms = form.querySelector(`#id_${prefix}-TOTAL_FORMS`);
+    if (!totalForms) return;
+    const index = parseInt(totalForms.value, 10);
+    const fragment = template.content.cloneNode(true);
+    const html = fragment.firstElementChild.innerHTML.replace(/__prefix__/g, index);
+    fragment.firstElementChild.innerHTML = html;
+    container.appendChild(fragment);
+    totalForms.value = index + 1;
+    updateEmptyState(container, prefix === "urls" ? urlEmptyState : emailEmptyState, itemSelector);
+  }
+
+  if (addUrlButton) {
+    addUrlButton.addEventListener("click", () => {
+      addItem(urlContainer, "urls", "[data-hcard-url-item]", urlTemplate);
+    });
+  }
+
+  if (addEmailButton) {
+    addEmailButton.addEventListener("click", () => {
+      addItem(emailContainer, "emails", "[data-hcard-email-item]", emailTemplate);
+    });
+  }
+
+  form.addEventListener("click", (event) => {
+    const urlButton = event.target.closest("[data-remove-hcard-url]");
+    if (urlButton) {
+      event.preventDefault();
+      removeItem(urlButton, urlContainer, "urls", "[data-hcard-url-item]");
+      return;
+    }
+
+    const emailButton = event.target.closest("[data-remove-hcard-email]");
+    if (emailButton) {
+      event.preventDefault();
+      removeItem(emailButton, emailContainer, "emails", "[data-hcard-email-item]");
+    }
+  });
+
+  function extractRequestPath(detail) {
+    return (
+      (detail.requestConfig && detail.requestConfig.path) ||
+      (detail.pathInfo && detail.pathInfo.requestPath) ||
+      detail.path ||
+      ""
+    );
+  }
+
+  document.body.addEventListener("htmx:afterRequest", (event) => {
+    const detail = event.detail || {};
+    const requestPath = extractRequestPath(detail);
+    if (requestPath.includes("/admin/profile/urls/")) {
+      setTimeout(() => {
+        reindexForms(urlContainer, "urls", "[data-hcard-url-item]");
+        updateEmptyState(urlContainer, urlEmptyState, "[data-hcard-url-item]");
+      }, 0);
+    }
+    if (requestPath.includes("/admin/profile/emails/")) {
+      setTimeout(() => {
+        reindexForms(emailContainer, "emails", "[data-hcard-email-item]");
+        updateEmptyState(emailContainer, emailEmptyState, "[data-hcard-email-item]");
+      }, 0);
+    }
+  });
+
+  updateEmptyState(urlContainer, urlEmptyState, "[data-hcard-url-item]");
+  updateEmptyState(emailContainer, emailEmptyState, "[data-hcard-email-item]");
+})();
+</script>
+
+<script>
+(function () {
+  const form = document.querySelector("form");
+  if (!form || form.dataset.profilePhotoInit === "1") return;
+  form.dataset.profilePhotoInit = "1";
+
+  const fileInput = form.querySelector("#profile-photo-uploader");
+  const dropzone = form.querySelector("[data-profile-photo-dropzone]");
+  const photoGrid = form.querySelector("#profile-photo-grid");
+  const photoEmpty = form.querySelector("#profile-photo-empty");
+  const metadataFields = form.querySelector("#profile-photo-metadata-fields");
+  const existingDataEl = document.getElementById("existing-profile-photos-data");
+  const uploadUrl = form.dataset.profilePhotoUploadUrl;
+  const deleteUrl = form.dataset.profilePhotoDeleteUrl;
+
+  let photoData = [];
+  const removedExisting = new Set();
+
+  function getCsrfToken() {
+    const match = document.cookie.match(/csrftoken=([^;]+)/);
+    return match ? match[1] : "";
+  }
+
+  try {
+    if (existingDataEl && existingDataEl.textContent.trim()) {
+      const parsed = JSON.parse(existingDataEl.textContent);
+      photoData = parsed.map((item, idx) => ({
+        kind: item.kind || "existing",
+        id: item.id,
+        url: item.url,
+        order: item.order ?? idx,
+      }));
+    }
+  } catch (e) {
+    photoData = [];
+  }
+
+  function renderPhotos() {
+    photoGrid.innerHTML = "";
+    if (!photoData.length) {
+      photoEmpty.classList.remove("hidden");
+      return;
+    }
+    photoEmpty.classList.add("hidden");
+    photoData.forEach((item, idx) => {
+      item.order = idx;
+      photoGrid.appendChild(buildCard(item, idx));
+    });
+  }
+
+  function buildCard(item, idx) {
+    const card = document.createElement("div");
+    card.className =
+      "flex flex-col gap-3 rounded-2xl border border-[color:var(--admin-border)] bg-white p-3 shadow-sm";
+
+    const img = document.createElement("img");
+    img.src = item.url;
+    img.alt = "Selected image preview";
+    img.className = "h-40 w-full rounded-xl object-cover bg-[color:var(--admin-bg)]";
+
+    const meta = document.createElement("div");
+    meta.className = "flex items-center justify-between gap-2 text-xs";
+
+    const label = document.createElement("span");
+    label.className = "font-semibold text-[color:var(--admin-muted)]";
+    label.textContent = idx === 0 ? "Current profile photo" : "Profile photo";
+    meta.appendChild(label);
+
+    const actions = document.createElement("div");
+    actions.className = "flex flex-wrap gap-2 text-xs";
+
+    const up = document.createElement("button");
+    up.type = "button";
+    up.textContent = "Move up";
+    up.disabled = idx === 0;
+    up.className =
+      "rounded-full border border-[color:var(--admin-border)] px-3 py-1 font-semibold text-[color:var(--admin-ink)] disabled:cursor-not-allowed disabled:opacity-60";
+    up.addEventListener("click", () => moveCard(idx, -1));
+
+    const down = document.createElement("button");
+    down.type = "button";
+    down.textContent = "Move down";
+    down.disabled = idx === photoData.length - 1;
+    down.className =
+      "rounded-full border border-[color:var(--admin-border)] px-3 py-1 font-semibold text-[color:var(--admin-ink)] disabled:cursor-not-allowed disabled:opacity-60";
+    down.addEventListener("click", () => moveCard(idx, 1));
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Remove";
+    remove.className =
+      "rounded-full border border-rose-200 px-3 py-1 font-semibold text-rose-600";
+    remove.addEventListener("click", async () => {
+      if (item.kind === "existing") {
+        removedExisting.add(item.id);
+        photoData = photoData.filter((photo) => photo !== item);
+        renderPhotos();
+        return;
+      }
+
+      try {
+        await deleteRemotePhoto(item.id);
+        photoData = photoData.filter((photo) => photo !== item);
+        renderPhotos();
+      } catch (error) {
+        alert(error.message || "Unable to delete photo.");
+      }
+    });
+
+    actions.appendChild(up);
+    actions.appendChild(down);
+    actions.appendChild(remove);
+
+    card.appendChild(img);
+    card.appendChild(meta);
+    card.appendChild(actions);
+    return card;
+  }
+
+  function moveCard(currentIndex, delta) {
+    const target = currentIndex + delta;
+    if (target < 0 || target >= photoData.length) return;
+    const temp = photoData[currentIndex];
+    photoData[currentIndex] = photoData[target];
+    photoData[target] = temp;
+    renderPhotos();
+  }
+
+  async function uploadPhoto(file) {
+    const formData = new FormData();
+    formData.append("photo", file);
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      headers: { "X-CSRFToken": getCsrfToken() },
+      body: formData,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.id || !data.url) {
+      throw new Error(data.error || "Upload failed.");
+    }
+    return data;
+  }
+
+  async function deleteRemotePhoto(id) {
+    const formData = new FormData();
+    formData.append("id", id);
+    const response = await fetch(deleteUrl, {
+      method: "POST",
+      headers: { "X-CSRFToken": getCsrfToken() },
+      body: formData,
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Delete failed.");
+    }
+  }
+
+  async function handleUploads(files) {
+    for (const file of files) {
+      try {
+        const uploaded = await uploadPhoto(file);
+        photoData.push({
+          kind: "uploaded",
+          id: uploaded.id,
+          url: uploaded.url,
+        });
+        renderPhotos();
+      } catch (error) {
+        alert(error.message || "Upload failed.");
+      }
+    }
+  }
+
+  function openFileDialog() {
+    fileInput.click();
+  }
+
+  if (fileInput && dropzone) {
+    dropzone.addEventListener("click", openFileDialog);
+    dropzone.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openFileDialog();
+      }
+    });
+    const trigger = form.querySelector("[data-profile-photo-trigger]");
+    if (trigger) {
+      trigger.addEventListener("click", openFileDialog);
+    }
+
+    fileInput.addEventListener("change", () => {
+      const files = Array.from(fileInput.files || []);
+      if (!files.length) return;
+      handleUploads(files);
+      fileInput.value = "";
+    });
+
+    dropzone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      dropzone.classList.add("border-[color:var(--admin-accent)]");
+    });
+
+    dropzone.addEventListener("dragleave", () => {
+      dropzone.classList.remove("border-[color:var(--admin-accent)]");
+    });
+
+    dropzone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      dropzone.classList.remove("border-[color:var(--admin-accent)]");
+      const files = Array.from(event.dataTransfer.files || []).filter((file) =>
+        file.type.startsWith("image/")
+      );
+      if (files.length) {
+        handleUploads(files);
+      }
+    });
+  }
+
+  function syncMetadataFields() {
+    metadataFields.innerHTML = "";
+    const makeHidden = (name, value) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      metadataFields.appendChild(input);
+    };
+
+    photoData.forEach((item, position) => {
+      if (item.kind === "existing") {
+        if (removedExisting.has(item.id)) return;
+        makeHidden("existing_ids", item.id);
+        makeHidden("existing_positions", position);
+      } else {
+        makeHidden("uploaded_ids", item.id);
+        makeHidden("uploaded_positions", position);
+      }
+    });
+
+    removedExisting.forEach((id) => makeHidden("existing_remove_ids", id));
+  }
+
+  form.addEventListener("submit", syncMetadataFields);
+  renderPhotos();
+})();
+</script>
