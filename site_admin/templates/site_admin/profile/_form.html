@@ -554,7 +554,7 @@
 
 <script>
 (function () {
-  const form = document.querySelector("form");
+  const form = document.querySelector('form[data-profile-photo-upload-url]');
   if (!form || form.dataset.profilePhotoInit === "1") return;
   form.dataset.profilePhotoInit = "1";
 
@@ -590,6 +590,7 @@
   }
 
   function renderPhotos() {
+    if (!photoGrid || !photoEmpty) return;
     photoGrid.innerHTML = "";
     if (!photoData.length) {
       photoEmpty.classList.remove("hidden");
@@ -771,6 +772,7 @@
   }
 
   function syncMetadataFields() {
+    if (!metadataFields) return;
     metadataFields.innerHTML = "";
     const makeHidden = (name, value) => {
       const input = document.createElement("input");
