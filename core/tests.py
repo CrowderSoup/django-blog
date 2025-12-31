@@ -35,7 +35,14 @@ from .models import (
 )
 from .apps import CoreConfig, _reset_startup_state, _run_startup_reconcile
 from .theme_sync import reconcile_installed_themes
-from .themes import ThemeUploadError, get_theme, ingest_theme_archive, install_theme_from_git, theme_exists_in_storage
+from .themes import (
+    ThemeUploadError,
+    get_theme,
+    ingest_theme_archive,
+    install_theme_from_git,
+    theme_exists_in_storage,
+    update_theme_from_git,
+)
 from .theme_validation import validate_theme_dir
 from .test_utils import build_test_theme
 from blog.models import Post, Tag
@@ -622,6 +629,7 @@ class ThemeInstallTests(TestCase):
             with tempfile.TemporaryDirectory() as repo_root:
                 repo_dir = Path(repo_root)
                 self._init_theme_repo(repo_dir, "sample", version="1.0")
+                expected_commit = self._git(repo_dir, "rev-parse", "HEAD")
 
                 with override_settings(THEMES_ROOT=themes_root, THEME_STORAGE_PREFIX="themes"):
                     with mock.patch("core.themes.get_theme_storage", return_value=storage):
@@ -632,6 +640,7 @@ class ThemeInstallTests(TestCase):
         self.assertEqual(record.source_type, ThemeInstall.SOURCE_GIT)
         self.assertEqual(record.source_url, str(repo_dir))
         self.assertEqual(record.version, "1.0")
+        self.assertEqual(record.last_synced_commit, expected_commit)
         self.assertEqual(record.last_sync_status, ThemeInstall.STATUS_SUCCESS)
         self.assertIsNotNone(record.last_synced_at)
         self.assertEqual(theme.slug, record.slug)
@@ -673,6 +682,72 @@ class ThemeInstallTests(TestCase):
 
         self.assertFalse((Path(themes_root) / "sample").exists())
         self.assertFalse(ThemeInstall.objects.filter(slug="sample").exists())
+
+    def test_update_theme_from_git_updates_commit(self):
+        with tempfile.TemporaryDirectory() as storage_root, tempfile.TemporaryDirectory() as themes_root:
+            storage = FileSystemStorage(location=storage_root)
+            with tempfile.TemporaryDirectory() as repo_root:
+                repo_dir = Path(repo_root)
+                theme_dir = self._init_theme_repo(repo_dir, "sample", version="1.0")
+                first_commit = self._git(repo_dir, "rev-parse", "HEAD")
+                default_branch = self._git(repo_dir, "symbolic-ref", "--short", "HEAD")
+                self._git(repo_dir, "tag", "v1")
+                meta = json.loads((theme_dir / "theme.json").read_text())
+                meta["version"] = "2.0"
+                (theme_dir / "theme.json").write_text(json.dumps(meta))
+                self._git(repo_dir, "add", "sample/theme.json")
+                self._git(repo_dir, "commit", "-m", "bump version")
+                second_commit = self._git(repo_dir, "rev-parse", "HEAD")
+
+                with override_settings(THEMES_ROOT=themes_root, THEME_STORAGE_PREFIX="themes"):
+                    with mock.patch("core.themes.get_theme_storage", return_value=storage):
+                        install_theme_from_git(str(repo_dir), "sample", ref="v1")
+                        install = ThemeInstall.objects.get(slug="sample")
+                        self.assertEqual(install.last_synced_commit, first_commit)
+                        result = update_theme_from_git(install, ref=default_branch)
+                        record = ThemeInstall.objects.get(slug="sample")
+                        theme_meta = json.loads(
+                            (Path(themes_root) / "sample" / "theme.json").read_text()
+                        )
+
+                        self.assertTrue(result.updated)
+                        self.assertEqual(record.last_synced_commit, second_commit)
+                        self.assertEqual(theme_meta["version"], "2.0")
+
+    def test_theme_update_command_updates_git_theme(self):
+        with tempfile.TemporaryDirectory() as storage_root, tempfile.TemporaryDirectory() as themes_root:
+            storage = FileSystemStorage(location=storage_root)
+            with tempfile.TemporaryDirectory() as repo_root:
+                repo_dir = Path(repo_root)
+                theme_dir = self._init_theme_repo(repo_dir, "sample", version="1.0")
+                first_commit = self._git(repo_dir, "rev-parse", "HEAD")
+                default_branch = self._git(repo_dir, "symbolic-ref", "--short", "HEAD")
+                self._git(repo_dir, "tag", "v1")
+                meta = json.loads((theme_dir / "theme.json").read_text())
+                meta["version"] = "2.0"
+                (theme_dir / "theme.json").write_text(json.dumps(meta))
+                self._git(repo_dir, "add", "sample/theme.json")
+                self._git(repo_dir, "commit", "-m", "bump version")
+                second_commit = self._git(repo_dir, "rev-parse", "HEAD")
+
+                with override_settings(THEMES_ROOT=themes_root, THEME_STORAGE_PREFIX="themes"):
+                    with mock.patch("core.themes.get_theme_storage", return_value=storage):
+                        install_theme_from_git(str(repo_dir), "sample", ref="v1")
+                        install = ThemeInstall.objects.get(slug="sample")
+                        self.assertEqual(install.last_synced_commit, first_commit)
+                        out = io.StringIO()
+                        call_command(
+                            "theme_update",
+                            "--slug",
+                            "sample",
+                            "--ref",
+                            default_branch,
+                            stdout=out,
+                        )
+                        install.refresh_from_db()
+
+                        self.assertEqual(install.last_synced_commit, second_commit)
+                        self.assertIn("Updated:", out.getvalue())
 
     def test_expected_slugs_returns_sorted_list(self):
         ThemeInstall.objects.create(slug="beta", source_type=ThemeInstall.SOURCE_UPLOAD)

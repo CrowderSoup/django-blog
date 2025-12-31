@@ -42,6 +42,7 @@ from core.themes import (
     discover_themes,
     ingest_theme_archive,
     install_theme_from_git,
+    update_theme_from_git,
     list_theme_directories,
     list_theme_files,
     read_theme_file,
@@ -1342,13 +1343,37 @@ def theme_file_edit(request, slug):
     )
 
 
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "POST"])
 def theme_install_detail(request, slug):
     guard = _staff_guard(request)
     if guard:
         return guard
 
     install = get_object_or_404(ThemeInstall, slug=slug)
+    if request.method == "POST":
+        if install.source_type != ThemeInstall.SOURCE_GIT:
+            messages.error(request, "Only git-installed themes can be updated.")
+            return redirect("site_admin:theme_install_detail", slug=slug)
+
+        ref_value = (request.POST.get("ref") or "").strip()
+        ref = ref_value or None
+        try:
+            result = update_theme_from_git(install, ref=ref)
+            if result.updated:
+                messages.success(
+                    request,
+                    f"Updated {install.slug} to {result.commit or 'latest'} ({result.ref or 'default ref'}).",
+                )
+            else:
+                messages.info(
+                    request,
+                    f"{install.slug} already up to date at {result.commit or 'latest'} ({result.ref or 'default ref'}).",
+                )
+        except ThemeUploadError as exc:
+            messages.error(request, str(exc))
+        except Exception as exc:  # pragma: no cover - defensive
+            messages.error(request, f"Unable to update theme: {exc}")
+        return redirect("site_admin:theme_install_detail", slug=slug)
     return render(
         request,
         "site_admin/settings/themes/install_detail.html",

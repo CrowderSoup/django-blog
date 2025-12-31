@@ -55,6 +55,15 @@ class ThemeDefinition:
         return f"{THEMES_DIRNAME}/{self.slug}/static/"
 
 
+@dataclass
+class ThemeUpdateResult:
+    slug: str
+    ref: str
+    commit: str
+    updated: bool
+    detail: str = ""
+
+
 def get_themes_root(base_dir: Optional[Path] = None) -> Path:
     """Return the absolute themes directory."""
     if base_dir is not None:
@@ -334,6 +343,59 @@ def _run_git(command: list[str], *, error_message: str) -> None:
         raise ThemeUploadError(error_message) from exc
 
 
+def _run_git_capture(command: list[str], *, error_message: str) -> str:
+    if shutil.which(command[0]) is None:
+        raise ThemeUploadError(
+            "Git is required to install themes from git. Ensure the 'git' executable is available in PATH."
+        )
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise ThemeUploadError(
+            "Git is required to install themes from git. Ensure the 'git' executable is available in PATH."
+        ) from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        if detail:
+            raise ThemeUploadError(f"{error_message}: {detail}") from exc
+        raise ThemeUploadError(error_message) from exc
+    return result.stdout.strip()
+
+
+def _replace_theme_on_disk(slug: str, source_dir: Path, *, base_dir: Optional[Path] = None) -> Path:
+    themes_root = get_themes_root(base_dir)
+    themes_root.mkdir(parents=True, exist_ok=True)
+    staging_dir = Path(tempfile.mkdtemp(prefix=f".{slug}-staging-", dir=themes_root))
+    backup_dir: Optional[Path] = None
+    target_dir = themes_root / slug
+
+    try:
+        shutil.copytree(source_dir, staging_dir, dirs_exist_ok=True)
+        if target_dir.exists():
+            backup_dir = Path(tempfile.mkdtemp(prefix=f".{slug}-backup-", dir=themes_root))
+            shutil.rmtree(backup_dir)
+            shutil.move(str(target_dir), str(backup_dir))
+        shutil.move(str(staging_dir), str(target_dir))
+        return target_dir
+    except Exception:
+        if backup_dir and backup_dir.exists():
+            if target_dir.exists():
+                shutil.rmtree(target_dir, ignore_errors=True)
+            shutil.move(str(backup_dir), str(target_dir))
+        raise
+    finally:
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        if backup_dir and backup_dir.exists():
+            shutil.rmtree(backup_dir, ignore_errors=True)
+
+
 def _extract_theme_archive(uploaded_path: Path) -> tuple[str, Path, dict]:
     with tempfile.TemporaryDirectory() as tmp_dir:
         destination = Path(tmp_dir)
@@ -454,6 +516,11 @@ def install_theme_from_git(
                 error_message=f"Unable to checkout ref '{ref}'",
             )
 
+        commit = _run_git_capture(
+            ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
+            error_message="Unable to determine theme commit",
+        )
+
         theme_root = _find_git_theme_root(clone_dir, normalized_slug)
         validation = validate_theme_dir(
             theme_root,
@@ -480,6 +547,7 @@ def install_theme_from_git(
                     "source_ref": ref or "",
                     "version": metadata.get("version") or "",
                     "checksum": "",
+                    "last_synced_commit": commit,
                     "last_synced_at": timezone.now(),
                     "last_sync_status": ThemeInstall.STATUS_SUCCESS,
                 },
@@ -494,6 +562,125 @@ def install_theme_from_git(
         if theme:
             return theme
         raise ThemeUploadError("Theme install completed but could not be discovered locally.")
+    finally:
+        shutil.rmtree(clone_dir, ignore_errors=True)
+
+
+def update_theme_from_git(
+    install,
+    *,
+    ref: Optional[str] = None,
+    base_dir: Optional[Path] = None,
+    dry_run: bool = False,
+) -> ThemeUpdateResult:
+    """
+    Update a git-installed theme to the latest commit for the configured ref.
+    """
+    from core.models import ThemeInstall
+
+    if install.source_type != ThemeInstall.SOURCE_GIT:
+        raise ThemeUploadError(f"Theme {install.slug} is not installed from git.")
+    if not install.source_url:
+        raise ThemeUploadError(f"Theme {install.slug} missing source_url for git update.")
+
+    ref_value = ref if ref is not None else (install.source_ref or "")
+    clone_dir = Path(tempfile.mkdtemp())
+    commit = ""
+    try:
+        _run_git(
+            ["git", "clone", "--depth", "1", install.source_url, str(clone_dir)],
+            error_message="Unable to clone theme repository",
+        )
+        if ref_value:
+            _run_git(
+                ["git", "-C", str(clone_dir), "fetch", "--depth", "1", "origin", ref_value],
+                error_message=f"Unable to fetch ref '{ref_value}'",
+            )
+            _run_git(
+                ["git", "-C", str(clone_dir), "checkout", ref_value],
+                error_message=f"Unable to checkout ref '{ref_value}'",
+            )
+
+        commit = _run_git_capture(
+            ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
+            error_message="Unable to determine theme commit",
+        )
+
+        theme_root = _find_git_theme_root(clone_dir, install.slug)
+        validation = validate_theme_dir(
+            theme_root,
+            expected_slug=install.slug,
+            meta_filename=THEME_META_FILENAME,
+            require_directory_slug=theme_root != clone_dir,
+        )
+        if not validation.is_valid:
+            raise ThemeUploadError(validation.summary(detailed=True))
+
+        metadata = validation.metadata
+        ref_changed = ref is not None and ref_value != (install.source_ref or "")
+        commit_changed = commit and commit != (install.last_synced_commit or "")
+        updated = ref_changed or commit_changed
+
+        if dry_run:
+            detail = "would update" if updated else "already up to date"
+            return ThemeUpdateResult(
+                slug=install.slug,
+                ref=ref_value,
+                commit=commit,
+                updated=updated,
+                detail=detail,
+            )
+
+        existing_root = get_themes_root(base_dir) / install.slug
+        try:
+            _write_theme_to_storage(install.slug, theme_root)
+        except Exception as exc:
+            if existing_root.exists() and (existing_root / THEME_META_FILENAME).exists():
+                try:
+                    _write_theme_to_storage(install.slug, existing_root)
+                except Exception:
+                    logger.warning("Unable to restore storage for theme %s", install.slug, exc_info=True)
+            raise ThemeUploadError(f"Unable to update theme storage: {exc}") from exc
+
+        try:
+            _replace_theme_on_disk(install.slug, theme_root, base_dir=base_dir)
+        except Exception as exc:
+            if existing_root.exists() and (existing_root / THEME_META_FILENAME).exists():
+                try:
+                    _write_theme_to_storage(install.slug, existing_root)
+                except Exception:
+                    logger.warning("Unable to restore storage for theme %s", install.slug, exc_info=True)
+            raise ThemeUploadError(f"Unable to update theme on disk: {exc}") from exc
+
+        update_fields = [
+            "version",
+            "last_synced_commit",
+            "last_synced_at",
+            "last_sync_status",
+        ]
+        install.version = metadata.get("version") or ""
+        install.last_synced_commit = commit
+        install.last_synced_at = timezone.now()
+        install.last_sync_status = ThemeInstall.STATUS_SUCCESS
+        if ref is not None:
+            install.source_ref = ref_value
+            update_fields.append("source_ref")
+        install.save(update_fields=update_fields)
+
+        clear_template_caches()
+        return ThemeUpdateResult(
+            slug=install.slug,
+            ref=ref_value,
+            commit=commit,
+            updated=updated,
+            detail="updated" if updated else "refreshed",
+        )
+    except Exception:
+        if not dry_run:
+            install.last_synced_at = timezone.now()
+            install.last_sync_status = ThemeInstall.STATUS_FAILED
+            install.save(update_fields=["last_synced_at", "last_sync_status"])
+        raise
     finally:
         shutil.rmtree(clone_dir, ignore_errors=True)
 

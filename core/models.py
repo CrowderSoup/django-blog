@@ -104,6 +104,7 @@ class ThemeInstall(models.Model):
     version = models.CharField(max_length=255, blank=True, default="")
     checksum = models.CharField(max_length=255, blank=True, default="")
     installed_at = models.DateTimeField(auto_now_add=True)
+    last_synced_commit = models.CharField(max_length=255, blank=True, default="")
     last_synced_at = models.DateTimeField(null=True, blank=True)
     last_sync_status = models.CharField(max_length=16, choices=STATUS_CHOICES, blank=True, default="")
 

@@ -11,8 +11,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from blog.models import Post
-from core.models import HCard, HCardPhoto
-from core.themes import ThemeDefinition
+from core.models import HCard, HCardPhoto, ThemeInstall
+from core.themes import ThemeDefinition, ThemeUpdateResult
 from core.test_utils import build_test_theme
 from files.models import Attachment, File
 
@@ -393,4 +393,22 @@ class SiteAdminThemeInstallTests(TestCase):
             )
 
         install.assert_called_once_with("https://example.com/demo.git", "demo", ref="main")
+        self.assertEqual(response.status_code, 302)
+
+    def test_theme_update_from_git_invokes_helper(self):
+        self.client.force_login(self.staff)
+        install = ThemeInstall.objects.create(
+            slug="demo",
+            source_type=ThemeInstall.SOURCE_GIT,
+            source_url="https://example.com/demo.git",
+            source_ref="main",
+        )
+        result = ThemeUpdateResult(slug="demo", ref="main", commit="abc123", updated=True)
+        with mock.patch("site_admin.views.update_theme_from_git", return_value=result) as update:
+            response = self.client.post(
+                reverse("site_admin:theme_install_detail", kwargs={"slug": install.slug}),
+                {"ref": "main"},
+            )
+
+        update.assert_called_once_with(install, ref="main")
         self.assertEqual(response.status_code, 302)
