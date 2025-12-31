@@ -21,6 +21,30 @@
         </div>
       </section>
 
+      {% if messages %}
+        <section class="space-y-2">
+          {% for message in messages %}
+            {% if message.level_tag == "success" %}
+              <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {{ message }}
+              </div>
+            {% elif message.level_tag == "warning" %}
+              <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                {{ message }}
+              </div>
+            {% elif message.level_tag == "error" %}
+              <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {{ message }}
+              </div>
+            {% else %}
+              <div class="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                {{ message }}
+              </div>
+            {% endif %}
+          {% endfor %}
+        </section>
+      {% endif %}
+
       <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
         <table class="min-w-full border border-[color:var(--admin-border)] text-sm">
           <tbody>
@@ -57,12 +81,43 @@
               <td class="p-3">{{ install.last_synced_at|date:"Y-m-d H:i"|default:"-" }}</td>
             </tr>
             <tr class="border-t border-[color:var(--admin-border)]">
+              <th class="p-3 text-left font-semibold">Last synced commit</th>
+              <td class="p-3 font-mono text-xs">{{ install.last_synced_commit|default:"-" }}</td>
+            </tr>
+            <tr class="border-t border-[color:var(--admin-border)]">
               <th class="p-3 text-left font-semibold">Last sync status</th>
               <td class="p-3">{{ install.last_sync_status|default:"-" }}</td>
             </tr>
           </tbody>
         </table>
       </section>
+      {% if install.source_type == "git" %}
+        <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+          <h2 class="text-lg font-semibold">Update theme</h2>
+          <p class="mt-1 text-sm text-[color:var(--admin-muted)]">
+            Update to the latest commit on the stored ref, or supply a ref to use.
+          </p>
+          <form method="post" class="mt-4 space-y-4">
+            {% csrf_token %}
+            <div>
+              <label class="block text-xs uppercase tracking-wide text-[color:var(--admin-muted)]" for="theme-update-ref">Git ref (optional)</label>
+              <input
+                type="text"
+                name="ref"
+                id="theme-update-ref"
+                placeholder="{{ install.source_ref|default:'default branch' }}"
+                class="mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]"
+              />
+            </div>
+            <button
+              type="submit"
+              class="rounded-full bg-[color:var(--admin-accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+            >
+              Update theme
+            </button>
+          </form>
+        </section>
+      {% endif %}
     </div>
   </div>
 {% endblock %}

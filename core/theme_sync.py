@@ -18,6 +18,7 @@ from core.themes import (
     download_theme_from_storage,
     _find_git_theme_root,  # type: ignore
     _run_git,  # type: ignore
+    _run_git_capture,  # type: ignore
     theme_exists_in_storage,
     theme_exists_on_disk,
     upload_theme_to_storage,
@@ -61,6 +62,11 @@ def rehydrate_theme_from_git(install: ThemeInstall, *, base_dir: Optional[Path] 
             ]
         _run_git(command, error_message="Unable to clone theme repository")
 
+        commit = _run_git_capture(
+            ["git", "-C", str(clone_dir), "rev-parse", "HEAD"],
+            error_message="Unable to determine theme commit",
+        )
+
         theme_root = _find_git_theme_root(clone_dir, install.slug)
         validation = validate_theme_dir(theme_root, expected_slug=install.slug, meta_filename=THEME_META_FILENAME)
         if not validation.is_valid:
@@ -68,6 +74,9 @@ def rehydrate_theme_from_git(install: ThemeInstall, *, base_dir: Optional[Path] 
 
         _write_theme_to_storage(install.slug, theme_root)
         _write_theme_to_disk(install.slug, theme_root, base_dir=base_dir)
+        if commit:
+            install.last_synced_commit = commit
+            install.save(update_fields=["last_synced_commit"])
         return True
     finally:
         shutil.rmtree(clone_dir, ignore_errors=True)
