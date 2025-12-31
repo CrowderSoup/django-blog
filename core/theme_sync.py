@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +17,7 @@ from core.themes import (
     clear_template_caches,
     download_theme_from_storage,
     _find_git_theme_root,  # type: ignore
+    _run_git,  # type: ignore
     theme_exists_in_storage,
     theme_exists_on_disk,
     upload_theme_to_storage,
@@ -49,8 +49,17 @@ def rehydrate_theme_from_git(install: ThemeInstall, *, base_dir: Optional[Path] 
     try:
         command = ["git", "clone", "--depth", "1", install.source_url, str(clone_dir)]
         if install.source_ref:
-            command = ["git", "clone", "--depth", "1", "--branch", install.source_ref, install.source_url, str(clone_dir)]
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            command = [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                install.source_ref,
+                install.source_url,
+                str(clone_dir),
+            ]
+        _run_git(command, error_message="Unable to clone theme repository")
 
         theme_root = _find_git_theme_root(clone_dir, install.slug)
         validation = validate_theme_dir(theme_root, expected_slug=install.slug, meta_filename=THEME_META_FILENAME)

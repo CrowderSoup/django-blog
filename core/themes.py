@@ -311,6 +311,10 @@ def _ensure_git_url_allowed(url: str) -> None:
 
 
 def _run_git(command: list[str], *, error_message: str) -> None:
+    if shutil.which(command[0]) is None:
+        raise ThemeUploadError(
+            "Git is required to install themes from git. Ensure the 'git' executable is available in PATH."
+        )
     try:
         subprocess.run(
             command,
@@ -319,6 +323,10 @@ def _run_git(command: list[str], *, error_message: str) -> None:
             stderr=subprocess.PIPE,
             text=True,
         )
+    except FileNotFoundError as exc:
+        raise ThemeUploadError(
+            "Git is required to install themes from git. Ensure the 'git' executable is available in PATH."
+        ) from exc
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or exc.stdout or "").strip()
         if detail:
