@@ -60,5 +60,6 @@ urlpatterns = [
     path("posts/<slug:slug>/", views.post_edit, name="post_edit"),
     path("files/", views.file_list, name="file_list"),
     path("files/new/", views.file_create, name="file_create"),
+    path("files/<int:file_id>/delete/", views.file_delete, name="file_delete"),
     path("files/<int:file_id>/", views.file_edit, name="file_edit"),
 ]

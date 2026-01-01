@@ -169,6 +169,37 @@ def _file_in_use_response(asset):
     return None
 
 
+def _file_usage_items(asset, *, request=None):
+    items = []
+    attachments = Attachment.objects.filter(asset=asset).select_related("content_type")
+    for attachment in attachments:
+        content_object = attachment.content_object
+        label = attachment.content_type.name or "Attachment"
+        detail = str(content_object) if content_object else "Unknown item"
+        url = None
+        if isinstance(content_object, Post):
+            label = "Post"
+            detail = content_object.title or content_object.slug
+            url = reverse("site_admin:post_edit", kwargs={"slug": content_object.slug})
+        elif isinstance(content_object, Page):
+            label = "Page"
+            detail = content_object.title or content_object.slug
+            url = reverse("site_admin:page_edit", kwargs={"slug": content_object.slug})
+        if attachment.role:
+            detail = f"{detail} (role: {attachment.role})"
+        items.append({"label": label, "detail": detail, "url": url})
+
+    for photo in asset.hcard_photos.select_related("hcard__user"):
+        hcard = photo.hcard
+        name = hcard.name or (hcard.user.username if hcard.user_id else "Profile")
+        url = None
+        if request and hcard.user_id == request.user.id:
+            url = reverse("site_admin:profile_edit")
+        items.append({"label": "Profile photo", "detail": name, "url": url})
+
+    return items
+
+
 def _sync_profile_photos(
     *,
     request,
@@ -833,6 +864,45 @@ def file_edit(request, file_id):
             "form": form,
             "asset": asset,
             "saved": saved,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def file_delete(request, file_id):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    asset = get_object_or_404(File, pk=file_id)
+    in_use_message = asset.in_use_message()
+    can_delete = not in_use_message
+    usage_items = _file_usage_items(asset, request=request)
+
+    if request.method == "POST":
+        if not can_delete:
+            return render(
+                request,
+                "site_admin/files/delete.html",
+                {
+                    "asset": asset,
+                    "can_delete": can_delete,
+                    "in_use_message": in_use_message,
+                    "usage_items": usage_items,
+                },
+                status=409,
+            )
+        asset.delete()
+        return redirect("site_admin:file_list")
+
+    return render(
+        request,
+        "site_admin/files/delete.html",
+        {
+            "asset": asset,
+            "can_delete": can_delete,
+            "in_use_message": in_use_message,
+            "usage_items": usage_items,
         },
     )
 
