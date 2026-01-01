@@ -9,6 +9,26 @@ from urllib.parse import urlencode
 from .models import Post, Tag
 
 
+def _activity_from_mf2(post):
+    activity = {"name": "", "track_url": ""}
+    mf2_data = post.mf2 if isinstance(post.mf2, dict) else {}
+    activity_items = mf2_data.get("activity") or []
+    activity_item = activity_items[0] if isinstance(activity_items, list) and activity_items else activity_items
+    if isinstance(activity_item, dict):
+        properties = activity_item.get("properties") or {}
+        if isinstance(properties, dict):
+            for key in ("name", "activity-type", "category"):
+                values = properties.get(key) or []
+                if values and not activity["name"]:
+                    activity["name"] = str(values[0])
+            track_values = properties.get("track") or []
+            if track_values:
+                activity["track_url"] = track_values[0]
+    if not activity["track_url"] and post.gpx_attachment:
+        activity["track_url"] = post.gpx_attachment.asset.file.url
+    return activity
+
+
 def _staff_guard(request):
     if not request.user.is_authenticated or not request.user.is_staff:
         return HttpResponse(status=401)
@@ -75,12 +95,27 @@ def posts_by_tag(request, tag):
 
 def post(request, slug):
     post = get_object_or_404(
-        Post.objects.select_related("author").prefetch_related("author__hcards", "tags"),
+        Post.objects.select_related("author").prefetch_related(
+            "author__hcards",
+            "tags",
+            "attachments__asset",
+        ),
         slug=slug,
         deleted=False,
     )
 
-    return render(request, 'blog/post.html', { "post": post })
+    activity = _activity_from_mf2(post) if post.kind == Post.ACTIVITY else None
+    activity_photos = list(post.photo_attachments) if post.kind == Post.ACTIVITY else []
+
+    return render(
+        request,
+        "blog/post.html",
+        {
+            "post": post,
+            "activity": activity,
+            "activity_photos": activity_photos,
+        },
+    )
 
 
 @require_POST

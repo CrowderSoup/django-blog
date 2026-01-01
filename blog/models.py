@@ -23,11 +23,12 @@ class Tag(models.Model):
         ordering = ['tag']
 
 class Post(models.Model):
-    ARTICLE = "article"; NOTE = "note"; PHOTO = "photo"; LIKE = "like"; REPOST = "repost"; REPLY = "reply"
+    ARTICLE = "article"; NOTE = "note"; PHOTO = "photo"; ACTIVITY = "activity"; LIKE = "like"; REPOST = "repost"; REPLY = "reply"
     KIND_CHOICES = [
         (ARTICLE, "Article"),
         (NOTE, "Note"),
         (PHOTO, "Photo"),
+        (ACTIVITY, "Activity"),
         (LIKE, "Like"),
         (REPOST, "Repost"),
         (REPLY, "Reply"),
@@ -60,6 +61,7 @@ class Post(models.Model):
             base_titles = {
                 Post.NOTE: "Note",
                 Post.PHOTO: "Photo",
+                Post.ACTIVITY: "Activity",
                 Post.LIKE: "Like",
                 Post.REPOST: "Repost",
                 Post.REPLY: "Reply",
@@ -85,6 +87,14 @@ class Post(models.Model):
     
     def is_published(self):
         return self.published_on is not None
+
+    @property
+    def photo_attachments(self):
+        return self.attachments.select_related("asset").filter(role="photo")
+
+    @property
+    def gpx_attachment(self):
+        return self.attachments.select_related("asset").filter(role="gpx").first()
     
     class Meta:
         ordering = ['-published_on']

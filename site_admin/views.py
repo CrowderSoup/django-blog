@@ -965,14 +965,19 @@ def post_edit(request, slug=None):
             }
 
         uploads = request.FILES.getlist("photos")
+        gpx_upload = request.FILES.get("gpx_file")
+        gpx_remove = request.POST.get("gpx_remove") == "1"
         if form.is_valid():
             selected_kind = form.cleaned_data.get("kind")
             content_value = (form.cleaned_data.get("content") or "").strip()
             like_of_value = form.cleaned_data.get("like_of") or ""
             repost_of_value = form.cleaned_data.get("repost_of") or ""
             in_reply_to_value = form.cleaned_data.get("in_reply_to") or ""
+            activity_type = (form.cleaned_data.get("activity_type") or "").strip()
 
             errors = []
+            if gpx_upload and Path(gpx_upload.name).suffix.lower() != ".gpx":
+                errors.append("GPX uploads must use a .gpx file.")
             if selected_kind == Post.LIKE and not like_of_value:
                 errors.append("Provide a URL for the like.")
             if selected_kind == Post.REPOST and not repost_of_value:
@@ -981,8 +986,21 @@ def post_edit(request, slug=None):
                 errors.append("Provide a URL for the reply.")
             if selected_kind in (Post.ARTICLE, Post.NOTE) and not content_value:
                 errors.append("Content is required for this post type.")
+            existing_gpx = (
+                post.attachments.filter(role="gpx").exists()
+                if post
+                else False
+            )
+            has_gpx = (existing_gpx and not gpx_remove) or bool(gpx_upload)
+            if selected_kind == Post.ACTIVITY:
+                if not activity_type:
+                    errors.append("Add an activity type (e.g., hike, bike ride).")
+                if not has_gpx:
+                    errors.append("Add a GPX file for activity posts.")
             remaining_existing_photos = (
-                post.attachments.exclude(asset__id__in=existing_remove_ids).exists()
+                post.attachments.filter(role="photo")
+                .exclude(asset__id__in=existing_remove_ids)
+                .exists()
                 if post
                 else False
             )
@@ -1081,6 +1099,48 @@ def post_edit(request, slug=None):
                     role="photo",
                     sort_order=index,
                 )
+            existing_gpx_attachments = list(
+                saved_post.attachments.select_related("asset").filter(role="gpx")
+            )
+            if gpx_remove or gpx_upload:
+                for attachment in existing_gpx_attachments:
+                    asset = attachment.asset
+                    attachment.delete()
+                    if asset and not asset.is_in_use():
+                        asset.delete()
+                existing_gpx_attachments = []
+
+            if gpx_upload:
+                asset = File.objects.create(
+                    kind=File.DOC,
+                    file=gpx_upload,
+                    owner=request.user,
+                )
+                attachment = Attachment.objects.create(
+                    content_object=saved_post,
+                    asset=asset,
+                    role="gpx",
+                )
+                existing_gpx_attachments = [attachment]
+
+            mf2_payload = saved_post.mf2 if isinstance(saved_post.mf2, dict) else {}
+            if selected_kind == Post.ACTIVITY:
+                activity_props = {}
+                if activity_type:
+                    activity_props["activity-type"] = [activity_type]
+                    activity_props["name"] = [activity_type]
+                if existing_gpx_attachments:
+                    track_url = existing_gpx_attachments[0].asset.file.url
+                    activity_props["track"] = [track_url]
+                if activity_props:
+                    mf2_payload["activity"] = [
+                        {"type": ["h-activity"], "properties": activity_props}
+                    ]
+            else:
+                mf2_payload.pop("activity", None)
+
+            saved_post.mf2 = mf2_payload
+            saved_post.save(update_fields=["mf2"])
             if request.headers.get("HX-Request"):
                 if is_new:
                     response = HttpResponse(status=204)
@@ -1646,8 +1706,18 @@ def _build_post_form_context(
     uploaded_meta = uploaded_meta or {}
 
     photo_items = []
+    activity_gpx = None
     if post:
         for attachment in post.attachments.select_related("asset"):
+            if attachment.role == "gpx":
+                activity_gpx = {
+                    "id": attachment.asset.id,
+                    "url": attachment.asset.file.url,
+                    "name": Path(attachment.asset.file.name).name,
+                }
+                continue
+            if attachment.role != "photo":
+                continue
             asset = attachment.asset
             if asset.id in existing_remove_ids:
                 continue
@@ -1689,6 +1759,7 @@ def _build_post_form_context(
         "existing_photos_json": json.dumps(photo_items),
         "photo_upload_url": reverse("site_admin:post_upload_photo"),
         "photo_delete_url": reverse("site_admin:post_delete_photo"),
+        "activity_gpx": activity_gpx,
     }
 
 

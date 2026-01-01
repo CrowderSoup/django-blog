@@ -53,6 +53,11 @@ class PostForm(forms.ModelForm):
         label="Tags",
         help_text="Comma-separated tags.",
     )
+    activity_type = forms.CharField(
+        required=False,
+        label="Activity type",
+        help_text="Describe the activity (hike, bike ride, run, etc.).",
+    )
     save_as_draft = forms.BooleanField(
         required=False,
         label="Save as draft",
@@ -63,6 +68,7 @@ class PostForm(forms.ModelForm):
         "slug",
         "kind",
         "content",
+        "activity_type",
         "tags_text",
         "save_as_draft",
         "published_on",
@@ -103,6 +109,7 @@ class PostForm(forms.ModelForm):
         self.fields["title"].required = False
         self.fields["slug"].required = False
         self.fields["content"].required = False
+        self.fields["activity_type"].required = False
         self.fields["save_as_draft"].initial = not bool(self.instance.published_on)
         for name, field in self.fields.items():
             if isinstance(field.widget, forms.CheckboxInput):
@@ -115,10 +122,19 @@ class PostForm(forms.ModelForm):
                     "class",
                     "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
                 )
+            if name == "activity_type":
+                field.widget.attrs.setdefault("list", "activity-type-list")
+                field.widget.attrs.setdefault("placeholder", "Hike")
+        self.fields["slug"].widget.attrs.setdefault(
+            "data-slug-source", "input[name='title']"
+        )
         if self.instance.pk:
             self.fields["tags_text"].initial = ", ".join(
                 self.instance.tags.values_list("tag", flat=True)
             )
+            activity_type = _activity_type_from_mf2(self.instance.mf2)
+            if activity_type:
+                self.fields["activity_type"].initial = activity_type
         if self.instance.pk and self.instance.published_on:
             local_time = timezone.localtime(self.instance.published_on)
             self.fields["published_on"].initial = local_time.strftime("%Y-%m-%dT%H:%M")
@@ -144,6 +160,25 @@ class PostForm(forms.ModelForm):
             tag, _ = Tag.objects.get_or_create(tag=tag_slug)
             tags.append(tag)
         post.tags.set(tags)
+
+
+def _activity_type_from_mf2(mf2_data):
+    if not isinstance(mf2_data, dict):
+        return ""
+    activity_items = mf2_data.get("activity") or []
+    if not activity_items:
+        return ""
+    activity_item = activity_items[0] if isinstance(activity_items, list) else activity_items
+    if not isinstance(activity_item, dict):
+        return ""
+    properties = activity_item.get("properties")
+    if not isinstance(properties, dict):
+        return ""
+    for key in ("activity-type", "name", "category"):
+        values = properties.get(key) or []
+        if values:
+            return str(values[0])
+    return ""
 
 
 class PageFilterForm(forms.Form):
@@ -188,6 +223,9 @@ class PageForm(forms.ModelForm):
                     "class",
                     "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
                 )
+        self.fields["slug"].widget.attrs.setdefault(
+            "data-slug-source", "input[name='title']"
+        )
         if self.instance.pk and self.instance.published_on:
             local_time = timezone.localtime(self.instance.published_on)
             self.fields["published_on"].initial = local_time.strftime(
@@ -308,6 +346,10 @@ class ThemeGitInstallForm(forms.Form):
                 "class",
                 "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
             )
+        self.fields["slug"].widget.attrs.setdefault(
+            "data-slug-source", "input[name='git_url']"
+        )
+        self.fields["slug"].widget.attrs.setdefault("data-slug-source-kind", "url")
 
 
 class ThemeFileForm(forms.Form):

@@ -64,6 +64,59 @@
         {{ form.content.errors }}
       </div>
 
+      <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm" data-kind-section="activity">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <label
+              for="{{ form.activity_type.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Activity type
+            </label>
+            {{ form.activity_type }}
+            <datalist id="activity-type-list">
+              <option value="Hike"></option>
+              <option value="Bike ride"></option>
+              <option value="Run"></option>
+              <option value="Walk"></option>
+              <option value="Trail run"></option>
+            </datalist>
+            <p class="mt-1 text-xs text-[color:var(--admin-muted)]">{{ form.activity_type.help_text }}</p>
+            {{ form.activity_type.errors }}
+          </div>
+          <div class="text-xs text-[color:var(--admin-muted)]">
+            Activity posts show a map + photos.
+          </div>
+        </div>
+        <div class="mt-4">
+          <label
+            for="gpx-file"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            GPX track
+          </label>
+          <input
+            type="file"
+            id="gpx-file"
+            name="gpx_file"
+            accept=".gpx,application/gpx+xml"
+            class="mt-2 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]"
+          >
+          <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Upload a .gpx file so the map can render the route.</p>
+          {% if activity_gpx %}
+            <div class="mt-3 flex flex-wrap items-center gap-3 text-xs">
+              <a href="{{ activity_gpx.url }}" class="font-semibold text-[color:var(--admin-accent)]">
+                Current: {{ activity_gpx.name }}
+              </a>
+              <label class="flex items-center gap-2 text-[color:var(--admin-warn)]">
+                <input type="checkbox" name="gpx_remove" value="1" class="h-4 w-4 rounded border-[color:var(--admin-border)] text-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]">
+                <span>Remove GPX</span>
+              </label>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
       <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm" data-kind-section="photo">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -231,6 +284,7 @@
     article: "Long-form writing with a title. Markdown works well here.",
     note: "Quick thoughts. Title optional.",
     photo: "Add photos and a caption. Keep it short and visual.",
+    activity: "Map + media for hikes, rides, and other outings.",
     like: "Link to something you enjoyed.",
     repost: "Share someone else's post with credit.",
     reply: "Respond directly with a target URL.",
@@ -240,6 +294,7 @@
     article: "Write the story, outline, or essay here.",
     note: "Write the short post here.",
     photo: "Add a caption or short description for the photo set.",
+    activity: "Add context, highlights, or notes about the route.",
     like: "Optional commentary for the like.",
     repost: "Optional commentary for the repost.",
     reply: "Write your reply here.",
@@ -268,7 +323,12 @@
   function shouldShowSection(section, kind) {
     const tokens = section.dataset.kindSection.split(" ");
     if (tokens.includes("photo")) {
-      return kind === "photo" || kind === "article" || photoData.length > 0;
+      return (
+        kind === "photo" ||
+        kind === "article" ||
+        kind === "activity" ||
+        photoData.length > 0
+      );
     }
     return tokens.includes(kind);
   }
