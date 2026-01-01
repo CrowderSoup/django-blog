@@ -1,8 +1,9 @@
 {% load author %}
 <article class="h-entry">
+  {% with post.photo_attachments as photos %}
   <section class="photo-slider" aria-labelledby="gallery-title" role="region">
     <ol class="slides" tabindex="0">
-      {% for photo in post.attachments.all %}
+      {% for photo in photos %}
       <li>
         <figure id="photo-{{ photo.asset.id }}">
           <div class="photo-container" style="--src: url('{{ photo.asset.file.url }}')">
@@ -19,10 +20,10 @@
       </li>
       {% endfor %}
     </ol>
-    {% if post.attachments.count > 1 %}
+    {% if photos|length > 1 %}
     <nav class="slider-nav" aria-label="Slide navigation">
       <ol>
-        {% for photo in post.attachments.all %}
+        {% for photo in photos %}
         <li>
           <a
             href="#photo-{{ photo.asset.id }}"
@@ -36,6 +37,7 @@
     </nav>
     {% endif %}
   </section>
+  {% endwith %}
   <div class="p-content">{{ post.html }}</div>
   {% include 'blog/tags.html' %}
   <a class="u-url" href="/blog/post/{{ post.slug }}">

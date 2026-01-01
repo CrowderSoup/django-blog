@@ -1,0 +1,69 @@
+{% load author %}
+<article class="h-entry activity">
+  <header class="activity-header">
+    {% if activity.name %}
+      <p class="activity-kicker p-category">{{ activity.name }}</p>
+    {% endif %}
+    {% if post.title %}
+      <h3 class="p-name">{{ post.title }}</h3>
+    {% endif %}
+  </header>
+
+  {% if activity.track_url %}
+    <div class="activity-map" data-gpx-url="{{ activity.track_url }}" aria-label="Activity map"></div>
+    <p class="activity-track">
+      <a class="u-url u-track" href="{{ activity.track_url }}">Download GPX</a>
+    </p>
+  {% else %}
+    <p class="activity-track activity-track--missing">GPX track coming soon.</p>
+  {% endif %}
+
+  {% if activity_photos %}
+    <section class="photo-slider" aria-labelledby="gallery-title" role="region">
+      <ol class="slides" tabindex="0">
+        {% for photo in activity_photos %}
+        <li>
+          <figure id="photo-{{ photo.asset.id }}">
+            <div class="photo-container" style="--src: url('{{ photo.asset.file.url }}')">
+              <img
+                src="{{ photo.asset.file.url }}"
+                alt="{{ photo.asset.alt_text }}"
+                loading="lazy"
+              />
+            </div>
+            {% if photo.asset.caption %}
+            <figcaption>{{ photo.asset.caption }}</figcaption>
+            {% endif %}
+          </figure>
+        </li>
+        {% endfor %}
+      </ol>
+      {% if activity_photos|length > 1 %}
+      <nav class="slider-nav" aria-label="Slide navigation">
+        <ol>
+          {% for photo in activity_photos %}
+          <li>
+            <a
+              href="#photo-{{ photo.asset.id }}"
+              aria-label="Go to photo {{ photo.asset.file.name }}"
+            >
+              ●
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      </nav>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  <div class="p-content">{{ post.html }}</div>
+  {% include 'blog/tags.html' %}
+  <a class="u-url" href="/blog/post/{{ post.slug }}">
+    <time class="dt-published" datetime="{{ page.published_on }}">
+      {{ post.published_on|date:"Y-m-d" }}
+    </time>
+  </a>
+  by
+  <a class="p-author h-card" href="#">{% author_hcard_name post.author %}</a>
+</article>

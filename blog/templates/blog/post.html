@@ -1,5 +1,25 @@
 {% extends 'base.html' %}
+{% load static %}
 <!-- Content -->
+{% block head %}
+  {{ block.super }}
+  {% if post.kind == 'activity' %}
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+      defer
+    ></script>
+    <script src="{% static 'js/activity_map.js' %}" defer></script>
+  {% endif %}
+{% endblock %}
+
 {% block content %}
 
 <!-- Post Kind Detection -->
@@ -7,6 +27,8 @@
 <!-- Show Note Template -->
 {% include 'blog/note.html' %} {% elif post.kind == 'photo' %}
 <!-- Show Photo Template -->
-{% include 'blog/photo.html' %} {% else %}
+{% include 'blog/photo.html' %} {% elif post.kind == 'activity' %}
+<!-- Show Activity Template -->
+{% include 'blog/activity.html' %} {% else %}
 <!-- Show Article Template -->
 {% include 'blog/article.html' %} {% endif %} {% endblock %}

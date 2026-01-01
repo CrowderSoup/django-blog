@@ -183,6 +183,46 @@ nav.tags {
   opacity: 1;
 }
 
+/* Activity posts */
+.activity-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.activity-kicker {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  opacity: 0.7;
+}
+
+.activity-header .activity-kicker.p-category {
+  margin: 0.5rem 0 0;
+}
+
+.activity-header h3.p-name {
+  margin: 0 0 1rem;
+}
+
+.activity-map {
+  height: clamp(16rem, 45vh, 32rem);
+  margin: 1rem 0 0.5rem;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: #e5e7eb;
+}
+
+.activity-track {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.activity-track--missing {
+  opacity: 0.7;
+  font-style: italic;
+}
+
 /* Respect accessibility */
 @media (prefers-reduced-motion: reduce) {
   .photo-slider .slides {
