@@ -223,6 +223,67 @@ class SiteAdminFileDeleteTests(TestCase):
             is_staff=True,
         )
 
+    def test_file_delete_removes_asset(self):
+        self.client.force_login(self.staff)
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                upload = SimpleUploadedFile(
+                    "asset.jpg",
+                    b"fake-image-data",
+                    content_type="image/jpeg",
+                )
+                asset = File.objects.create(
+                    kind=File.IMAGE,
+                    file=upload,
+                    owner=self.staff,
+                )
+
+                response = self.client.post(
+                    reverse("site_admin:file_delete", kwargs={"file_id": asset.id})
+                )
+
+                self.assertRedirects(response, reverse("site_admin:file_list"))
+                self.assertFalse(File.objects.filter(id=asset.id).exists())
+
+    def test_file_delete_blocks_in_use_asset(self):
+        self.client.force_login(self.staff)
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                upload = SimpleUploadedFile(
+                    "asset.jpg",
+                    b"fake-image-data",
+                    content_type="image/jpeg",
+                )
+                asset = File.objects.create(
+                    kind=File.IMAGE,
+                    file=upload,
+                    owner=self.staff,
+                )
+                post = Post.objects.create(
+                    title="Post A",
+                    slug="post-a",
+                    kind=Post.ARTICLE,
+                    content="Hello A",
+                    published_on=timezone.now(),
+                )
+                Attachment.objects.create(
+                    content_object=post,
+                    asset=asset,
+                    role="photo",
+                )
+
+                response = self.client.post(
+                    reverse("site_admin:file_delete", kwargs={"file_id": asset.id})
+                )
+
+                self.assertContains(
+                    response,
+                    "File is still attached to content.",
+                    status_code=409,
+                )
+                self.assertContains(response, post.title, status_code=409)
+                self.assertTrue(File.objects.filter(id=asset.id).exists())
+
     def test_delete_post_photo_blocks_in_use_asset(self):
         self.client.force_login(self.staff)
         with tempfile.TemporaryDirectory() as media_root:

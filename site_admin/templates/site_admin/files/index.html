@@ -46,7 +46,7 @@
                   <span>{{ asset.get_kind_display }}</span>
                   <span>{{ asset.created_at|date:"M j, Y" }}</span>
                 </div>
-                <div class="mt-3 flex items-center justify-between text-xs">
+                <div class="mt-3 flex flex-wrap items-center gap-3 text-xs">
                   <a
                     href="{% url 'site_admin:file_edit' file_id=asset.id %}"
                     class="font-semibold text-[color:var(--admin-accent)]"
@@ -55,6 +55,12 @@
                   </a>
                   <a href="{{ asset.file.url }}" class="text-[color:var(--admin-muted)]" target="_blank" rel="noopener">
                     Open file
+                  </a>
+                  <a
+                    href="{% url 'site_admin:file_delete' file_id=asset.id %}"
+                    class="font-semibold text-rose-600"
+                  >
+                    Delete
                   </a>
                 </div>
               </div>
