@@ -29,8 +29,17 @@
       To path
     </label>
     {{ form.to_path }}
+    {% if path_suggestions %}
+      <datalist id="redirect-path-options">
+        {% for path in path_suggestions %}
+          <option value="{{ path }}"></option>
+        {% endfor %}
+      </datalist>
+    {% endif %}
     {{ form.to_path.errors }}
-    <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Use a path or full URL.</p>
+    <p class="mt-1 text-xs text-[color:var(--admin-muted)]">
+      Use a path or full URL. Start typing to search known site paths.
+    </p>
   </div>
   <div>
     <label

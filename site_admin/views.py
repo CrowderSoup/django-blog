@@ -357,6 +357,21 @@ def _build_daily_unique_sessions(qs, start_date, end_date):
     return labels, counts
 
 
+def _redirect_path_suggestions():
+    pages = Page.objects.values_list("slug", flat=True)
+    posts = Post.objects.filter(deleted=False, published_on__isnull=False).values_list(
+        "slug", flat=True
+    )
+    menu_paths = MenuItem.objects.values_list("url", flat=True)
+    suggestions = {
+        "/",
+        *[reverse("page", kwargs={"slug": slug}) for slug in pages],
+        *[reverse("post", kwargs={"slug": slug}) for slug in posts],
+    }
+    suggestions.update(path for path in menu_paths if path and path.startswith("/"))
+    return sorted(suggestions)
+
+
 def dashboard(request):
     guard = _staff_guard(request)
     if guard:
@@ -599,13 +614,23 @@ def redirect_edit(request, redirect_id=None):
         redirect_obj = get_object_or_404(Redirect, pk=redirect_id)
 
     saved = False
+    initial = {}
+    if redirect_obj is None:
+        from_path = request.GET.get("from")
+        to_path = request.GET.get("to")
+        if from_path:
+            initial["from_path"] = from_path
+        if to_path:
+            initial["to_path"] = to_path
     if request.method == "POST":
         form = RedirectForm(request.POST, instance=redirect_obj)
         if form.is_valid():
             redirect_obj = form.save()
             saved = True
     else:
-        form = RedirectForm(instance=redirect_obj)
+        form = RedirectForm(instance=redirect_obj, initial=initial)
+    form.fields["to_path"].widget.attrs["list"] = "redirect-path-options"
+    path_suggestions = _redirect_path_suggestions()
 
     return render(
         request,
@@ -614,6 +639,7 @@ def redirect_edit(request, redirect_id=None):
             "form": form,
             "redirect_obj": redirect_obj,
             "saved": saved,
+            "path_suggestions": path_suggestions,
         },
     )
 
