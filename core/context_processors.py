@@ -4,6 +4,7 @@ from django.urls import NoReverseMatch, reverse
 from django.utils.safestring import mark_safe
 
 from .models import SiteConfiguration
+from .og import default_image_url
 from .themes import get_active_theme
 
 def site_configuration(request):
@@ -42,6 +43,8 @@ def site_configuration(request):
     except NoReverseMatch:
         feed_url = None
 
+    og_default_image = default_image_url(request, settings=settings, site_author_hcard=site_author_hcard)
+
     return {
         "settings": settings,
         "menu_items": menu_items,
@@ -49,6 +52,7 @@ def site_configuration(request):
         "feed_url": feed_url,
         "site_author_hcard": site_author_hcard,
         "site_author_display_name": site_author_display_name,
+        "og_default_image": og_default_image,
     }
 
 

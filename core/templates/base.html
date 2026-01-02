@@ -31,6 +31,24 @@
     <meta name="visit-id" content="{{ request.visit_id }}">
     <script src="{% static 'analytics/beacon.js' %}"></script>
 
+    {% with og_title=og_title|default:settings.title og_description=og_description|default:settings.tagline og_image=og_image|default:og_default_image og_url=og_url|default:request.build_absolute_uri og_type=og_type|default:"website" og_image_alt=og_image_alt|default:settings.title %}
+    <meta property="og:site_name" content="{{ settings.title }}">
+    <meta property="og:title" content="{{ og_title }}">
+    <meta property="og:description" content="{{ og_description }}">
+    <meta property="og:type" content="{{ og_type }}">
+    <meta property="og:url" content="{{ og_url }}">
+    {% if og_image %}
+    <meta property="og:image" content="{{ og_image }}">
+    <meta property="og:image:alt" content="{{ og_image_alt }}">
+    {% endif %}
+    <meta name="twitter:card" content="{% if og_image %}summary_large_image{% else %}summary{% endif %}">
+    <meta name="twitter:title" content="{{ og_title }}">
+    <meta name="twitter:description" content="{{ og_description }}">
+    {% if og_image %}
+    <meta name="twitter:image" content="{{ og_image }}">
+    {% endif %}
+    {% endwith %}
+
     {% block head %}{% endblock %}
   </head>
   <body class="theme-webstead" data-site-admin-bar-url="{% url 'site_admin:admin_bar' %}">
