@@ -6,6 +6,7 @@ from django.templatetags.static import static
 from django.urls import reverse
 
 from .models import Page, SiteConfiguration
+from .og import absolute_url, first_attachment_image_url, summarize_markdown
 from blog.models import Post, Tag
 
 def index(request):
@@ -15,11 +16,24 @@ def index(request):
 
 def page(request, slug):
     page = get_object_or_404(
-        Page.objects.select_related("author").prefetch_related("author__hcards"),
+        Page.objects.select_related("author").prefetch_related("author__hcards", "attachments__asset"),
         slug=slug,
     )
+    og_image, og_image_alt = first_attachment_image_url(page.attachments.all())
 
-    return render(request, 'core/page.html', { "page": page })
+    return render(
+        request,
+        "core/page.html",
+        {
+            "page": page,
+            "og_title": page.title,
+            "og_description": summarize_markdown(page.content, length=200),
+            "og_image": absolute_url(request, og_image),
+            "og_image_alt": og_image_alt or page.title,
+            "og_url": request.build_absolute_uri(reverse("page", kwargs={"slug": page.slug})),
+            "og_type": "article",
+        },
+    )
 
 
 def robots_txt(request):

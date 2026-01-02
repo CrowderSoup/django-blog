@@ -3,10 +3,13 @@ from django.http import HttpResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
 from django.views.decorators.http import require_POST
+from django.utils.text import Truncator
 
 from urllib.parse import urlencode
 
 from .models import Post, Tag
+from core.models import SiteConfiguration
+from core.og import absolute_url, first_attachment_image_url
 
 
 def _activity_from_mf2(post):
@@ -35,6 +38,7 @@ def _staff_guard(request):
     return None
 
 def posts(request):
+    settings = SiteConfiguration.get_solo()
     requested_kinds = request.GET.getlist("kind")
     valid_kinds = {kind for kind, _ in Post.KIND_CHOICES}
     selected_kinds = [kind for kind in requested_kinds if kind in valid_kinds]
@@ -76,10 +80,14 @@ def posts(request):
             "selected_kinds_query": urlencode([("kind", kind) for kind in selected_kinds]),
             "feed_kinds_query": feed_kinds_query,
             "has_activity": has_activity,
+            "og_title": f"{settings.title} posts" if settings.title else "Posts",
+            "og_description": settings.tagline,
+            "og_url": request.build_absolute_uri(),
         },
     )
 
 def posts_by_tag(request, tag):
+    settings = SiteConfiguration.get_solo()
     tag = get_object_or_404(Tag, tag=tag)
     query_set = (
         Post.objects.select_related("author")
@@ -112,6 +120,9 @@ def posts_by_tag(request, tag):
             "posts": posts,
             "tag": tag,
             "has_activity": has_activity,
+            "og_title": f"{settings.title} · Tag: {tag.tag}" if settings.title else f"Tag: {tag.tag}",
+            "og_description": settings.tagline,
+            "og_url": request.build_absolute_uri(),
         }
     )
 
@@ -128,6 +139,13 @@ def post(request, slug):
 
     activity = _activity_from_mf2(post) if post.kind == Post.ACTIVITY else None
     activity_photos = list(post.photo_attachments) if post.kind == Post.ACTIVITY else []
+    og_image = ""
+    og_image_alt = ""
+    if activity_photos:
+        og_image = activity_photos[0].asset.file.url
+        og_image_alt = activity_photos[0].asset.alt_text or ""
+    else:
+        og_image, og_image_alt = first_attachment_image_url(post.attachments.all())
 
     return render(
         request,
@@ -136,6 +154,12 @@ def post(request, slug):
             "post": post,
             "activity": activity,
             "activity_photos": activity_photos,
+            "og_title": post.title,
+            "og_description": Truncator(post.summary()).chars(200, truncate="..."),
+            "og_image": absolute_url(request, og_image),
+            "og_image_alt": og_image_alt or post.title,
+            "og_url": request.build_absolute_uri(post.get_absolute_url()),
+            "og_type": "article" if post.kind == Post.ARTICLE else "website",
         },
     )
 
