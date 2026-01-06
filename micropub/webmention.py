@@ -1,3 +1,4 @@
+import logging
 import re
 import urllib.error
 import urllib.parse
@@ -9,6 +10,8 @@ from django.utils.encoding import force_str
 
 from blog.models import Post
 from .models import Webmention
+
+logger = logging.getLogger(__name__)
 
 
 class _WebmentionDiscoveryParser(HTMLParser):
@@ -114,12 +117,50 @@ def _send_webmention_request(source_url: str, target_url: str) -> tuple[str, str
     )
     try:
         with urllib.request.urlopen(send_request, timeout=10) as response:
+            body = response.read()
+            body_preview = body[:2000].decode("utf-8", errors="replace") if body else ""
+            logger.info(
+                "Webmention response received",
+                extra={
+                    "webmention_source": source_url,
+                    "webmention_target": target_url,
+                    "webmention_endpoint": endpoint,
+                    "webmention_status": response.status,
+                    "webmention_body": body_preview,
+                },
+            )
             if response.status == 202:
                 return Webmention.PENDING, ""
             if response.status in (200, 201):
                 return Webmention.ACCEPTED, ""
             return Webmention.REJECTED, f"Unexpected status {response.status}"
     except (urllib.error.HTTPError, urllib.error.URLError, ValueError) as exc:
+        error_status = getattr(exc, "code", None)
+        error_body = ""
+        if isinstance(exc, urllib.error.HTTPError):
+            try:
+                error_body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                error_body = ""
+        logger.info(
+            "Webmention request failed",
+            extra={
+                "webmention_source": source_url,
+                "webmention_target": target_url,
+                "webmention_endpoint": endpoint,
+                "webmention_status": error_status,
+                "webmention_error": str(exc),
+                "webmention_body": error_body[:2000],
+            },
+        )
+        print({
+            "webmention_source": source_url,
+            "webmention_target": target_url,
+            "webmention_endpoint": endpoint,
+            "webmention_status": error_status,
+            "webmention_error": str(exc),
+            "webmention_body": error_body[:2000],
+        })
         return Webmention.REJECTED, str(exc)
 
 
