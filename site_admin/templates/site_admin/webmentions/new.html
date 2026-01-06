@@ -1,0 +1,77 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}New webmention{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-6">
+    <section class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <div class="text-sm uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Webmentions</div>
+        <h1 class="text-2xl font-semibold">Send a webmention</h1>
+        <p class="mt-1 text-sm text-[color:var(--admin-muted)]">Notify another site that you mentioned their content.</p>
+        <p class="mt-2 text-xs text-[color:var(--admin-muted)]">
+          Incoming endpoint: <span class="rounded-full bg-[color:var(--admin-bg)] px-2 py-1 font-mono">{{ endpoint_url }}</span>
+        </p>
+      </div>
+      <a
+        href="{% url 'site_admin:webmention_list' %}"
+        class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+      >
+        Back to webmentions
+      </a>
+    </section>
+
+    <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+      {% if messages %}
+        <div class="mb-5 space-y-3">
+          {% for message in messages %}
+            <div class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] px-4 py-3 text-sm text-[color:var(--admin-ink)]">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <form method="post" class="space-y-5">
+        {% csrf_token %}
+        <div>
+          <label
+            for="{{ form.source.id_for_label }}"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            Source URL
+          </label>
+          {{ form.source }}
+          {{ form.source.errors }}
+        </div>
+        <div>
+          <label
+            for="{{ form.target.id_for_label }}"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            Target URL
+          </label>
+          {{ form.target }}
+          {{ form.target.errors }}
+        </div>
+        <div>
+          <label
+            for="{{ form.mention_type.id_for_label }}"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            Type
+          </label>
+          {{ form.mention_type }}
+          {{ form.mention_type.errors }}
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            class="rounded-full bg-[color:var(--admin-accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+          >
+            Send webmention
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+{% endblock %}

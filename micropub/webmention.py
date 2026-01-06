@@ -87,12 +87,76 @@ def _extract_targets(post: Post) -> Iterable[str]:
     return links
 
 
+def _post_from_url(url: str) -> Optional[Post]:
+    if not url:
+        return None
+    parsed = urllib.parse.urlparse(url)
+    slug = parsed.path.rstrip("/").split("/")[-1]
+    if not slug:
+        return None
+    try:
+        return Post.objects.get(slug=slug)
+    except Post.DoesNotExist:
+        return None
+
+
+def _send_webmention_request(source_url: str, target_url: str) -> tuple[str, str]:
+    endpoint = discover_webmention_endpoint(target_url)
+    if not endpoint:
+        return Webmention.REJECTED, "No webmention endpoint found"
+
+    data = urllib.parse.urlencode({"source": source_url, "target": target_url}).encode()
+    send_request = urllib.request.Request(
+        endpoint,
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "django-blog-webmention"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(send_request, timeout=10) as response:
+            if response.status == 202:
+                return Webmention.PENDING, ""
+            if response.status in (200, 201):
+                return Webmention.ACCEPTED, ""
+            return Webmention.REJECTED, f"Unexpected status {response.status}"
+    except (urllib.error.HTTPError, urllib.error.URLError, ValueError) as exc:
+        return Webmention.REJECTED, str(exc)
+
+
+def send_webmention(
+    source_url: str,
+    target_url: str,
+    *,
+    mention_type: str = Webmention.MENTION,
+    source_post: Optional[Post] = None,
+) -> Webmention:
+    status, error = _send_webmention_request(source_url, target_url)
+    if not source_post:
+        source_post = _post_from_url(source_url)
+    mention_type = mention_type if mention_type in dict(Webmention.MENTION_CHOICES) else Webmention.MENTION
+    return Webmention.objects.create(
+        source=source_url,
+        target=target_url,
+        mention_type=mention_type,
+        status=status,
+        target_post=source_post,
+        error=error,
+    )
+
+
+def resend_webmention(webmention: Webmention) -> Webmention:
+    status, error = _send_webmention_request(webmention.source, webmention.target)
+    webmention.status = status
+    webmention.error = error
+    webmention.save(update_fields=["status", "error", "updated_at"])
+    return webmention
+
+
 def send_webmentions_for_post(post: Post, source_url: str) -> None:
     source_host = urllib.parse.urlparse(source_url).netloc
     targets = [url for url in _extract_targets(post) if urllib.parse.urlparse(url).netloc != source_host]
 
     for target in targets:
-        endpoint = discover_webmention_endpoint(target)
         mention_type = Webmention.MENTION
         if target == post.like_of:
             mention_type = Webmention.LIKE
@@ -101,35 +165,9 @@ def send_webmentions_for_post(post: Post, source_url: str) -> None:
         elif target == post.in_reply_to:
             mention_type = Webmention.REPLY
 
-        status = Webmention.PENDING
-        error = ""
-        if not endpoint:
-            status = Webmention.REJECTED
-            error = "No webmention endpoint found"
-        else:
-            data = urllib.parse.urlencode({"source": source_url, "target": target}).encode()
-            send_request = urllib.request.Request(
-                endpoint,
-                data=data,
-                headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": "django-blog-webmention"},
-                method="POST",
-            )
-            try:
-                with urllib.request.urlopen(send_request, timeout=10) as response:
-                    if response.status in (200, 201, 202):
-                        status = Webmention.ACCEPTED
-                    else:
-                        status = Webmention.REJECTED
-                        error = f"Unexpected status {response.status}"
-            except (urllib.error.HTTPError, urllib.error.URLError, ValueError) as exc:
-                status = Webmention.REJECTED
-                error = str(exc)
-
-        Webmention.objects.create(
-            source=source_url,
-            target=target,
+        send_webmention(
+            source_url,
+            target,
             mention_type=mention_type,
-            status=status,
-            target_post=post,
-            error=error,
+            source_post=post,
         )

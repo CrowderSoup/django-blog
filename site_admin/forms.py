@@ -16,6 +16,7 @@ from core.models import (
     SiteConfiguration,
 )
 from files.models import File
+from micropub.models import Webmention
 from core.themes import discover_themes
 from core.widgets import CodeMirrorTextarea
 
@@ -191,6 +192,47 @@ class PageFilterForm(forms.Form):
                 "class",
                 "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
             )
+
+
+class WebmentionFilterForm(forms.Form):
+    q = forms.CharField(required=False, label="Search")
+    status = forms.ChoiceField(
+        required=False,
+        choices=[("", "Any status"), *Webmention.STATUS_CHOICES],
+        label="Status",
+    )
+    mention_type = forms.ChoiceField(
+        required=False,
+        choices=[("", "Any type"), *Webmention.MENTION_CHOICES],
+        label="Type",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault(
+                "class",
+                "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+            )
+
+
+class WebmentionCreateForm(forms.Form):
+    source = forms.URLField(label="Source URL")
+    target = forms.URLField(label="Target URL")
+    mention_type = forms.ChoiceField(
+        choices=Webmention.MENTION_CHOICES,
+        label="Type",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault(
+                "class",
+                "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+            )
+        self.fields["source"].widget.attrs.setdefault("placeholder", "https://")
+        self.fields["target"].widget.attrs.setdefault("placeholder", "https://")
 
 
 class PageForm(forms.ModelForm):
