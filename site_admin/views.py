@@ -1,5 +1,5 @@
 import json
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -51,6 +51,8 @@ from core.themes import (
     save_theme_file,
     sync_themes_from_storage,
 )
+from micropub.models import Webmention
+from micropub.webmention import resend_webmention, send_webmention
 
 from .forms import (
     HCardEmailForm,
@@ -68,6 +70,8 @@ from .forms import (
     ThemeGitInstallForm,
     ThemeFileForm,
     ThemeUploadForm,
+    WebmentionCreateForm,
+    WebmentionFilterForm,
 )
 
 
@@ -357,6 +361,15 @@ def _strip_page_query(request):
     query_params = request.GET.copy()
     query_params.pop("page", None)
     return query_params.urlencode()
+
+
+def _is_local_url(url, request):
+    if not url:
+        return False
+    parsed = urlparse(url)
+    if not parsed.netloc:
+        return False
+    return parsed.netloc == request.get_host()
 
 
 def _build_daily_counts(qs, start_date, end_date):
@@ -844,6 +857,153 @@ def post_list(request):
         return render(request, "site_admin/posts/_list.html", context)
 
     return render(request, "site_admin/posts/index.html", context)
+
+
+def _filtered_webmentions(request):
+    form = WebmentionFilterForm(request.GET or None)
+    webmentions = Webmention.objects.select_related("target_post").order_by("-created_at", "-id")
+    if form.is_valid():
+        query = form.cleaned_data.get("q")
+        status = form.cleaned_data.get("status")
+        mention_type = form.cleaned_data.get("mention_type")
+        if query:
+            webmentions = webmentions.filter(
+                Q(source__icontains=query) | Q(target__icontains=query)
+            )
+        if status:
+            webmentions = webmentions.filter(status=status)
+        if mention_type:
+            webmentions = webmentions.filter(mention_type=mention_type)
+    return form, webmentions
+
+
+@require_http_methods(["GET"])
+def webmention_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    filter_form, webmentions = _filtered_webmentions(request)
+    paginator = Paginator(webmentions, 20)
+    page_number = request.GET.get("page")
+    try:
+        page_obj = paginator.page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+
+    context = {
+        "filter_form": filter_form,
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "base_query": _strip_page_query(request),
+        "endpoint_url": request.build_absolute_uri(reverse("webmention-endpoint")),
+    }
+
+    if request.headers.get("HX-Request"):
+        return render(request, "site_admin/webmentions/_list.html", context)
+
+    return render(request, "site_admin/webmentions/index.html", context)
+
+
+@require_http_methods(["GET", "POST"])
+def webmention_create(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    if request.method == "POST":
+        form = WebmentionCreateForm(request.POST)
+        if form.is_valid():
+            mention = send_webmention(
+                form.cleaned_data["source"],
+                form.cleaned_data["target"],
+                mention_type=form.cleaned_data["mention_type"],
+            )
+            if mention.status == Webmention.ACCEPTED:
+                messages.success(request, "Webmention sent successfully.")
+            elif mention.status == Webmention.PENDING:
+                messages.warning(
+                    request,
+                    "Webmention accepted for processing and is still pending.",
+                )
+            else:
+                messages.error(
+                    request,
+                    "Webmention was rejected by the target endpoint.",
+                )
+            return redirect("site_admin:webmention_detail", mention_id=mention.id)
+    else:
+        form = WebmentionCreateForm()
+
+    return render(
+        request,
+        "site_admin/webmentions/new.html",
+        {
+            "form": form,
+            "endpoint_url": request.build_absolute_uri(reverse("webmention-endpoint")),
+        },
+    )
+
+
+@require_http_methods(["GET"])
+def webmention_detail(request, mention_id):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    mention = get_object_or_404(Webmention, pk=mention_id)
+    can_resend = mention.status == Webmention.PENDING and _is_local_url(mention.source, request)
+    can_delete = mention.status == Webmention.REJECTED
+    return render(
+        request,
+        "site_admin/webmentions/detail.html",
+        {
+            "mention": mention,
+            "can_resend": can_resend,
+            "can_delete": can_delete,
+        },
+    )
+
+
+@require_POST
+def webmention_resend(request, mention_id):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    mention = get_object_or_404(Webmention, pk=mention_id)
+    if mention.status != Webmention.PENDING:
+        messages.error(request, "Only pending webmentions can be resent.")
+        return redirect("site_admin:webmention_detail", mention_id=mention.id)
+    if not _is_local_url(mention.source, request):
+        messages.error(request, "Only webmentions sourced from this site can be resent.")
+        return redirect("site_admin:webmention_detail", mention_id=mention.id)
+
+    resend_webmention(mention)
+    if mention.status == Webmention.ACCEPTED:
+        messages.success(request, "Webmention resent successfully.")
+    elif mention.status == Webmention.PENDING:
+        messages.warning(request, "Webmention is still pending after resend.")
+    else:
+        messages.error(request, "Webmention resend was rejected.")
+    return redirect("site_admin:webmention_detail", mention_id=mention.id)
+
+
+@require_POST
+def webmention_delete(request, mention_id):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    mention = get_object_or_404(Webmention, pk=mention_id)
+    if mention.status != Webmention.REJECTED:
+        messages.error(request, "Only rejected webmentions can be deleted.")
+        return redirect("site_admin:webmention_detail", mention_id=mention.id)
+    mention.delete()
+    messages.success(request, "Webmention deleted.")
+    return redirect("site_admin:webmention_list")
 
 
 @require_http_methods(["GET"])
