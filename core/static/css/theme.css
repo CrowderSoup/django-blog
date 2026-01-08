@@ -479,6 +479,10 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
   object-fit: contain;
 }
 
+.photo-frame img {
+  border-radius: 14px;
+}
+
 .slider-controls {
   margin-top: 0.65rem;
   display: flex;
@@ -861,15 +865,83 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
   .entry-note,
   .entry-summary,
   .entry-photo {
-    padding: 1.5rem;
+    padding: 0 1.5rem 1.5rem 1.5rem;
   }
 
-  .slides {
+  .entry-photo .photo-slider {
+    position: relative;
+    margin: 0 -1.5rem 1.25rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .entry-photo .slides {
     grid-auto-columns: 100%;
+    gap: 0;
+    padding: 0;
+    scroll-padding: 0;
+    scrollbar-width: none;
   }
 
-  .photo-slider {
-    padding: 0.85rem;
+  .entry-photo .slides::-webkit-scrollbar {
+    display: none;
+  }
+
+  .entry-photo .slide figure {
+    margin: 0;
+  }
+
+  .entry-photo .photo-frame {
+    padding: 0;
+    border-radius: 0;
+    background: #0f0f0f;
+    box-shadow: none;
+    aspect-ratio: 4 / 5;
+  }
+
+  .entry-photo .photo-frame img {
+    border-radius: 0;
+    height: 100%;
+    max-height: none;
+    object-fit: cover;
+    background: #0f0f0f;
+  }
+
+  .entry-photo .photo-frame::before {
+    display: none;
+  }
+
+  .entry-photo .slider-controls {
+    display: none;
+  }
+
+  .entry-photo .slider-nav ol {
+    margin-top: 0.6rem;
+    gap: 0.35rem;
+  }
+
+  .entry-photo .slider-nav a {
+    width: 0.55rem;
+    height: 0.55rem;
+    border: none;
+    background: rgba(0, 0, 0, 0.18);
+    color: transparent;
+  }
+
+  .entry-photo .slider-nav a[aria-current="true"] {
+    background: rgba(0, 0, 0, 0.6);
+  }
+
+  .entry-photo .photo-slider figcaption {
+    display: block;
+    margin: 0.6rem 1.5rem 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--ink);
+    font-size: 0.95rem;
   }
 
   .slider-controls {
