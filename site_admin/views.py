@@ -43,12 +43,15 @@ from core.themes import (
     create_theme_file,
     delete_theme_path,
     discover_themes,
+    get_theme,
     ingest_theme_archive,
     install_theme_from_git,
     update_theme_from_git,
     list_theme_directories,
     list_theme_files,
     read_theme_file,
+    clear_template_caches,
+    resolve_theme_settings,
     save_theme_file,
     sync_themes_from_storage,
 )
@@ -70,6 +73,7 @@ from .forms import (
     SiteConfigurationForm,
     ThemeGitInstallForm,
     ThemeFileForm,
+    ThemeSettingsForm,
     ThemeUploadForm,
     WebmentionCreateForm,
     WebmentionFilterForm,
@@ -1547,8 +1551,42 @@ def theme_settings(request):
     if guard:
         return guard
 
+    settings_obj = SiteConfiguration.get_solo()
+    active_theme_slug = settings_obj.active_theme or ""
+    active_theme = get_theme(active_theme_slug) if active_theme_slug else None
+    theme_settings_schema = active_theme.settings_schema if active_theme else {}
+    theme_settings_fields = (
+        theme_settings_schema.get("fields")
+        if isinstance(theme_settings_schema.get("fields"), dict)
+        else {}
+    )
+    stored_theme_settings = (
+        settings_obj.theme_settings if isinstance(settings_obj.theme_settings, dict) else {}
+    )
+    active_theme_settings = (
+        stored_theme_settings.get(active_theme_slug, {}) if active_theme_slug else {}
+    )
+    resolved_theme_settings = resolve_theme_settings(theme_settings_schema, active_theme_settings)
+    theme_settings_form = (
+        ThemeSettingsForm(theme_settings_schema, initial=resolved_theme_settings)
+        if theme_settings_fields
+        else None
+    )
+
     upload_form = ThemeUploadForm(request.POST or None, request.FILES or None)
     git_form = ThemeGitInstallForm(request.POST or None)
+    if request.method == "POST" and request.POST.get("action") == "save_theme_settings":
+        if not (active_theme and theme_settings_fields):
+            messages.error(request, "Active theme does not define any settings to edit.")
+            return redirect("site_admin:theme_settings")
+        theme_settings_form = ThemeSettingsForm(theme_settings_schema, request.POST)
+        if theme_settings_form.is_valid():
+            stored_theme_settings[active_theme_slug] = theme_settings_form.cleaned_data
+            settings_obj.theme_settings = stored_theme_settings
+            settings_obj.save(update_fields=["theme_settings"])
+            clear_template_caches()
+            messages.success(request, f"Saved settings for {active_theme.label}.")
+            return redirect("site_admin:theme_settings")
     if request.method == "POST" and request.POST.get("action") == "check_theme_storage":
         restored = []
         failures = []
@@ -1632,8 +1670,6 @@ def theme_settings(request):
         }
         for theme in themes
     ]
-    settings_obj = SiteConfiguration.get_solo()
-    active_theme_slug = settings_obj.active_theme or ""
     installs = ThemeInstall.objects.all()
     source_type = (request.GET.get("source_type") or "").strip()
     status = (request.GET.get("status") or "").strip()
@@ -1656,6 +1692,36 @@ def theme_settings(request):
         }
         for install in installs.order_by("slug")
     ]
+    theme_settings_groups = []
+    theme_settings_ungrouped_fields = []
+    if theme_settings_form:
+        grouped_field_names = set()
+        raw_groups = (
+            theme_settings_schema.get("groups")
+            if isinstance(theme_settings_schema.get("groups"), list)
+            else []
+        )
+        for group in raw_groups:
+            if not isinstance(group, dict):
+                continue
+            field_names = group.get("fields")
+            if not isinstance(field_names, list):
+                continue
+            fields = []
+            for field_name in field_names:
+                if field_name in theme_settings_form.fields:
+                    fields.append(theme_settings_form[field_name])
+                    grouped_field_names.add(field_name)
+            if fields:
+                theme_settings_groups.append(
+                    {
+                        "label": group.get("label") or "Settings",
+                        "fields": fields,
+                    }
+                )
+        for field_name in theme_settings_form.fields:
+            if field_name not in grouped_field_names:
+                theme_settings_ungrouped_fields.append(theme_settings_form[field_name])
 
     return render(
         request,
@@ -1663,6 +1729,11 @@ def theme_settings(request):
         {
             "upload_form": upload_form,
             "git_form": git_form,
+            "theme_settings_form": theme_settings_form,
+            "theme_settings_schema": theme_settings_schema,
+            "theme_settings_groups": theme_settings_groups,
+            "theme_settings_ungrouped_fields": theme_settings_ungrouped_fields,
+            "active_theme": active_theme,
             "themes": themes,
             "theme_rows": theme_rows,
             "active_theme_slug": active_theme_slug,

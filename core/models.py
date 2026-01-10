@@ -155,6 +155,7 @@ class SiteConfiguration(SingletonModel):
         help_text="Default author for the site.",
     )
     active_theme = models.CharField(max_length=255, default="", blank=True)
+    theme_settings = models.JSONField(default=dict, blank=True)
     robots_txt = models.TextField(default="", blank=True)
     main_menu = models.ForeignKey(Menu, null=True, on_delete=models.SET_NULL)
     footer_menu = models.ForeignKey(Menu, null=True, on_delete=models.SET_NULL, related_name="footer_siteconfigurations")

@@ -8,6 +8,9 @@ from typing import Optional
 from django.utils.text import slugify
 
 
+THEME_SETTINGS_FIELD_TYPES = {"string", "text", "boolean", "number", "color", "select"}
+
+
 @dataclass
 class ThemeValidationIssue:
     code: str
@@ -160,6 +163,56 @@ def validate_theme_dir(
                 message="theme.json version must be a string if provided.",
             )
         )
+
+    settings = metadata.get("settings") if metadata else None
+    if settings is not None and not isinstance(settings, dict):
+        errors.append(
+            ThemeValidationIssue(
+                code="invalid_settings",
+                field="settings",
+                message="theme.json settings must be a JSON object if provided.",
+            )
+        )
+    elif isinstance(settings, dict):
+        fields = settings.get("fields")
+        if fields is not None and not isinstance(fields, dict):
+            errors.append(
+                ThemeValidationIssue(
+                    code="invalid_settings_fields",
+                    field="settings.fields",
+                    message="theme.json settings.fields must be a JSON object if provided.",
+                )
+            )
+        elif isinstance(fields, dict):
+            for field_name, field_def in fields.items():
+                if not isinstance(field_def, dict):
+                    errors.append(
+                        ThemeValidationIssue(
+                            code="invalid_settings_field",
+                            field=f"settings.fields.{field_name}",
+                            message="Theme setting definitions must be JSON objects.",
+                        )
+                    )
+                    continue
+                field_type = field_def.get("type", "string")
+                if not isinstance(field_type, str) or field_type not in THEME_SETTINGS_FIELD_TYPES:
+                    errors.append(
+                        ThemeValidationIssue(
+                            code="invalid_settings_field",
+                            field=f"settings.fields.{field_name}.type",
+                            message="Theme setting type is not supported.",
+                        )
+                    )
+                if field_type == "select":
+                    choices = field_def.get("choices")
+                    if choices is not None and not isinstance(choices, list):
+                        errors.append(
+                            ThemeValidationIssue(
+                                code="invalid_settings_field",
+                                field=f"settings.fields.{field_name}.choices",
+                                message="Theme setting choices must be a list when provided.",
+                            )
+                        )
 
     templates_dir = theme_dir / "templates"
     if not templates_dir.exists() or not templates_dir.is_dir():

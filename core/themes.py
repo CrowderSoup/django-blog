@@ -36,6 +36,7 @@ class ThemeDefinition:
     author: Optional[str] = None
     version: Optional[str] = None
     description: Optional[str] = None
+    settings_schema: dict = field(default_factory=dict)
     metadata: dict = field(default_factory=dict)
 
     @property
@@ -845,6 +846,7 @@ def discover_themes(base_dir: Optional[Path] = None) -> list[ThemeDefinition]:
         metadata, _errors = load_theme_metadata(meta_path)
         slug = theme_dir.name
         label = metadata.get("label") or slug.replace("-", " ").title()
+        settings_schema = _normalize_theme_settings_schema(metadata)
         themes.append(
             ThemeDefinition(
                 slug=slug,
@@ -853,6 +855,7 @@ def discover_themes(base_dir: Optional[Path] = None) -> list[ThemeDefinition]:
                 author=metadata.get("author"),
                 version=metadata.get("version"),
                 description=metadata.get("description"),
+                settings_schema=settings_schema,
                 metadata=metadata,
             )
         )
@@ -866,6 +869,36 @@ def get_theme(slug: str, *, base_dir: Optional[Path] = None) -> Optional[ThemeDe
         if theme.slug == slug:
             return theme
     return None
+
+
+def _normalize_theme_settings_schema(metadata: dict) -> dict:
+    if not isinstance(metadata, dict):
+        return {}
+    schema = metadata.get("settings")
+    if not isinstance(schema, dict):
+        return {}
+    fields = schema.get("fields")
+    if fields is not None and not isinstance(fields, dict):
+        return {}
+    return schema
+
+
+def resolve_theme_settings(schema: dict, stored: dict) -> dict:
+    if not isinstance(schema, dict):
+        return {}
+    fields = schema.get("fields")
+    if not isinstance(fields, dict):
+        return {}
+    stored_values = stored if isinstance(stored, dict) else {}
+    resolved: dict = {}
+    for key, field in fields.items():
+        if not isinstance(field, dict):
+            continue
+        if key in stored_values:
+            resolved[key] = stored_values[key]
+        elif "default" in field:
+            resolved[key] = field["default"]
+    return resolved
 
 
 def get_theme_static_dirs(base_dir: Optional[Path] = None, *, sync: bool = False) -> Iterable[tuple[str, Path]]:

@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from blog.models import Post
-from core.models import HCard, HCardPhoto, ThemeInstall
+from core.models import HCard, HCardPhoto, SiteConfiguration, ThemeInstall
 from core.themes import ThemeDefinition, ThemeUpdateResult
 from core.test_utils import build_test_theme
 from files.models import Attachment, File
@@ -474,6 +474,41 @@ class SiteAdminThemeInstallTests(TestCase):
 
         update.assert_called_once_with(install, ref="main")
         self.assertEqual(response.status_code, 302)
+
+    def test_theme_settings_save_persists_values(self):
+        self.client.force_login(self.staff)
+        with tempfile.TemporaryDirectory() as themes_root:
+            with override_settings(THEMES_ROOT=themes_root):
+                metadata = {
+                    "label": "Demo",
+                    "slug": "demo",
+                    "settings": {
+                        "fields": {
+                            "accent_color": {"type": "color", "default": "#111111"},
+                            "show_banner": {"type": "boolean", "default": True},
+                        }
+                    },
+                }
+                build_test_theme("demo", themes_root, metadata=metadata)
+                settings_obj = SiteConfiguration.get_solo()
+                settings_obj.active_theme = "demo"
+                settings_obj.save()
+
+                response = self.client.post(
+                    reverse("site_admin:theme_settings"),
+                    {
+                        "action": "save_theme_settings",
+                        "accent_color": "#222222",
+                        "show_banner": "on",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 302)
+        settings_obj.refresh_from_db()
+        self.assertEqual(
+            settings_obj.theme_settings.get("demo"),
+            {"accent_color": "#222222", "show_banner": True},
+        )
 
 
 class SiteAdminWebmentionModerationTests(TestCase):

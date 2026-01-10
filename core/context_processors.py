@@ -5,7 +5,7 @@ from django.utils.safestring import mark_safe
 
 from .models import SiteConfiguration
 from .og import default_image_url
-from .themes import get_active_theme
+from .themes import get_active_theme, resolve_theme_settings
 
 def site_configuration(request):
     settings = SiteConfiguration.get_solo()
@@ -58,12 +58,25 @@ def site_configuration(request):
 
 def theme(request):
     active_theme = get_active_theme()
+    settings_obj = SiteConfiguration.get_solo()
+    theme_settings = {}
+    theme_settings_schema = {}
+    if active_theme:
+        theme_settings_schema = active_theme.settings_schema
+        stored_settings = (
+            settings_obj.theme_settings.get(active_theme.slug, {})
+            if isinstance(settings_obj.theme_settings, dict)
+            else {}
+        )
+        theme_settings = resolve_theme_settings(theme_settings_schema, stored_settings)
     return {
         "active_theme": active_theme,
         "theme": {
             "slug": active_theme.slug if active_theme else "",
             "label": active_theme.label if active_theme else "Default",
             "metadata": active_theme.metadata if active_theme else {},
+            "settings": theme_settings,
+            "settings_schema": theme_settings_schema,
             "template_prefix": active_theme.template_prefix if active_theme else "",
             "static_prefix": active_theme.static_prefix if active_theme else "",
         },

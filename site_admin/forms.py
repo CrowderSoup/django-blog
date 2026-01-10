@@ -432,6 +432,117 @@ class ThemeFileForm(forms.Form):
         )
 
 
+class ThemeSettingsForm(forms.Form):
+    def __init__(self, schema: dict, *args, **kwargs):
+        self.schema = schema or {}
+        super().__init__(*args, **kwargs)
+        fields = self.schema.get("fields")
+        if not isinstance(fields, dict):
+            return
+        for name, definition in fields.items():
+            if not isinstance(definition, dict):
+                continue
+            field_type = definition.get("type", "string")
+            label = definition.get("label") or name.replace("_", " ").title()
+            required = bool(definition.get("required"))
+            help_text = definition.get("help") or ""
+            form_field = _theme_settings_field(
+                field_type,
+                label=label,
+                required=required,
+                help_text=help_text,
+                definition=definition,
+            )
+            if form_field is not None:
+                self.fields[name] = form_field
+
+
+def _theme_settings_field(field_type, *, label, required, help_text, definition):
+    if field_type == "text":
+        field = forms.CharField(
+            required=required,
+            label=label,
+            help_text=help_text,
+            widget=forms.Textarea(attrs={"rows": 4}),
+        )
+    elif field_type == "boolean":
+        field = forms.BooleanField(
+            required=False,
+            label=label,
+            help_text=help_text,
+        )
+    elif field_type == "number":
+        field = forms.FloatField(
+            required=required,
+            label=label,
+            help_text=help_text,
+        )
+        _apply_theme_settings_number_attrs(field, definition)
+    elif field_type == "color":
+        field = forms.CharField(
+            required=required,
+            label=label,
+            help_text=help_text,
+            widget=forms.TextInput(attrs={"type": "color"}),
+        )
+    elif field_type == "select":
+        choices = _theme_settings_choices(definition.get("choices"))
+        if not choices:
+            return None
+        field = forms.ChoiceField(
+            required=required,
+            label=label,
+            help_text=help_text,
+            choices=choices,
+        )
+    else:
+        field = forms.CharField(
+            required=required,
+            label=label,
+            help_text=help_text,
+        )
+
+    if isinstance(field.widget, forms.CheckboxInput):
+        field.widget.attrs.setdefault(
+            "class",
+            "h-4 w-4 rounded border-[color:var(--admin-border)] text-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+        )
+    else:
+        field.widget.attrs.setdefault(
+            "class",
+            "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+        )
+    return field
+
+
+def _theme_settings_choices(raw_choices):
+    if not isinstance(raw_choices, list):
+        return []
+    choices = []
+    for item in raw_choices:
+        if isinstance(item, dict):
+            value = item.get("value")
+            label = item.get("label", value)
+        else:
+            value = item
+            label = item
+        if value is None:
+            continue
+        choices.append((value, label))
+    return choices
+
+
+def _apply_theme_settings_number_attrs(field, definition):
+    attrs = field.widget.attrs
+    attrs.setdefault("type", "number")
+    if isinstance(definition.get("min"), (int, float)):
+        attrs.setdefault("min", str(definition["min"]))
+    if isinstance(definition.get("max"), (int, float)):
+        attrs.setdefault("max", str(definition["max"]))
+    if isinstance(definition.get("step"), (int, float)):
+        attrs.setdefault("step", str(definition["step"]))
+
+
 class MenuForm(forms.ModelForm):
     class Meta:
         model = Menu

@@ -79,6 +79,131 @@
       </section>
 
       <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold">Theme settings</h2>
+            <p class="mt-1 text-sm text-[color:var(--admin-muted)]">
+              Customize the active theme using its declared settings.
+            </p>
+          </div>
+          {% if active_theme %}
+            <div class="text-sm text-[color:var(--admin-muted)]">
+              Active: <span class="font-semibold text-[color:var(--admin-ink)]">{{ active_theme.label }}</span>
+            </div>
+          {% endif %}
+        </div>
+        {% if theme_settings_form %}
+          <form method="post" class="mt-4 space-y-6">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_theme_settings" />
+            {{ theme_settings_form.non_field_errors }}
+            {% if theme_settings_groups %}
+              {% for group in theme_settings_groups %}
+                <div class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4">
+                  <div class="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">
+                    {{ group.label }}
+                  </div>
+                  <div class="mt-4 grid gap-4 md:grid-cols-2">
+                    {% for field in group.fields %}
+                      <div>
+                        <label class="block text-xs uppercase tracking-wide text-[color:var(--admin-muted)]" for="{{ field.id_for_label }}">
+                          {{ field.label }}
+                        </label>
+                        {{ field.errors }}
+                        {% if field.field.widget.input_type == "color" %}
+                          <div class="mt-1 flex items-center gap-3" data-theme-color-row>
+                            {{ field }}
+                            <input
+                              type="text"
+                              class="w-28 rounded-2xl border-2 border-[color:var(--admin-border)] bg-white px-3 py-2 text-xs font-mono text-[color:var(--admin-ink)]"
+                              value="{{ field.value|default:field.initial|default:'#000000' }}"
+                              data-theme-color-value
+                              readonly
+                            />
+                          </div>
+                        {% else %}
+                          {{ field }}
+                        {% endif %}
+                        {% if field.help_text %}
+                          <p class="mt-2 text-xs text-[color:var(--admin-muted)]">{{ field.help_text }}</p>
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endfor %}
+            {% endif %}
+            {% if theme_settings_ungrouped_fields %}
+              <div class="grid gap-4 md:grid-cols-2">
+                {% for field in theme_settings_ungrouped_fields %}
+                  <div>
+                    <label class="block text-xs uppercase tracking-wide text-[color:var(--admin-muted)]" for="{{ field.id_for_label }}">
+                      {{ field.label }}
+                    </label>
+                    {{ field.errors }}
+                    {% if field.field.widget.input_type == "color" %}
+                      <div class="mt-1 flex items-center gap-3" data-theme-color-row>
+                        {{ field }}
+                        <input
+                          type="text"
+                          class="w-28 rounded-2xl border-2 border-[color:var(--admin-border)] bg-white px-3 py-2 text-xs font-mono text-[color:var(--admin-ink)]"
+                          value="{{ field.value|default:field.initial|default:'#000000' }}"
+                          data-theme-color-value
+                          readonly
+                        />
+                      </div>
+                    {% else %}
+                      {{ field }}
+                    {% endif %}
+                    {% if field.help_text %}
+                      <p class="mt-2 text-xs text-[color:var(--admin-muted)]">{{ field.help_text }}</p>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            {% endif %}
+            <button
+              type="submit"
+              class="rounded-full bg-[color:var(--admin-accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+            >
+              Save theme settings
+            </button>
+          </form>
+        {% else %}
+          <div class="mt-4 rounded-2xl border border-dashed border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-6 text-center text-sm text-[color:var(--admin-muted)]">
+            {% if active_theme %}
+              This theme does not define any custom settings.
+            {% else %}
+              Select an active theme to customize its settings.
+            {% endif %}
+          </div>
+        {% endif %}
+      </section>
+
+      <script>
+        document.addEventListener("DOMContentLoaded", () => {
+          const rows = Array.from(document.querySelectorAll("[data-theme-color-row]"));
+          rows.forEach((row) => {
+            const picker = row.querySelector("input[type='color']");
+            const value = row.querySelector("[data-theme-color-value]");
+            if (!picker || !value) {
+              return;
+            }
+            const sync = () => {
+              const nextValue = picker.value || value.value;
+              value.value = nextValue;
+              value.style.borderColor = nextValue || "";
+              value.style.backgroundColor = nextValue ? `${nextValue}1A` : "";
+              value.style.boxShadow = nextValue ? `0 0 0 2px ${nextValue}33` : "";
+            };
+            sync();
+            picker.addEventListener("input", sync);
+            picker.addEventListener("change", sync);
+          });
+        });
+      </script>
+
+      <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
         <h2 class="text-lg font-semibold">Install from git</h2>
         <p class="mt-1 text-sm text-[color:var(--admin-muted)]">
           Provide a public git repository URL and optional ref to install a theme.

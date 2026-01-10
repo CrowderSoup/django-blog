@@ -40,6 +40,7 @@ from .themes import (
     get_theme,
     ingest_theme_archive,
     install_theme_from_git,
+    resolve_theme_settings,
     theme_exists_in_storage,
     update_theme_from_git,
 )
@@ -509,12 +510,48 @@ class ThemeValidationTests(TestCase):
         self.assertTrue(result.is_valid)
         self.assertEqual(result.slug, "webstead-default-2026")
 
+    def test_validate_theme_dir_flags_invalid_settings(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            metadata = {"slug": "sample", "label": "Sample", "settings": ["bad"]}
+            theme_dir = self._build_theme_dir(Path(tmp_dir), metadata=metadata)
+
+            result = validate_theme_dir(theme_dir)
+
+        codes = {issue.code for issue in result.errors}
+        self.assertFalse(result.is_valid)
+        self.assertIn("invalid_settings", codes)
+        self.assertNotIn("invalid_settings_fields", codes)
+
+    def test_validate_theme_dir_flags_invalid_settings_fields(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            metadata = {"slug": "sample", "label": "Sample", "settings": {"fields": []}}
+            theme_dir = self._build_theme_dir(Path(tmp_dir), metadata=metadata)
+
+            result = validate_theme_dir(theme_dir)
+
+        codes = {issue.code for issue in result.errors}
+        self.assertFalse(result.is_valid)
+        self.assertIn("invalid_settings_fields", codes)
+
     def test_fixture_theme_is_valid(self):
         fixture_dir = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "themes" / "example"
 
         result = validate_theme_dir(fixture_dir)
 
         self.assertTrue(result.is_valid)
+
+    def test_resolve_theme_settings_merges_defaults(self):
+        schema = {
+            "fields": {
+                "accent": {"type": "color", "default": "#111111"},
+                "layout": {"type": "string", "default": "wide"},
+            }
+        }
+        stored = {"layout": "narrow"}
+
+        resolved = resolve_theme_settings(schema, stored)
+
+        self.assertEqual(resolved, {"accent": "#111111", "layout": "narrow"})
 
 
 class ThemeTestHelperTests(TestCase):
