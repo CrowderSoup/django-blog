@@ -1,9 +1,10 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
 from .models import Post, Tag
+from .views import _interaction_payload
 import copy
 import json
 from unittest.mock import patch
@@ -327,6 +328,36 @@ class Mf2NormalizationTests(TestCase):
                 target = fetch_target_from_url("https://example.com/post/404")
 
         self.assertIsNone(target)
+
+
+class InteractionPayloadTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_falls_back_to_local_post_when_fetch_fails(self):
+        target = Post.objects.create(
+            title="Target Post",
+            slug="target-post",
+            content="Target content",
+            published_on=timezone.now(),
+        )
+        like = Post.objects.create(
+            title="Like Post",
+            slug="like-post",
+            content=f"Liked /blog/post/{target.slug}",
+            kind=Post.LIKE,
+            published_on=timezone.now(),
+            like_of=f"/blog/post/{target.slug}",
+        )
+
+        request = self.factory.get("/blog/")
+
+        with patch("blog.views.fetch_target_from_url", return_value=None):
+            payload = _interaction_payload(like, request=request)
+
+        self.assertEqual(payload["target"]["original_url"], f"/blog/post/{target.slug}")
+        self.assertEqual(payload["target"]["title"], target.title)
+
 
 class PostFilterTests(TestCase):
     def setUp(self):

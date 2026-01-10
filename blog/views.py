@@ -6,7 +6,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.utils.text import Truncator
 
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from .models import Post, Tag
 from .mf2 import fetch_target_from_url
@@ -54,7 +54,41 @@ def _is_default_interaction_content(post, target_url):
     return False
 
 
-def _interaction_payload(post):
+def _local_target_from_url(target_url, request):
+    if not target_url:
+        return None
+    parsed = urlparse(target_url)
+    if not parsed.scheme and not parsed.netloc:
+        is_local = True
+    elif request:
+        is_local = parsed.netloc == request.get_host()
+    else:
+        is_local = False
+
+    if not is_local:
+        return None
+
+    slug = parsed.path.rstrip("/").split("/")[-1]
+    if not slug:
+        return None
+
+    target_post = (
+        Post.objects.filter(slug=slug, deleted=False, published_on__isnull=False)
+        .only("title", "content")
+        .first()
+    )
+    if not target_post:
+        return None
+
+    return {
+        "original_url": target_url,
+        "summary_text": target_post.summary(),
+        "summary_html": None,
+        "title": target_post.title,
+    }
+
+
+def _interaction_payload(post, request=None):
     if post.kind == Post.LIKE:
         target_url = post.like_of
         label = "Liked"
@@ -69,6 +103,8 @@ def _interaction_payload(post):
 
     target_url = target_url or ""
     target = fetch_target_from_url(target_url) if target_url else None
+    if not target and target_url:
+        target = _local_target_from_url(target_url, request)
 
     return {
         "kind": post.kind,
@@ -145,7 +181,7 @@ def posts(request):
             has_activity = True
             post.activity = _activity_from_mf2(post)
         elif post.kind in (Post.LIKE, Post.REPLY, Post.REPOST):
-            post.interaction = _interaction_payload(post)
+            post.interaction = _interaction_payload(post, request=request)
 
     return render(
         request,
@@ -200,7 +236,7 @@ def post(request, slug):
 
     activity = _activity_from_mf2(post) if post.kind == Post.ACTIVITY else None
     if post.kind in (Post.LIKE, Post.REPLY, Post.REPOST):
-        post.interaction = _interaction_payload(post)
+        post.interaction = _interaction_payload(post, request=request)
     activity_photos = list(post.photo_attachments) if post.kind == Post.ACTIVITY else []
     og_image = ""
     og_image_alt = ""
