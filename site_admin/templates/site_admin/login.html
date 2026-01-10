@@ -24,6 +24,16 @@
         },
       };
     </script>
+    <script>
+      (function () {
+        const storageKey = "admin-theme";
+        const root = document.documentElement;
+        const saved = localStorage.getItem(storageKey);
+        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const isDark = saved ? saved === "dark" : prefersDark;
+        root.classList.toggle("admin-theme-dark", isDark);
+      })();
+    </script>
     <style>
       :root {
         --admin-bg: #f6f2ec;
@@ -33,6 +43,30 @@
         --admin-accent: #0f766e;
         --admin-accent-strong: #0a5b55;
         --admin-border: #e5dfd6;
+      }
+
+      .admin-theme-dark {
+        color-scheme: dark;
+        --admin-bg: #0f1214;
+        --admin-surface: #171b20;
+        --admin-ink: #f5f2ec;
+        --admin-muted: #9aa1a8;
+        --admin-accent: #2dd4bf;
+        --admin-accent-strong: #14b8a6;
+        --admin-border: #2a3138;
+      }
+
+      .admin-theme-dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+      .admin-theme-dark textarea,
+      .admin-theme-dark select {
+        background-color: var(--admin-surface);
+        color: var(--admin-ink);
+        border-color: var(--admin-border);
+      }
+
+      .admin-theme-dark input::placeholder,
+      .admin-theme-dark textarea::placeholder {
+        color: var(--admin-muted);
       }
 
       .errorlist {

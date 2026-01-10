@@ -24,6 +24,16 @@
         },
       };
     </script>
+    <script>
+      (function () {
+        const storageKey = "admin-theme";
+        const root = document.documentElement;
+        const saved = localStorage.getItem(storageKey);
+        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const isDark = saved ? saved === "dark" : prefersDark;
+        root.classList.toggle("admin-theme-dark", isDark);
+      })();
+    </script>
     <style>
       :root {
         --admin-bg: #f6f2ec;
@@ -35,6 +45,47 @@
         --admin-border: #e5dfd6;
         --admin-warn: #b45309;
         --site-admin-bar-bg: var(--admin-bg);
+        --site-admin-bar-hamburger-bg: var(--admin-surface);
+      }
+
+      .admin-theme-dark {
+        color-scheme: dark;
+        --admin-bg: #0f1214;
+        --admin-surface: #171b20;
+        --admin-ink: #f5f2ec;
+        --admin-muted: #9aa1a8;
+        --admin-accent: #2dd4bf;
+        --admin-accent-strong: #14b8a6;
+        --admin-border: #2a3138;
+        --admin-warn: #fbbf24;
+        --site-admin-bar-bg: var(--admin-bg);
+        --site-admin-bar-hamburger-bg: var(--admin-surface);
+      }
+
+      .admin-theme-dark .site-admin-bar {
+        --admin-muted: #9aa1a8;
+        --admin-accent: #2dd4bf;
+        --admin-accent-strong: #14b8a6;
+        --admin-warn: #fbbf24;
+        --admin-ink: #f5f2ec;
+        --admin-surface: #171b20;
+      }
+
+      .admin-theme-dark .bg-white {
+        background-color: var(--admin-surface) !important;
+      }
+
+      .admin-theme-dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+      .admin-theme-dark textarea,
+      .admin-theme-dark select {
+        background-color: var(--admin-surface);
+        color: var(--admin-ink);
+        border-color: var(--admin-border);
+      }
+
+      .admin-theme-dark input::placeholder,
+      .admin-theme-dark textarea::placeholder {
+        color: var(--admin-muted);
       }
 
       .errorlist {
@@ -79,6 +130,59 @@
           event.detail.headers["X-CSRFToken"] = token;
         }
       });
+
+      (function () {
+        const storageKey = "admin-theme";
+        const root = document.documentElement;
+        const prefersDarkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+        const toggles = () =>
+          Array.from(document.querySelectorAll("[data-admin-theme-toggle]"));
+
+        function applyTheme(theme) {
+          const isDark =
+            theme === "dark" || (theme === "system" && prefersDarkQuery.matches);
+          root.classList.toggle("admin-theme-dark", isDark);
+          toggles().forEach((button) => {
+            const next = isDark ? "Light mode" : "Dark mode";
+            button.textContent = next;
+            button.setAttribute("aria-pressed", String(isDark));
+          });
+        }
+
+        function getStoredTheme() {
+          return localStorage.getItem(storageKey) || "system";
+        }
+
+        function setStoredTheme(theme) {
+          localStorage.setItem(storageKey, theme);
+        }
+
+        function toggleTheme() {
+          const current = getStoredTheme();
+          const isDark =
+            current === "dark" || (current === "system" && prefersDarkQuery.matches);
+          const next = isDark ? "light" : "dark";
+          setStoredTheme(next);
+          applyTheme(next);
+        }
+
+        document.addEventListener("click", (event) => {
+          const button = event.target.closest("[data-admin-theme-toggle]");
+          if (!button) {
+            return;
+          }
+          event.preventDefault();
+          toggleTheme();
+        });
+
+        prefersDarkQuery.addEventListener("change", () => {
+          if (getStoredTheme() === "system") {
+            applyTheme("system");
+          }
+        });
+
+        applyTheme(getStoredTheme());
+      })();
     </script>
     {% block body_end %}{% endblock %}
   </body>
