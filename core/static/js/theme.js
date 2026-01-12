@@ -148,9 +148,38 @@
     });
   };
 
+  const addCodeLineNumbers = () => {
+    const codeBlocks = document.querySelectorAll(
+      ".e-content pre code, .p-content pre code"
+    );
+
+    codeBlocks.forEach((code) => {
+      const pre = code.parentElement;
+      if (!pre || pre.classList.contains("code-with-lines")) {
+        return;
+      }
+
+      const text = code.textContent ?? "";
+      const lines = text.replace(/\n$/, "").split("\n");
+      pre.classList.add("code-with-lines");
+      code.textContent = "";
+
+      lines.forEach((line) => {
+        const span = document.createElement("span");
+        span.className = "code-line";
+        span.textContent = line.length ? line : " ";
+        code.append(span);
+      });
+    });
+  };
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", enhanceSliders);
+    document.addEventListener("DOMContentLoaded", () => {
+      enhanceSliders();
+      addCodeLineNumbers();
+    });
   } else {
     enhanceSliders();
+    addCodeLineNumbers();
   }
 })();

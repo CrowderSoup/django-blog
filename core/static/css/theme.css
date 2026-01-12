@@ -229,6 +229,49 @@ a:focus {
   margin-top: 1rem;
 }
 
+.e-content pre,
+.p-content pre {
+  margin: 1.25rem 0;
+  padding: 1rem 1.25rem;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: #f3eee5;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.e-content pre code,
+.p-content pre code {
+  display: block;
+  font-family: "IBM Plex Mono", "Menlo", "Consolas", "Courier New", monospace;
+  font-size: 0.9rem;
+  white-space: pre;
+}
+
+.e-content pre.code-with-lines code,
+.p-content pre.code-with-lines code {
+  counter-reset: line;
+}
+
+.e-content pre.code-with-lines .code-line,
+.p-content pre.code-with-lines .code-line {
+  display: block;
+  padding-left: 3.5ch;
+  position: relative;
+}
+
+.e-content pre.code-with-lines .code-line::before,
+.p-content pre.code-with-lines .code-line::before {
+  counter-increment: line;
+  content: counter(line);
+  position: absolute;
+  left: 0;
+  width: 3ch;
+  text-align: right;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
 .tags {
   margin-top: 1.5rem;
   display: flex;
@@ -677,6 +720,7 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 .interaction-title {
   margin: 0;
   font-weight: 600;
+  overflow: hidden;
 }
 
 .interaction-card__content {
