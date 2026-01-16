@@ -328,6 +328,7 @@ class SiteConfigurationForm(forms.ModelForm):
         fields = [
             "title",
             "tagline",
+            "home_page",
             "favicon",
             "site_author",
             "active_theme",
@@ -352,6 +353,7 @@ class SiteConfigurationForm(forms.ModelForm):
         self.fields["favicon"].queryset = File.objects.filter(kind=File.IMAGE).order_by(
             "-created_at"
         )
+        self.fields["home_page"].queryset = Page.objects.order_by("title")
         for field in self.fields.values():
             if isinstance(field.widget, forms.CheckboxInput):
                 field.widget.attrs.setdefault(

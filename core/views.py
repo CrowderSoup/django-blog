@@ -11,8 +11,17 @@ from blog.models import Post, Tag
 
 def index(request):
     recent_blog_posts = Post.objects.filter(kind=Post.ARTICLE).exclude(published_on__isnull=True).order_by('-published_on')[:5]
+    settings_obj = SiteConfiguration.get_solo()
+    home_page = settings_obj.home_page if settings_obj.home_page_id else None
 
-    return render(request, 'core/index.html', { "recent_posts": recent_blog_posts })
+    return render(
+        request,
+        "core/index.html",
+        {
+            "recent_posts": recent_blog_posts,
+            "home_page": home_page,
+        },
+    )
 
 def page(request, slug):
     page = get_object_or_404(
