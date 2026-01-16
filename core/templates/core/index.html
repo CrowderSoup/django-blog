@@ -65,6 +65,17 @@
     </div>
   </section>
 
+  {% if home_page %}
+  <section class="home-page-content">
+    <header class="section-header">
+      <h2>{{ home_page.title }}</h2>
+    </header>
+    <div class="e-content">
+      {{ home_page.html }}
+    </div>
+  </section>
+  {% endif %}
+
   <section class="recent-posts h-feed">
     <header class="section-header">
       <h2>Recent posts</h2>

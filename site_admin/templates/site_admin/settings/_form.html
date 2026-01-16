@@ -34,6 +34,19 @@
       </div>
       <div>
         <label
+          for="{{ form.home_page.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Homepage content
+        </label>
+        {{ form.home_page }}
+        {% if form.home_page.help_text %}
+          <p class="mt-1 text-xs text-[color:var(--admin-muted)]">{{ form.home_page.help_text }}</p>
+        {% endif %}
+        {{ form.home_page.errors }}
+      </div>
+      <div>
+        <label
           for="{{ form.favicon.id_for_label }}"
           class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
         >
