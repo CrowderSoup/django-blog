@@ -1,9 +1,5 @@
 # Webstead
 
-![Webstead logo](static/logo.png)
-
-![Webstead wordmark](static/logo_simple.png)
-
 ![Webstead badge](static/logo_hero.png)
 
 Webstead is your digital homestead, a Django-powered blogging platform with themes, Micropub, and Webmention support.
