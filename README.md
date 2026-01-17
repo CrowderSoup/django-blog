@@ -1,6 +1,16 @@
-# Blog
+# Webstead
 
-This is a blog built with Django.
+![Webstead logo](static/logo.png)
+
+![Webstead wordmark](static/logo_simple.png)
+
+![Webstead badge](static/logo_hero.png)
+
+Webstead is your digital homestead, a Django-powered blogging platform with themes, Micropub, and Webmention support.
+
+## Alpha software warning
+
+This project is in a very early alpha state. Expect breaking changes, data loss risks, and incomplete features. Use at your own risk.
 
 ## Themes
 
