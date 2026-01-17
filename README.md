@@ -73,3 +73,7 @@ The Micropub endpoint supports creating the following post types based on the Mi
 - Replies (`in-reply-to`)
 
 Webmentions are stored with their source and target URLs, along with an optional `wm-property` to mark likes, reposts, and replies. When you publish a post, outgoing Webmentions are automatically discovered and sent to any linked URLs (including `like-of`, `repost-of`, and `in-reply-to` targets).
+
+## License
+
+MIT. See `LICENSE`.
