@@ -1,0 +1,56 @@
+{% if interaction %}
+  <p>
+    <strong>{{ interaction.label }}</strong>
+    {% if interaction.target and interaction.target.title %}
+      <a href="{{ interaction.target.original_url }}">{{ interaction.target.title }}</a>
+    {% elif interaction.target and interaction.target.original_url %}
+      <a href="{{ interaction.target.original_url }}">{{ interaction.target.original_url }}</a>
+    {% elif interaction.target_url %}
+      <a href="{{ interaction.target_url }}">{{ interaction.target_url }}</a>
+    {% endif %}
+  </p>
+  {% if interaction.target and interaction.target.author_name %}
+    {% if interaction.target.author_url %}
+      <p>By <a href="{{ interaction.target.author_url }}">{{ interaction.target.author_name }}</a></p>
+    {% else %}
+      <p>By {{ interaction.target.author_name }}</p>
+    {% endif %}
+  {% endif %}
+  {% if interaction.target and interaction.target.summary_excerpt %}
+    <blockquote>{{ interaction.target.summary_excerpt|linebreaksbr }}</blockquote>
+  {% endif %}
+{% endif %}
+
+{% if media_items %}
+  {% for media in media_items %}
+    {% if media.kind == "image" %}
+      <figure>
+        <img src="{{ media.url }}" alt="{{ media.alt }}" />
+        {% if media.caption %}
+          <figcaption>{{ media.caption }}</figcaption>
+        {% endif %}
+      </figure>
+    {% elif media.kind == "video" %}
+      <p>
+        <video controls src="{{ media.url }}">
+          <a href="{{ media.url }}">Download video</a>
+        </video>
+      </p>
+    {% else %}
+      <p><a href="{{ media.url }}">{{ media.name }}</a></p>
+    {% endif %}
+  {% endfor %}
+{% endif %}
+
+{% if interaction and not interaction.show_content %}
+  <p><a href="{{ post_url }}">View on site</a></p>
+{% else %}
+  <div>
+    {{ post.html }}
+  </div>
+  <p><a href="{{ post_url }}">View on site</a></p>
+{% endif %}
+
+{% if track_url %}
+  <p><a href="{{ track_url }}">Download track</a></p>
+{% endif %}
