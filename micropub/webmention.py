@@ -7,6 +7,7 @@ import urllib.request
 from html.parser import HTMLParser
 from typing import Iterable, Optional
 
+from django.conf import settings
 from django.utils.encoding import force_str
 
 from blog.models import Post
@@ -208,17 +209,18 @@ def _send_webmention_request(source_url: str, target_url: str) -> tuple[str, str
         status = Webmention.REJECTED
         if isinstance(exc, (TimeoutError, socket.timeout)):
             status = Webmention.TIMED_OUT
-        logger.info(
-            "Webmention request failed",
-            extra={
-                "webmention_source": source_url,
-                "webmention_target": target_url,
-                "webmention_endpoint": endpoint,
-                "webmention_status": error_status,
-                "webmention_error": str(exc),
-                "webmention_body": error_body[:2000],
-            },
-        )
+        if not settings.RUNNING_TESTS:
+            logger.info(
+                "Webmention request failed",
+                extra={
+                    "webmention_source": source_url,
+                    "webmention_target": target_url,
+                    "webmention_endpoint": endpoint,
+                    "webmention_status": error_status,
+                    "webmention_error": str(exc),
+                    "webmention_body": error_body[:2000],
+                },
+            )
         return status, str(exc)
 
 
@@ -290,6 +292,8 @@ def _bridgy_publish_targets(settings_obj) -> list[str]:
 
 
 def send_bridgy_publish_webmentions(post: Post, source_url: str, settings_obj) -> None:
+    if post.kind in (Post.LIKE, Post.REPLY, Post.REPOST):
+        return
     targets = _bridgy_publish_targets(settings_obj)
     if not targets:
         return
