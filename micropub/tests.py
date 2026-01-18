@@ -1,6 +1,7 @@
 import json
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
+from types import SimpleNamespace
 
 from django.test import TestCase
 from django.test.utils import override_settings
@@ -8,6 +9,7 @@ from django.urls import reverse
 
 from blog.models import Post, Tag
 from micropub.models import Webmention
+from micropub.webmention import send_bridgy_publish_webmentions
 
 
 MICROPUB_URL = "/micropub"
@@ -327,6 +329,7 @@ class WebmentionSubmissionTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Webmention.objects.count(), 0)
 
+
     @patch("micropub.views.verify_webmention_source", return_value=(True, "", False))
     def test_submission_rejected_when_source_not_owned(self, _verify):
         session = self.client.session
@@ -345,6 +348,7 @@ class WebmentionSubmissionTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Webmention.objects.count(), 0)
+
 
     @patch("micropub.views.verify_webmention_source", return_value=(True, "", False))
     def test_invalid_mention_type_defaults(self, _verify):
@@ -383,3 +387,21 @@ class WebmentionSubmissionTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(Webmention.objects.count(), 0)
+
+
+class BridgyPublishWebmentionTests(TestCase):
+    @patch("micropub.webmention.send_webmention")
+    def test_bridgy_publish_skips_like_reply_repost(self, send_webmention_mock):
+        settings_obj = SimpleNamespace(
+            bridgy_publish_bluesky=True,
+            bridgy_publish_flickr=False,
+            bridgy_publish_github=False,
+            bridgy_publish_mastodon=False,
+        )
+        source_url = "http://testserver/blog/post/hello/"
+        for kind in (Post.LIKE, Post.REPLY, Post.REPOST):
+            with self.subTest(kind=kind):
+                post = Post.objects.create(title="Hello", slug=f"hello-{kind}", content="Hello world", kind=kind)
+                send_bridgy_publish_webmentions(post, source_url, settings_obj)
+
+        send_webmention_mock.assert_not_called()
