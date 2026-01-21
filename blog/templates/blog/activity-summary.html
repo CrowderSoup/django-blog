@@ -75,7 +75,7 @@
   {% include 'blog/tags.html' %}
   <div class="entry-meta">
     <a class="u-url" href="/blog/post/{{ post.slug }}">
-      <time class="dt-published" datetime="{{ page.published_on }}">
+      <time class="dt-published" datetime="{{ page.published_on|date:"c" }}">
         {{ post.published_on|date:"Y-m-d" }}
       </time>
     </a>

@@ -8,7 +8,7 @@
 
     <div class="entry-meta">
       <span class="p-author h-card">{% author_hcard_name post.author %}</span>
-      <time class="dt-published" datetime="{{ post.published_on }}">
+      <time class="dt-published" datetime="{{ post.published_on|date:"c" }}">
         {{ post.published_on|date:"Y-m-d" }}
       </time>
     </div>
