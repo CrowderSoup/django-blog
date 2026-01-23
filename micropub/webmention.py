@@ -1,4 +1,5 @@
 import logging
+import threading
 import re
 import socket
 import urllib.error
@@ -309,3 +310,37 @@ def send_bridgy_publish_webmentions(post: Post, source_url: str, settings_obj) -
             mention_type=Webmention.MENTION,
             source_post=post,
         )
+
+
+def queue_webmentions_for_post(
+    post: Post,
+    source_url: str,
+    *,
+    include_bridgy: bool = False,
+    settings_obj=None,
+) -> None:
+    if settings.RUNNING_TESTS:
+        send_webmentions_for_post(post, source_url)
+        if include_bridgy:
+            send_bridgy_publish_webmentions(post, source_url, settings_obj)
+        return
+
+    def _runner():
+        try:
+            send_webmentions_for_post(post, source_url)
+        except Exception:
+            logger.exception(
+                "Webmention dispatch failed",
+                extra={"webmention_source": source_url},
+            )
+        if include_bridgy:
+            try:
+                send_bridgy_publish_webmentions(post, source_url, settings_obj)
+            except Exception:
+                logger.exception(
+                    "Bridgy publish webmention dispatch failed",
+                    extra={"webmention_source": source_url},
+                )
+
+    thread = threading.Thread(target=_runner, name="webmention-dispatch", daemon=True)
+    thread.start()

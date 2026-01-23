@@ -24,6 +24,7 @@ from django.urls import reverse, resolve
 from django.core.files.base import ContentFile
 from django.conf import settings
 from django.shortcuts import redirect, render
+from django.db import transaction
 
 from markdownify import markdownify as html_to_markdown
 
@@ -31,7 +32,7 @@ from blog.models import Post, Tag
 from core.models import Page, SiteConfiguration
 from files.models import Attachment, File
 from .models import MicropubRequestLog, Webmention
-from .webmention import send_bridgy_publish_webmentions, send_webmentions_for_post, verify_webmention_source
+from .webmention import queue_webmentions_for_post, verify_webmention_source
 
 TOKEN_ENDPOINT = "https://tokens.indieauth.com/token"
 logger = logging.getLogger(__name__)
@@ -666,7 +667,9 @@ def _handle_update_action(request, data):
 
     post.save()
     source_url = request.build_absolute_uri(post.get_absolute_url())
-    send_webmentions_for_post(post, source_url)
+    transaction.on_commit(
+        lambda: queue_webmentions_for_post(post, source_url)
+    )
     return HttpResponse(status=204)
 
 
@@ -788,8 +791,15 @@ def _handle_create_action(request, data):
     _attach_remote_photos(data, post)
 
     location = request.build_absolute_uri(post.get_absolute_url())
-    send_webmentions_for_post(post, location)
-    send_bridgy_publish_webmentions(post, location, SiteConfiguration.get_solo())
+    settings_obj = SiteConfiguration.get_solo()
+    transaction.on_commit(
+        lambda: queue_webmentions_for_post(
+            post,
+            location,
+            include_bridgy=True,
+            settings_obj=settings_obj,
+        )
+    )
 
     response = HttpResponse(status=201)
     response["Location"] = location
