@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 USER_AGENT = "Webstead/1.0 (+https://webstead.dev/)"
 DEFAULT_AVATAR_URL = static("img/default-avatar.svg")
 INTERACTION_SUMMARY_LENGTH = 240
+REQUEST_TIMEOUT = (3, 8)
 
 
 def _first_text(value, default=""):
@@ -174,11 +175,19 @@ def fetch_target_from_url(target_url):
         response = requests.get(
             target_url,
             headers={"User-Agent": USER_AGENT},
-            timeout=8,
+            timeout=REQUEST_TIMEOUT,
         )
         response.raise_for_status()
-    except requests.RequestException:
-        logger.exception("Unable to fetch mf2 target for %s", target_url)
+    except requests.Timeout:
+        logger.info("Timeout fetching mf2 target for %s", target_url)
+        return None
+    except requests.RequestException as exc:
+        logger.warning(
+            "Unable to fetch mf2 target for %s (%s)",
+            target_url,
+            exc.__class__.__name__,
+        )
+        logger.debug("mf2 fetch error detail", exc_info=exc)
         return None
 
     return parse_target_from_html(response.text, target_url)
