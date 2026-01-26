@@ -28,7 +28,7 @@
   >
     <form action="{% url 'posts' %}" method="get" class="filter-form" data-filter-form>
       <div class="filter-header" data-filter-header>
-        <span class="filter-title">Filter by</span>
+        <span class="filter-title">Filter this feed by...</span>
         <button
           type="button"
           class="filter-clear"
@@ -87,6 +87,41 @@
           </div>
           <div class="tag-suggestions" data-tag-suggestions hidden></div>
         </div>
+        <div class="filter-group filter-feed">
+          <a
+            class="filter-feed-link"
+            href="{% url 'posts_feed' %}{% if feed_filter_query %}?{{ feed_filter_query }}{% endif %}"
+            data-filter-feed
+            data-base-href="{% url 'posts_feed' %}"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <svg
+              class="filter-feed-icon"
+              viewBox="0 0 24 24"
+              role="img"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <circle cx="5" cy="19" r="2" fill="currentColor" />
+              <path
+                d="M4 11a9 9 0 0 1 9 9"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+              />
+              <path
+                d="M4 4a16 16 0 0 1 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+              />
+            </svg>
+            <span>Subscribe to this feed</span>
+          </a>
+        </div>
       </div>
     </form>
   </section>
@@ -120,16 +155,4 @@
     <a class="pagination-item" href="?{{ filter_query }}{% if filter_query %}&{% endif %}page={{ posts.next_page_number }}">Older</a>
     {% endif %}
   </nav>
-{% endblock %}
-
-{% block footer_extra %}
-  <span aria-hidden="true">·</span>
-  <a
-    href="{% url 'posts_feed' %}{% if feed_filter_query %}?{{ feed_filter_query }}{% endif %}"
-    data-filter-feed
-    data-base-href="{% url 'posts_feed' %}"
-  >
-    RSS feed
-  </a>
-  {{ block.super }}
 {% endblock %}
