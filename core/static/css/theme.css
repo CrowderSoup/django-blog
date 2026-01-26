@@ -377,6 +377,35 @@ html.js-enabled .post-filter.is-collapsed .filter-header {
   gap: 0.6rem;
 }
 
+.filter-feed {
+  display: flex;
+  align-items: center;
+}
+
+.filter-feed-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.filter-feed-link:hover,
+.filter-feed-link:focus-visible {
+  background: #fff;
+}
+
+.filter-feed-icon {
+  width: 16px;
+  height: 16px;
+}
+
 .filter-label {
   font-weight: 600;
 }
