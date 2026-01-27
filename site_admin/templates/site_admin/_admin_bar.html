@@ -90,6 +90,14 @@
       border-color 0.2s ease;
   }
 
+  .site-admin-bar__create--text {
+    width: auto;
+    min-width: 2rem;
+    padding: 0 0.85rem;
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+  }
+
   .site-admin-bar__create:hover {
     background: rgba(15, 118, 110, 0.1);
     border-color: rgba(15, 118, 110, 0.4);
@@ -564,6 +572,16 @@
       <div class="site-admin-bar__user">
         Signed in as <strong>{{ request.user.get_username }}</strong>
       </div>
+      {% if edit_link %}
+      <a
+        href="{{ edit_link }}"
+        class="site-admin-bar__create site-admin-bar__create--text"
+        aria-label="{{ edit_label }}"
+        title="{{ edit_label }}"
+      >
+        Edit
+      </a>
+      {% else %}
       <a
         href="{% url 'site_admin:post_create' %}"
         class="site-admin-bar__create"
@@ -572,6 +590,7 @@
       >
         +
       </a>
+      {% endif %}
     </div>
     {% endif %}
   </div>

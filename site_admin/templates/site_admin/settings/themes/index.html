@@ -277,6 +277,15 @@
               forms.forEach((form) => {
                 const isMatch = form.dataset.installSource === selected;
                 form.classList.toggle("hidden", !isMatch);
+                const fields = Array.from(
+                  form.querySelectorAll("input, select, textarea")
+                );
+                fields.forEach((field) => {
+                  field.disabled = !isMatch;
+                  if (!isMatch && field.type === "file") {
+                    field.value = "";
+                  }
+                });
               });
               sourceButtons.forEach((button) => {
                 const isActive = button.dataset.installSourceButton === selected;

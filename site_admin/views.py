@@ -16,7 +16,7 @@ from django.utils import timezone
 from django.db.models import Avg, Count, Q
 from django.db.models.functions import TruncDate
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.urls import Resolver404, resolve, reverse
 from django.forms import inlineformset_factory
 from django.views.decorators.http import require_http_methods, require_GET, require_POST
 
@@ -371,7 +371,42 @@ def admin_bar(request):
     if not request.user.is_staff:
         return HttpResponseForbidden()
 
-    return render(request, "site_admin/_admin_bar.html")
+    edit_link, edit_label = _resolve_admin_bar_edit_link(request)
+    return render(
+        request,
+        "site_admin/_admin_bar.html",
+        {
+            "edit_link": edit_link,
+            "edit_label": edit_label,
+        },
+    )
+
+
+def _resolve_admin_bar_edit_link(request):
+    path = request.GET.get("path", "").strip()
+    if not path:
+        return None, None
+
+    parsed = urlparse(path)
+    target_path = parsed.path
+    if not target_path:
+        return None, None
+
+    try:
+        match = resolve(target_path)
+    except Resolver404:
+        return None, None
+
+    if match.url_name == "page":
+        slug = match.kwargs.get("slug")
+        if slug and Page.objects.filter(slug=slug).exists():
+            return reverse("site_admin:page_edit", kwargs={"slug": slug}), "Edit page"
+    elif match.url_name == "post":
+        slug = match.kwargs.get("slug")
+        if slug and Post.objects.filter(slug=slug, deleted=False).exists():
+            return reverse("site_admin:post_edit", kwargs={"slug": slug}), "Edit post"
+
+    return None, None
 
 
 def _strip_page_query(request):

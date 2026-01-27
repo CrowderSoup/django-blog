@@ -4,9 +4,11 @@
     return;
   }
 
-  const url = document.body?.dataset.siteAdminBarUrl || "/admin/bar/";
+  const adminBarUrl = document.body?.dataset.siteAdminBarUrl || "/admin/bar/";
+  const requestUrl = new URL(adminBarUrl, window.location.origin);
+  requestUrl.searchParams.set("path", window.location.pathname);
 
-  fetch(url, { credentials: "same-origin", redirect: "manual" })
+  fetch(requestUrl.toString(), { credentials: "same-origin", redirect: "manual" })
     .then((response) => {
       if (!response.ok || response.redirected) {
         return null;
