@@ -1,0 +1,58 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{{ settings.title }}{% block title %}{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css" />
+    <link rel="stylesheet" href="{% static 'css/site.css' %}" />
+    {% if feed_url %}
+    <link rel="feed" href="{{ feed_url }}">
+    {% endif %}
+
+    <!-- IndieWeb -->
+    <link rel="authorization_endpoint" href="https://indieauth.com/auth">
+    <link rel="token_endpoint" href="https://tokens.indieauth.com/token">
+    <link rel="microsub" href="https://aperture.p3k.io/microsub/205">
+    <link rel="micropub" href="{% url 'micropub-endpoint' %}">
+    <link rel="webmention" href="{% url 'webmention-endpoint' %}">
+
+    <!-- Analytics -->
+    <meta name="visit-id" content="{{ request.visit_id }}">
+    <script src="{% static 'analytics/beacon.js' %}"></script>
+
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <header>
+      <h1>{{ settings.title }}</h1>
+      {% if not hide_site_description %}
+      <div class="site-description">{{ settings.tagline }}</div>
+      {% endif %}
+      {% if not hide_nav %}
+      <nav>
+        {% for item in menu_items %}
+        <a href="{{ item.url }}">{{ item.text }}</a>
+        {% endfor %}
+      </nav>
+      {% endif %}
+    </header>
+    <main>{% block content %}{% endblock %}</main>
+    <footer>
+      <span>© {{ now|date:"Y" }} <a href="{% static 'pubkey.txt' %}" rel="me pgpkey">Aaron Crowder.</a></span>
+      {% block footer_extra %}
+      {% if user.is_authenticated and user.is_staff %}
+      <span> · </span><a href="{% url 'post_editor' %}">Post editor</a>
+      {% endif %}
+      {% endblock %}
+      {% if footer_menu_items %}
+      <nav>
+        {% for item in footer_menu_items %}
+        <a href="{{ item.url }}">{{ item.text }}</a>
+        {% endfor %}
+      </nav>
+      {% endif %}
+    </footer>
+  </body>
+</html>
