@@ -33,5 +33,5 @@ USER app
 
 EXPOSE 8000
 
-# Run migrations on every start, then launch gunicorn
-CMD ["sh", "-c", "uv run manage.py migrate && gunicorn config.wsgi:application -b 0.0.0.0:8000"]
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
+CMD ["gunicorn", "config.wsgi:application", "-b", "0.0.0.0:8000"]
