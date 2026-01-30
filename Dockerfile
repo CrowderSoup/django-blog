@@ -5,6 +5,7 @@ FROM python:3.14-alpine
 ENV PYTHONDONTWRITEBYTECODE=1 \
   PYTHONUNBUFFERED=1 \
   PATH="/app/.venv/bin:${PATH}" \
+  PYTHONPATH="/app" \
   UV_NO_DEV=1
 
 WORKDIR /app

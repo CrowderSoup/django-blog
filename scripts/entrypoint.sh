@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
+cd /app
+
 DB_WAIT="${DB_WAIT:-true}"
 COLLECTSTATIC="${COLLECTSTATIC:-true}"
 STORAGE_BOOTSTRAP="${STORAGE_BOOTSTRAP:-true}"
