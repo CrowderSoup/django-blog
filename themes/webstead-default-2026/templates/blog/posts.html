@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block head %}
+  {{ block.super }}
+  <script src="{% static 'js/post_filters.js' %}" defer></script>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+    defer
+  ></script>
+  <script src="{% static 'js/activity_map.js' %}" defer></script>
+{% endblock %}
+
+{% block content %}
+  <section
+    class="post-filter is-collapsed"
+    data-filter-bar
+    data-suggest-url="{% url 'tag_suggestions' %}"
+    data-default-kinds="{{ default_kinds|join:',' }}"
+  >
+    <form action="{% url 'posts' %}" method="get" class="filter-form" data-filter-form>
+      <div class="filter-header" data-filter-header>
+        <span class="filter-title">Filter this feed by...</span>
+        <button
+          type="button"
+          class="filter-clear"
+          data-clear
+          {% if not has_active_filters %}hidden{% endif %}
+        >
+          Clear filters
+        </button>
+        <button
+          type="button"
+          class="filter-toggle"
+          data-filter-toggle
+          aria-expanded="false"
+        >
+          Show filters
+        </button>
+      </div>
+      <div class="filter-body" data-filter-body>
+        <fieldset class="filter-group filter-kinds">
+          <legend>Kind</legend>
+          {% for kind_value, kind_label in post_kinds %}
+          <label class="filter-chip">
+            <input
+              type="checkbox"
+              name="kind"
+              value="{{ kind_value }}"
+              {% if kind_value in selected_kinds %}checked{% endif %}
+            />
+            <span>{{ kind_label }}</span>
+          </label>
+          {% endfor %}
+        </fieldset>
+        <div class="filter-group filter-tags">
+          <label class="filter-label" for="tag-input">Tags</label>
+          <div class="tag-input" data-tag-input>
+            <div class="tag-chips" data-tag-chips>
+              {% for tag in selected_tags %}
+              <button
+                type="button"
+                class="tag-chip"
+                data-remove-tag="{{ tag }}"
+                aria-label="Remove tag {{ tag }}"
+              >
+                #{{ tag }} <span aria-hidden="true">x</span>
+              </button>
+              {% endfor %}
+            </div>
+            <input
+              id="tag-input"
+              name="tag"
+              value="{{ selected_tags|join:',' }}"
+              placeholder="Add tags"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div class="tag-suggestions" data-tag-suggestions hidden></div>
+        </div>
+        <div class="filter-group filter-feed">
+          <a
+            class="filter-feed-link"
+            href="{% url 'posts_feed' %}{% if feed_filter_query %}?{{ feed_filter_query }}{% endif %}"
+            data-filter-feed
+            data-base-href="{% url 'posts_feed' %}"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <svg
+              class="filter-feed-icon"
+              viewBox="0 0 24 24"
+              role="img"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <circle cx="5" cy="19" r="2" fill="currentColor" />
+              <path
+                d="M4 11a9 9 0 0 1 9 9"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+              />
+              <path
+                d="M4 4a16 16 0 0 1 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+              />
+            </svg>
+            <span>Subscribe to this feed</span>
+          </a>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <section class="h-feed" data-filter-results>
+    {% for post in posts %}
+      {% if post.kind == 'note' %}
+        {% include 'blog/note.html' %}
+      {% elif post.kind == 'photo' %}
+        {% include 'blog/photo.html' %}
+      {% elif post.kind == 'activity' %}
+        {% include 'blog/activity-summary.html' %}
+      {% elif post.kind == 'like' %}
+        {% include 'blog/like.html' %}
+      {% elif post.kind == 'reply' %}
+        {% include 'blog/reply.html' %}
+      {% elif post.kind == 'repost' %}
+        {% include 'blog/repost.html' %}
+      {% else %}
+        {% include 'blog/article-summary.html' %}
+      {% endif %}
+    {% endfor %}
+  </section>
+
+  <nav class="paginator" aria-label="Pagination" data-filter-pagination>
+    {% if posts.has_previous %}
+    <a class="pagination-item" href="?{{ filter_query }}{% if filter_query %}&{% endif %}page={{ posts.previous_page_number }}">Newer</a>
+    {% endif %}
+    <span class="pagination-item pagination-status">Page {{ posts.number }} of {{ posts.paginator.num_pages }}</span>
+    {% if posts.has_next %}
+    <a class="pagination-item" href="?{{ filter_query }}{% if filter_query %}&{% endif %}page={{ posts.next_page_number }}">Older</a>
+    {% endif %}
+  </nav>
+{% endblock %}
