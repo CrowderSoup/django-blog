@@ -30,6 +30,21 @@ def _bucket_policy(bucket_name: str) -> dict:
     }
 
 
+def _policy_needs_update(client, bucket_name: str, desired_policy: dict) -> bool:
+    try:
+        current = client.get_bucket_policy(Bucket=bucket_name)
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code")
+        if code in {"NoSuchBucketPolicy", "NoSuchBucket"}:
+            return True
+        if code in {"AccessDenied", "AllAccessDisabled"}:
+            return False
+        raise
+
+    current_policy = json.loads(current.get("Policy", "{}"))
+    return current_policy != desired_policy
+
+
 class Command(BaseCommand):
     help = "Create the S3/MinIO bucket and apply an optional public-read policy."
 
@@ -69,7 +84,35 @@ class Command(BaseCommand):
 
         if set_policy and public_read:
             policy = _bucket_policy(bucket_name)
-            client.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
+            try:
+                needs_update = _policy_needs_update(client, bucket_name, policy)
+            except ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code")
+                if code in {"AccessDenied", "AllAccessDisabled"}:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            "Bucket policy check skipped: access denied for GetBucketPolicy."
+                        )
+                    )
+                    return
+                raise
+
+            if not needs_update:
+                self.stdout.write(self.style.SUCCESS("Bucket policy already up to date."))
+                return
+
+            try:
+                client.put_bucket_policy(Bucket=bucket_name, Policy=json.dumps(policy))
+            except ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code")
+                if code in {"AccessDenied", "AllAccessDisabled"}:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            "Bucket policy bootstrap skipped: access denied for PutBucketPolicy."
+                        )
+                    )
+                    return
+                raise
             self.stdout.write(self.style.SUCCESS("Applied public-read bucket policy."))
         elif set_policy:
             self.stdout.write(self.style.WARNING("Bucket policy bootstrap skipped: public read disabled."))
