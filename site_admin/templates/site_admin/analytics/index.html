@@ -59,6 +59,9 @@
             </button>
         </form>
       </div>
+
+      {% include "site_admin/_messages.html" with wrapper_class="mt-6 space-y-2" %}
+
       <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4">
           <div class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Page views</div>
