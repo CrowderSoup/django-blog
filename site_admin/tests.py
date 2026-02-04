@@ -147,6 +147,38 @@ class SiteAdminPostTests(TestCase):
         self.assertEqual(post.content, "Liked https://example.com")
         self.assertIsNotNone(post.published_on)
 
+    def test_post_create_queues_webmentions_on_commit(self):
+        self.client.force_login(self.staff)
+        with (
+            mock.patch("site_admin.views.queue_webmentions_for_post") as queue_mock,
+            mock.patch("site_admin.views.transaction.on_commit") as on_commit_mock,
+            mock.patch("micropub.webmention.send_webmentions_for_post") as send_mock,
+        ):
+            response = self.client.post(
+                reverse("site_admin:post_create"),
+                {
+                    "kind": Post.NOTE,
+                    "content": "Queued webmentions",
+                    "title": "",
+                    "slug": "",
+                },
+            )
+
+            self.assertEqual(response.status_code, 302)
+            on_commit_mock.assert_called_once()
+            queue_mock.assert_not_called()
+            send_mock.assert_not_called()
+
+            callback = on_commit_mock.call_args.args[0]
+            callback()
+            queue_mock.assert_called_once()
+
+            args, kwargs = queue_mock.call_args
+            self.assertIsInstance(args[0], Post)
+            self.assertTrue(args[1].endswith(args[0].get_absolute_url()))
+            self.assertTrue(kwargs.get("include_bridgy"))
+            self.assertIn("settings_obj", kwargs)
+
 
 class SiteAdminProfilePhotoTests(TestCase):
     def setUp(self):

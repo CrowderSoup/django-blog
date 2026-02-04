@@ -13,6 +13,7 @@ from django.core.files.base import ContentFile
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Avg, Count, Q
 from django.db.models.functions import TruncDate
 from django.shortcuts import get_object_or_404, redirect, render
@@ -60,10 +61,9 @@ from core.themes import (
 from micropub.models import MicropubRequestLog, Webmention
 from blog.comments import AkismetError, submit_ham, submit_spam
 from micropub.webmention import (
+    queue_webmentions_for_post,
     resend_webmention,
-    send_bridgy_publish_webmentions,
     send_webmention,
-    send_webmentions_for_post,
 )
 
 from .forms import (
@@ -1760,13 +1760,16 @@ def post_edit(request, slug=None):
             saved_post.mf2 = mf2_payload
             saved_post.save(update_fields=["mf2"])
             source_url = request.build_absolute_uri(saved_post.get_absolute_url())
-            send_webmentions_for_post(saved_post, source_url)
-            if saved_post.published_on and (is_new or not was_published):
-                send_bridgy_publish_webmentions(
+            include_bridgy = saved_post.published_on and (is_new or not was_published)
+            settings_obj = SiteConfiguration.get_solo() if include_bridgy else None
+            transaction.on_commit(
+                lambda: queue_webmentions_for_post(
                     saved_post,
                     source_url,
-                    SiteConfiguration.get_solo(),
+                    include_bridgy=include_bridgy,
+                    settings_obj=settings_obj,
                 )
+            )
             if request.headers.get("HX-Request"):
                 if is_new:
                     response = HttpResponse(status=204)
