@@ -205,13 +205,30 @@
                 <td class="px-4 py-3 text-[color:var(--admin-ink)]">{{ row.response_status_code|default:"-" }}</td>
                 <td class="px-4 py-3 text-[color:var(--admin-ink)]">{{ row.count }}</td>
                 <td class="px-4 py-3">
-                  {% if row.response_status_code == 404 and row.path %}
-                    <a
-                      href="{% url 'site_admin:redirect_create' %}?from={{ row.path|urlencode }}"
-                      class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
-                    >
-                      Create redirect
-                    </a>
+                  {% if row.path %}
+                    <div class="flex flex-wrap gap-2">
+                      {% if row.response_status_code == 404 %}
+                        <a
+                          href="{% url 'site_admin:redirect_create' %}?from={{ row.path|urlencode }}"
+                          class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+                        >
+                          Create redirect
+                        </a>
+                      {% endif %}
+                      <form method="post" action="{% url 'site_admin:analytics_delete_error' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="path" value="{{ row.path }}" />
+                        <input type="hidden" name="status" value="{{ row.response_status_code }}" />
+                        <input type="hidden" name="start" value="{{ start_date|date:'Y-m-d' }}" />
+                        <input type="hidden" name="end" value="{{ end_date|date:'Y-m-d' }}" />
+                        <button
+                          type="submit"
+                          class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+                        >
+                          Delete visits
+                        </button>
+                      </form>
+                    </div>
                   {% else %}
                     <span class="text-xs text-[color:var(--admin-muted)]">—</span>
                   {% endif %}

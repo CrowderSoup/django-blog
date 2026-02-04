@@ -11,6 +11,7 @@ from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from analytics.models import Visit
 from blog.models import Comment, Post
 from core.models import HCard, HCardPhoto, SiteConfiguration, ThemeInstall
 from core.themes import ThemeDefinition, ThemeUpdateResult
@@ -97,6 +98,38 @@ class SiteAdminPageTests(TestCase):
         page = self.staff.page_set.first()
         self.assertIsNotNone(page)
         self.assertEqual(page.author, self.staff)
+
+
+class SiteAdminAnalyticsTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        self.staff = get_user_model().objects.create_user(
+            username="editor",
+            email="editor@example.com",
+            password="password",
+            is_staff=True,
+        )
+
+    def test_delete_error_visits(self):
+        self.client.force_login(self.staff)
+        Visit.objects.create(path="/missing", response_status_code=404)
+        Visit.objects.create(path="/missing", response_status_code=404)
+        Visit.objects.create(path="/missing", response_status_code=500)
+
+        response = self.client.post(
+            reverse("site_admin:analytics_delete_error"),
+            {"path": "/missing", "status": "404"},
+        )
+
+        self.assertRedirects(response, reverse("site_admin:analytics_dashboard"))
+        self.assertEqual(
+            Visit.objects.filter(path="/missing", response_status_code=404).count(),
+            0,
+        )
+        self.assertEqual(
+            Visit.objects.filter(path="/missing", response_status_code=500).count(),
+            1,
+        )
 
 
 class SiteAdminPostTests(TestCase):

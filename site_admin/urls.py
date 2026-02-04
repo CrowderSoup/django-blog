@@ -15,6 +15,11 @@ urlpatterns = [
         views.analytics_ignore_user_agent,
         name="analytics_ignore_user_agent",
     ),
+    path(
+        "analytics/delete-error/",
+        views.analytics_delete_error,
+        name="analytics_delete_error",
+    ),
     path("settings/", views.site_settings, name="site_settings"),
     path("settings/themes/", views.theme_settings, name="theme_settings"),
     path("settings/themes/git-refs/", views.theme_git_refs, name="theme_git_refs"),

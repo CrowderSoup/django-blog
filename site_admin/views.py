@@ -640,6 +640,50 @@ def analytics_ignore_user_agent(request):
     return redirect(url)
 
 
+@require_POST
+def analytics_delete_error(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    path = (request.POST.get("path") or "").strip()
+    status_value = (request.POST.get("status") or "").strip()
+    status_code = None
+    if status_value:
+        try:
+            status_code = int(status_value)
+        except (TypeError, ValueError):
+            status_code = None
+
+    if not path:
+        messages.error(request, "Provide a path to delete errors for.")
+    elif status_code is None:
+        messages.error(request, "Provide a status code to delete.")
+    else:
+        deleted, _ = Visit.objects.filter(
+            path=path, response_status_code=status_code
+        ).delete()
+        if deleted:
+            messages.success(
+                request,
+                f"Removed {deleted} visit{'s' if deleted != 1 else ''} for {path}.",
+            )
+        else:
+            messages.info(request, "No visits matched that error.")
+
+    params = {}
+    start = request.POST.get("start")
+    end = request.POST.get("end")
+    if start:
+        params["start"] = start
+    if end:
+        params["end"] = end
+    url = reverse("site_admin:analytics_dashboard")
+    if params:
+        url = f"{url}?{urlencode(params)}"
+    return redirect(url)
+
+
 @require_http_methods(["GET"])
 def menu_list(request):
     guard = _staff_guard(request)
