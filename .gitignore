@@ -61,4 +61,6 @@ uploads/
 /tickets
 
 # Themes
-/themes/
+/themes/*
+!/themes/webstead-default-2026/
+!/themes/webstead-default-2026/**

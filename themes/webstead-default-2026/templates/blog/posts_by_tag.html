@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <header class="section-header">
+    <h1>Tag: {{ tag }}</h1>
+  </header>
+
+  <section class="h-feed">
+    {% for post in posts %}
+      {% if post.kind == 'note' %}
+        {% include 'blog/note.html' %}
+      {% elif post.kind == 'photo' %}
+        {% include 'blog/photo.html' %}
+      {% else %}
+        {% include 'blog/article-summary.html' %}
+      {% endif %}
+    {% endfor %}
+  </section>
+
+  <nav class="paginator" aria-label="Pagination">
+    {% if posts.has_previous %}
+    <a class="pagination-item" href="?page={{ posts.previous_page_number }}">Newer</a>
+    {% endif %}
+    <span class="pagination-item pagination-status">Page {{ posts.number }} of {{ posts.paginator.num_pages }}</span>
+    {% if posts.has_next %}
+    <a class="pagination-item" href="?page={{ posts.next_page_number }}">Older</a>
+    {% endif %}
+  </nav>
+{% endblock %}
