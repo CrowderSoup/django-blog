@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "blog.apps.BlogConfig",
     "files.apps.FilesConfig",
     "micropub.apps.MicropubConfig",
+    "indieauth.apps.IndieauthConfig",
     "analytics.apps.AnalyticsConfig",
     "site_admin.apps.SiteAdminConfig",
 
