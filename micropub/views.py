@@ -34,7 +34,7 @@ from files.models import Attachment, File
 from .models import MicropubRequestLog, Webmention
 from .webmention import queue_webmentions_for_post, verify_webmention_source
 
-TOKEN_ENDPOINT = "https://tokens.indieauth.com/token"
+DEFAULT_TOKEN_ENDPOINT = "https://tokens.indieauth.com/token"
 logger = logging.getLogger(__name__)
 
 
@@ -402,7 +402,7 @@ def _start_indieauth_login(request, me_value: str, next_url: str):
     if token_endpoint:
         request.session["indieauth_token_endpoint"] = token_endpoint
     else:
-        request.session["indieauth_token_endpoint"] = TOKEN_ENDPOINT
+        request.session["indieauth_token_endpoint"] = DEFAULT_TOKEN_ENDPOINT
 
     params = {
         "me": normalized_me,
@@ -839,13 +839,16 @@ def _authorized(request):
     if not token:
         return False, []
 
+    introspect_url = request.build_absolute_uri(reverse("indieauth-introspect"))
+    body = urlencode({"token": token}).encode("utf-8")
     verification_request = Request(
-        TOKEN_ENDPOINT,
+        introspect_url,
+        data=body,
         headers={
-            "Authorization": f"Bearer {token}",
             "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
         },
-        method="GET",
+        method="POST",
     )
 
     try:
@@ -1021,7 +1024,7 @@ class IndieAuthCallbackView(View):
         next_url = _safe_next_url(request, request.session.get("indieauth_next", "/"))
         expected_state = request.session.get("indieauth_state")
         pending_me = request.session.get("indieauth_pending_me")
-        token_endpoint = request.session.get("indieauth_token_endpoint", TOKEN_ENDPOINT)
+        token_endpoint = request.session.get("indieauth_token_endpoint", DEFAULT_TOKEN_ENDPOINT)
         code = request.GET.get("code")
         state = request.GET.get("state")
         returned_me = request.GET.get("me")
