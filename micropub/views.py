@@ -863,6 +863,30 @@ def _download_and_attach_photo(post, url: str, alt_text: str = ""):
     return True
 
 
+def _introspect_local(token: str) -> tuple[bool, list[str]] | None:
+    try:
+        from indieauth.models import IndieAuthAccessToken
+    except Exception:
+        return None
+
+    try:
+        from django.utils import timezone
+        from indieauth.views import _hash_token
+    except Exception:
+        return None
+
+    token_hash = _hash_token(token)
+    token_obj = IndieAuthAccessToken.objects.filter(token_hash=token_hash).first()
+    if not token_obj:
+        return False, []
+    if token_obj.revoked_at:
+        return False, []
+    if token_obj.expires_at and token_obj.expires_at <= timezone.now():
+        return False, []
+    scopes = _parse_scope(token_obj.scope)
+    return True, scopes
+
+
 def _authorized(request):
     request.micropub_auth_error = ""
     auth_header = request.META.get("HTTP_AUTHORIZATION", "")
@@ -874,6 +898,13 @@ def _authorized(request):
     if not token:
         request.micropub_auth_error = "missing_token"
         return False, []
+
+    local = _introspect_local(token)
+    if local is not None:
+        authorized, scopes = local
+        if not authorized:
+            request.micropub_auth_error = "introspect_inactive"
+        return authorized, scopes
 
     introspect_url = request.build_absolute_uri(reverse("indieauth-introspect"))
     body = urlencode({"token": token}).encode("utf-8")
