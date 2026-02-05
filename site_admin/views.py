@@ -60,7 +60,13 @@ from core.themes import (
     theme_storage_healthcheck,
 )
 from micropub.models import MicropubRequestLog, Webmention
-from indieauth.models import IndieAuthRequestLog
+from indieauth.models import (
+    IndieAuthAccessToken,
+    IndieAuthAuthorizationCode,
+    IndieAuthClient,
+    IndieAuthConsent,
+    IndieAuthRequestLog,
+)
 from blog.comments import AkismetError, submit_ham, submit_spam
 from micropub.webmention import (
     queue_webmentions_for_post,
@@ -89,6 +95,7 @@ from .forms import (
     WebmentionCreateForm,
     WebmentionFilterForm,
     ErrorLogFilterForm,
+    IndieAuthFilterForm,
 )
 
 logger = logging.getLogger(__name__)
@@ -382,6 +389,12 @@ def _strip_page_query(request):
     return query_params.urlencode()
 
 
+def _strip_query_param(request, param):
+    query_params = request.GET.copy()
+    query_params.pop(param, None)
+    return query_params.urlencode()
+
+
 def _is_local_url(url, request):
     if not url:
         return False
@@ -413,6 +426,14 @@ def _filter_webmentions_by_direction(webmentions, direction, request):
     for prefix in prefixes:
         query |= Q(source__startswith=prefix)
     return webmentions.filter(query)
+
+
+def _redact_token_hash(token_hash):
+    if not token_hash:
+        return ""
+    prefix = token_hash[:6]
+    suffix = token_hash[-4:] if len(token_hash) > 10 else token_hash[-2:]
+    return f"{prefix}...{suffix}"
 
 
 def _build_daily_counts(qs, start_date, end_date):
@@ -1293,6 +1314,208 @@ def indieauth_error_detail(request, log_id):
             "log": log_entry,
             "headers_text": headers_text,
             "query_text": query_text,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def indieauth_settings(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "revoke_token":
+            token_id = request.POST.get("token_id")
+            token = get_object_or_404(IndieAuthAccessToken, pk=token_id)
+            if token.revoked_at:
+                messages.info(request, "Access token is already revoked.")
+            else:
+                token.revoked_at = timezone.now()
+                token.save(update_fields=["revoked_at"])
+                messages.success(request, "Access token revoked.")
+            return redirect("site_admin:indieauth_settings")
+        if action == "delete_client":
+            client_pk = request.POST.get("client_pk")
+            client = get_object_or_404(IndieAuthClient, pk=client_pk)
+            now = timezone.now()
+            token_updates = IndieAuthAccessToken.objects.filter(
+                client_id=client.client_id, revoked_at__isnull=True
+            ).update(revoked_at=now)
+            consent_deletes, _ = IndieAuthConsent.objects.filter(
+                client_id=client.client_id
+            ).delete()
+            code_deletes, _ = IndieAuthAuthorizationCode.objects.filter(
+                client_id=client.client_id
+            ).delete()
+            client.delete()
+            messages.success(
+                request,
+                (
+                    "Client removed. "
+                    f"Revoked {token_updates} token(s), "
+                    f"deleted {consent_deletes} consent(s), "
+                    f"deleted {code_deletes} authorization code(s)."
+                ),
+            )
+            return redirect("site_admin:indieauth_settings")
+
+    data = request.GET.copy() if request.GET else None
+    if data is not None and not data.get("status"):
+        if data.get("revoked"):
+            data["status"] = "revoked"
+        elif data.get("active"):
+            data["status"] = "active"
+    filter_form = IndieAuthFilterForm(data or None)
+
+    clients = IndieAuthClient.objects.all().order_by("name", "client_id")
+    tokens = IndieAuthAccessToken.objects.select_related("user").order_by(
+        "-created_at", "-id"
+    )
+    if filter_form.is_valid():
+        query = filter_form.cleaned_data.get("q")
+        client_id = filter_form.cleaned_data.get("client_id")
+        me = filter_form.cleaned_data.get("me")
+        user = filter_form.cleaned_data.get("user")
+        scope = filter_form.cleaned_data.get("scope")
+        status = filter_form.cleaned_data.get("status")
+
+        if query:
+            clients = clients.filter(
+                Q(client_id__icontains=query) | Q(name__icontains=query)
+            )
+            tokens = tokens.filter(
+                Q(client_id__icontains=query)
+                | Q(me__icontains=query)
+                | Q(scope__icontains=query)
+                | Q(user__username__icontains=query)
+                | Q(user__email__icontains=query)
+            )
+        if client_id:
+            clients = clients.filter(client_id__icontains=client_id)
+            tokens = tokens.filter(client_id__icontains=client_id)
+        if me:
+            tokens = tokens.filter(me__icontains=me)
+        if user:
+            tokens = tokens.filter(
+                Q(user__username__icontains=user)
+                | Q(user__email__icontains=user)
+                | Q(user__first_name__icontains=user)
+                | Q(user__last_name__icontains=user)
+            )
+        if scope:
+            tokens = tokens.filter(scope__icontains=scope)
+        if status == "active":
+            tokens = tokens.filter(revoked_at__isnull=True)
+        elif status == "revoked":
+            tokens = tokens.filter(revoked_at__isnull=False)
+
+    clients_paginator = Paginator(clients, 20)
+    tokens_paginator = Paginator(tokens, 20)
+
+    clients_page_number = request.GET.get("clients_page")
+    tokens_page_number = request.GET.get("tokens_page")
+    try:
+        clients_page_obj = clients_paginator.page(clients_page_number)
+    except PageNotAnInteger:
+        clients_page_obj = clients_paginator.page(1)
+    except EmptyPage:
+        clients_page_obj = clients_paginator.page(clients_paginator.num_pages)
+
+    try:
+        tokens_page_obj = tokens_paginator.page(tokens_page_number)
+    except PageNotAnInteger:
+        tokens_page_obj = tokens_paginator.page(1)
+    except EmptyPage:
+        tokens_page_obj = tokens_paginator.page(tokens_paginator.num_pages)
+
+    for token in tokens_page_obj.object_list:
+        token.redacted_hash = _redact_token_hash(token.token_hash)
+
+    context = {
+        "filter_form": filter_form,
+        "clients_page_obj": clients_page_obj,
+        "clients_paginator": clients_paginator,
+        "tokens_page_obj": tokens_page_obj,
+        "tokens_paginator": tokens_paginator,
+        "clients_base_query": _strip_query_param(request, "clients_page"),
+        "tokens_base_query": _strip_query_param(request, "tokens_page"),
+        "clients_count": IndieAuthClient.objects.count(),
+        "active_tokens_count": IndieAuthAccessToken.objects.filter(
+            revoked_at__isnull=True
+        ).count(),
+        "revoked_tokens_count": IndieAuthAccessToken.objects.filter(
+            revoked_at__isnull=False
+        ).count(),
+    }
+
+    return render(request, "site_admin/settings/indieauth/index.html", context)
+
+
+@require_http_methods(["GET", "POST"])
+def indieauth_client_detail(request, client_pk):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    client = get_object_or_404(IndieAuthClient, pk=client_pk)
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "revoke_token":
+            token_id = request.POST.get("token_id")
+            token = get_object_or_404(IndieAuthAccessToken, pk=token_id)
+            if token.revoked_at:
+                messages.info(request, "Access token is already revoked.")
+            else:
+                token.revoked_at = timezone.now()
+                token.save(update_fields=["revoked_at"])
+                messages.success(request, "Access token revoked.")
+            return redirect("site_admin:indieauth_client_detail", client_pk=client_pk)
+        if action == "delete_client":
+            now = timezone.now()
+            token_updates = IndieAuthAccessToken.objects.filter(
+                client_id=client.client_id, revoked_at__isnull=True
+            ).update(revoked_at=now)
+            consent_deletes, _ = IndieAuthConsent.objects.filter(
+                client_id=client.client_id
+            ).delete()
+            code_deletes, _ = IndieAuthAuthorizationCode.objects.filter(
+                client_id=client.client_id
+            ).delete()
+            client.delete()
+            messages.success(
+                request,
+                (
+                    "Client removed. "
+                    f"Revoked {token_updates} token(s), "
+                    f"deleted {consent_deletes} consent(s), "
+                    f"deleted {code_deletes} authorization code(s)."
+                ),
+            )
+            return redirect("site_admin:indieauth_settings")
+
+    tokens = (
+        IndieAuthAccessToken.objects.filter(client_id=client.client_id)
+        .select_related("user")
+        .order_by("-created_at", "-id")
+    )
+    consents = (
+        IndieAuthConsent.objects.filter(client_id=client.client_id)
+        .select_related("user")
+        .order_by("-last_used_at", "-created_at", "-id")
+    )
+    for token in tokens:
+        token.redacted_hash = _redact_token_hash(token.token_hash)
+
+    return render(
+        request,
+        "site_admin/settings/indieauth/client_detail.html",
+        {
+            "client": client,
+            "tokens": tokens,
+            "consents": consents,
         },
     )
 

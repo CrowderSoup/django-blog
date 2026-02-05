@@ -19,6 +19,12 @@ from core.models import HCard, HCardPhoto, RequestErrorLog, SiteConfiguration, T
 from core.themes import ThemeDefinition, ThemeUpdateResult
 from core.test_utils import build_test_theme
 from files.models import Attachment, File
+from indieauth.models import (
+    IndieAuthAccessToken,
+    IndieAuthAuthorizationCode,
+    IndieAuthClient,
+    IndieAuthConsent,
+)
 from micropub.models import Webmention
 
 
@@ -916,3 +922,140 @@ class SiteAdminErrorLogTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "invalid_request")
+
+
+class SiteAdminIndieAuthSettingsTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        self.user = get_user_model().objects.create_user(
+            username="reader",
+            email="reader@example.com",
+            password="password",
+        )
+        self.staff = get_user_model().objects.create_user(
+            username="editor",
+            email="editor@example.com",
+            password="password",
+            is_staff=True,
+        )
+
+    def _create_client(self):
+        return IndieAuthClient.objects.create(
+            client_id="https://app.example.com",
+            name="Example App",
+            redirect_uris=["https://app.example.com/callback"],
+        )
+
+    def _create_token(self, client_id, user, token_hash="a" * 64):
+        return IndieAuthAccessToken.objects.create(
+            token_hash=token_hash,
+            client_id=client_id,
+            me="https://example.com",
+            scope="read write",
+            user=user,
+            expires_at=timezone.now() + timedelta(days=7),
+        )
+
+    def test_indieauth_settings_requires_staff(self):
+        response = self.client.get(reverse("site_admin:indieauth_settings"))
+
+        self.assertRedirects(
+            response,
+            f"{reverse('site_admin:login')}?next={reverse('site_admin:indieauth_settings')}",
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("site_admin:indieauth_settings"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_indieauth_settings_accessible_without_dev_tools(self):
+        settings_obj = SiteConfiguration.get_solo()
+        settings_obj.developer_tools_enabled = False
+        settings_obj.save()
+
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("site_admin:indieauth_settings"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "IndieAuth")
+
+    def test_indieauth_settings_redacts_token_hash(self):
+        client = self._create_client()
+        token_hash = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"
+        self._create_token(client.client_id, self.staff, token_hash=token_hash)
+
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("site_admin:indieauth_settings"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, token_hash)
+        redacted = f"{token_hash[:6]}...{token_hash[-4:]}"
+        self.assertContains(response, redacted)
+
+    def test_indieauth_settings_revoke_token(self):
+        client = self._create_client()
+        token = self._create_token(client.client_id, self.staff)
+
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("site_admin:indieauth_settings"),
+            {"action": "revoke_token", "token_id": token.id},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        token.refresh_from_db()
+        self.assertIsNotNone(token.revoked_at)
+
+    def test_indieauth_settings_delete_client(self):
+        client = self._create_client()
+        token = self._create_token(client.client_id, self.staff)
+        consent = IndieAuthConsent.objects.create(
+            user=self.staff,
+            client_id=client.client_id,
+            scope="read",
+        )
+        code = IndieAuthAuthorizationCode.objects.create(
+            code_hash="b" * 64,
+            code_challenge="challenge",
+            code_challenge_method="S256",
+            client_id=client.client_id,
+            redirect_uri="https://app.example.com/callback",
+            me="https://example.com",
+            scope="read",
+            user=self.staff,
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("site_admin:indieauth_settings"),
+            {"action": "delete_client", "client_pk": client.id},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(IndieAuthClient.objects.filter(pk=client.id).exists())
+        token.refresh_from_db()
+        self.assertIsNotNone(token.revoked_at)
+        self.assertFalse(IndieAuthConsent.objects.filter(pk=consent.id).exists())
+        self.assertFalse(IndieAuthAuthorizationCode.objects.filter(pk=code.id).exists())
+
+    def test_indieauth_client_detail_lists_tokens_and_consents(self):
+        client = self._create_client()
+        token_hash = "c" * 64
+        self._create_token(client.client_id, self.staff, token_hash=token_hash)
+        IndieAuthConsent.objects.create(
+            user=self.staff,
+            client_id=client.client_id,
+            scope="read",
+        )
+
+        self.client.force_login(self.staff)
+        response = self.client.get(
+            reverse("site_admin:indieauth_client_detail", kwargs={"client_pk": client.id})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        redacted = f"{token_hash[:6]}...{token_hash[-4:]}"
+        self.assertContains(response, redacted)
+        self.assertContains(response, self.staff.get_username())

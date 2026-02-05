@@ -265,6 +265,31 @@ class ErrorLogFilterForm(forms.Form):
             )
 
 
+class IndieAuthFilterForm(forms.Form):
+    q = forms.CharField(required=False, label="Search")
+    client_id = forms.CharField(required=False, label="Client")
+    me = forms.CharField(required=False, label="Me")
+    user = forms.CharField(required=False, label="User")
+    scope = forms.CharField(required=False, label="Scope")
+    status = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("", "Any status"),
+            ("active", "Active"),
+            ("revoked", "Revoked"),
+        ],
+        label="Status",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault(
+                "class",
+                "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+            )
+
+
 class CommentFilterForm(forms.Form):
     q = forms.CharField(required=False, label="Search")
     status = forms.ChoiceField(
