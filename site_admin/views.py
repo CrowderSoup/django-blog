@@ -2659,26 +2659,37 @@ def profile_edit(request):
             except (TypeError, ValueError):
                 continue
         if form.is_valid() and url_formset.is_valid() and email_formset.is_valid():
-            hcard = form.save(commit=False)
-            if not hcard.user_id:
-                hcard.user = request.user
-            hcard.save()
-            parent_instance = hcard
-            url_formset.instance = hcard
-            url_formset.save()
-            email_formset.instance = hcard
-            email_formset.save()
-            _sync_profile_photos(
-                request=request,
-                hcard=hcard,
-                existing_meta=existing_meta,
-                existing_remove_ids=existing_remove_ids,
-                uploaded_meta=uploaded_meta,
-            )
-            saved = True
-            existing_meta = None
-            uploaded_meta = None
-            existing_remove_ids = set()
+            try:
+                with transaction.atomic():
+                    hcard = form.save(commit=False)
+                    if not hcard.user_id:
+                        hcard.user = request.user
+                    hcard.save()
+                    parent_instance = hcard
+                    url_formset.instance = hcard
+                    url_formset.save()
+                    email_formset.instance = hcard
+                    email_formset.save()
+                    _sync_profile_photos(
+                        request=request,
+                        hcard=hcard,
+                        existing_meta=existing_meta,
+                        existing_remove_ids=existing_remove_ids,
+                        uploaded_meta=uploaded_meta,
+                    )
+            except Exception as exc:
+                logger.exception("Profile save failed for user %s", request.user.pk)
+                form.add_error(
+                    None,
+                    "Unable to save your profile right now. Please try again.",
+                )
+            else:
+                saved = True
+                existing_meta = None
+                uploaded_meta = None
+                existing_remove_ids = set()
+        elif not form.non_field_errors():
+            form.add_error(None, "Please correct the errors below and try again.")
     else:
         initial = {}
         if not parent_instance.uid:

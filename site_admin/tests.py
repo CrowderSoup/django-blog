@@ -303,6 +303,82 @@ class SiteAdminProfilePhotoTests(TestCase):
                 self.assertTrue(File.objects.filter(id=asset.id).exists())
 
 
+class SiteAdminProfileEditTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        self.staff = get_user_model().objects.create_user(
+            username="editor",
+            email="editor@example.com",
+            password="password",
+            is_staff=True,
+        )
+
+    def _formset_management_data(self, prefix, *, total=0, initial=0):
+        return {
+            f"{prefix}-TOTAL_FORMS": str(total),
+            f"{prefix}-INITIAL_FORMS": str(initial),
+            f"{prefix}-MIN_NUM_FORMS": "0",
+            f"{prefix}-MAX_NUM_FORMS": "1000",
+        }
+
+    def test_profile_edit_saves_photos(self):
+        self.client.force_login(self.staff)
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                upload = SimpleUploadedFile(
+                    "profile.jpg",
+                    b"fake-image-data",
+                    content_type="image/jpeg",
+                )
+                asset = File.objects.create(
+                    kind=File.IMAGE,
+                    file=upload,
+                    owner=self.staff,
+                )
+
+                data = {
+                    "name": "Editor",
+                    "uid": "https://example.com/",
+                    "uploaded_ids": str(asset.id),
+                    "uploaded_positions": "0",
+                    **self._formset_management_data("urls"),
+                    **self._formset_management_data("emails"),
+                }
+                response = self.client.post(reverse("site_admin:profile_edit"), data)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.context["saved"])
+                hcard = HCard.objects.get(user=self.staff)
+                self.assertTrue(
+                    HCardPhoto.objects.filter(hcard=hcard, asset=asset).exists()
+                )
+
+    def test_profile_edit_reports_photo_sync_errors(self):
+        self.client.force_login(self.staff)
+        data = {
+            "name": "Editor",
+            "uid": "https://example.com/",
+            **self._formset_management_data("urls"),
+            **self._formset_management_data("emails"),
+        }
+
+        with (
+            mock.patch(
+                "site_admin.views._sync_profile_photos", side_effect=Exception("boom")
+            ),
+            mock.patch("site_admin.views.logger") as logger_mock,
+        ):
+            response = self.client.post(reverse("site_admin:profile_edit"), data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["saved"])
+        logger_mock.exception.assert_called_once()
+        self.assertIn(
+            "Unable to save your profile right now. Please try again.",
+            response.context["form"].non_field_errors(),
+        )
+
+
 class SiteAdminFileDeleteTests(TestCase):
     def setUp(self):
         super().setUp()
