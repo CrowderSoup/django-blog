@@ -648,10 +648,16 @@ def _issue_authorization_code(
 
 @csrf_exempt
 def token(request):
+    if request.method == "GET" and request.GET.get("token"):
+        return _verify_access_token(request, request.GET.get("token", ""))
     if request.method != "POST":
         response = HttpResponseBadRequest("Invalid request")
         _log_indieauth_error(request, response)
         return response
+
+    token_value = request.POST.get("token") or request.POST.get("access_token")
+    if token_value or request.POST.get("action") == "verify":
+        return _verify_access_token(request, token_value or "")
 
     action = request.POST.get("action", "")
     if action == "revoke":
@@ -805,6 +811,33 @@ def userinfo(request):
     if email:
         user_data["email"] = email
     return JsonResponse(user_data)
+
+
+def _verify_access_token(request, token_value: str):
+    if not token_value:
+        response = JsonResponse({"active": False}, status=400)
+        _log_indieauth_error(request, response)
+        return response
+
+    token_hash = _hash_token(token_value)
+    token = IndieAuthAccessToken.objects.filter(token_hash=token_hash).first()
+    if not token or token.revoked_at:
+        return JsonResponse({"active": False})
+
+    if token.expires_at and token.expires_at <= timezone.now():
+        return JsonResponse({"active": False})
+
+    payload = {
+        "active": True,
+        "scope": token.scope,
+        "client_id": token.client_id,
+        "me": token.me,
+        "token_type": "Bearer",
+        "iat": int(token.created_at.timestamp()),
+    }
+    if token.expires_at:
+        payload["exp"] = int(token.expires_at.timestamp())
+    return JsonResponse(payload)
 
 
 def _render_error(request, message: str, status: int = 400):
