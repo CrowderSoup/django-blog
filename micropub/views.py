@@ -303,6 +303,10 @@ def _log_micropub_error(request, response):
         return
     try:
         error, response_body = _extract_response_error(response)
+        if response.status_code == 401 and error == "unauthorized":
+            auth_error = getattr(request, "micropub_auth_error", "")
+            if auth_error:
+                error = f"unauthorized:{auth_error}"
         MicropubRequestLog.objects.create(
             method=request.method,
             path=request.path,
@@ -860,6 +864,7 @@ def _download_and_attach_photo(post, url: str, alt_text: str = ""):
 
 
 def _authorized(request):
+    request.micropub_auth_error = ""
     auth_header = request.META.get("HTTP_AUTHORIZATION", "")
     if auth_header.startswith("Bearer "):
         token = auth_header[7:].strip()
@@ -867,6 +872,7 @@ def _authorized(request):
         token = _token_from_post(request) or request.GET.get("access_token")
 
     if not token:
+        request.micropub_auth_error = "missing_token"
         return False, []
 
     introspect_url = request.build_absolute_uri(reverse("indieauth-introspect"))
@@ -886,10 +892,12 @@ def _authorized(request):
             body = response.read().decode()
             status_code = response.status
             content_type = response.headers.get("Content-Type", "")
-    except (HTTPError, URLError, TimeoutError):
+    except (HTTPError, URLError, TimeoutError) as exc:
+        request.micropub_auth_error = f"introspect_request_failed:{exc.__class__.__name__}"
         return False, []
 
     if status_code != 200:
+        request.micropub_auth_error = f"introspect_status:{status_code}"
         return False, []
 
     scopes = []
@@ -897,18 +905,21 @@ def _authorized(request):
         try:
             token_data = json.loads(body) if "application/json" in content_type else parse_qs(body)
         except json.JSONDecodeError:
+            request.micropub_auth_error = "introspect_parse_error"
             return False, []
 
         active = token_data.get("active")
         if isinstance(active, list):
             active = _first_value({"active": active}, "active")
         if active is False or (isinstance(active, str) and active.lower() == "false"):
+            request.micropub_auth_error = "introspect_inactive"
             return False, []
 
         error = token_data.get("error")
         if isinstance(error, list):
             error = _first_value({"error": error}, "error")
         if error:
+            request.micropub_auth_error = f"introspect_error:{error}"
             return False, []
 
         scopes = _parse_scope(token_data.get("scope", []))
