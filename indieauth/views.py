@@ -648,14 +648,24 @@ def _issue_authorization_code(
 
 @csrf_exempt
 def token(request):
-    if request.method == "GET" and request.GET.get("token"):
-        return _verify_access_token(request, request.GET.get("token", ""))
+    if request.method == "GET":
+        token_value = request.GET.get("token", "")
+        if not token_value:
+            auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+            if auth_header.startswith("Bearer "):
+                token_value = auth_header[7:].strip()
+        if token_value:
+            return _verify_access_token(request, token_value)
     if request.method != "POST":
         response = HttpResponseBadRequest("Invalid request")
         _log_indieauth_error(request, response)
         return response
 
     token_value = request.POST.get("token") or request.POST.get("access_token")
+    if not token_value:
+        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+        if auth_header.startswith("Bearer "):
+            token_value = auth_header[7:].strip()
     if token_value or request.POST.get("action") == "verify":
         return _verify_access_token(request, token_value or "")
 
