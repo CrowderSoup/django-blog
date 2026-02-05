@@ -245,6 +245,30 @@ class MicropubErrorFilterForm(forms.Form):
             )
 
 
+class IndieAuthErrorFilterForm(forms.Form):
+    q = forms.CharField(required=False, label="Search")
+    status_code = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("", "Any status"),
+            ("400", "400"),
+            ("401", "401"),
+            ("403", "403"),
+            ("404", "404"),
+            ("405", "405"),
+        ],
+        label="Status",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault(
+                "class",
+                "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+            )
+
+
 class CommentFilterForm(forms.Form):
     q = forms.CharField(required=False, label="Search")
     status = forms.ChoiceField(

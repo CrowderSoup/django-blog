@@ -59,6 +59,7 @@ from core.themes import (
     theme_storage_healthcheck,
 )
 from micropub.models import MicropubRequestLog, Webmention
+from indieauth.models import IndieAuthRequestLog
 from blog.comments import AkismetError, submit_ham, submit_spam
 from micropub.webmention import (
     queue_webmentions_for_post,
@@ -87,6 +88,7 @@ from .forms import (
     WebmentionCreateForm,
     WebmentionFilterForm,
     MicropubErrorFilterForm,
+    IndieAuthErrorFilterForm,
 )
 
 logger = logging.getLogger(__name__)
@@ -1007,6 +1009,24 @@ def _filtered_micropub_errors(request):
     return form, logs
 
 
+def _filtered_indieauth_errors(request):
+    form = IndieAuthErrorFilterForm(request.GET or None)
+    logs = IndieAuthRequestLog.objects.order_by("-created_at", "-id")
+    if form.is_valid():
+        query = form.cleaned_data.get("q")
+        status_code = form.cleaned_data.get("status_code")
+        if query:
+            logs = logs.filter(
+                Q(path__icontains=query)
+                | Q(error__icontains=query)
+                | Q(request_body__icontains=query)
+                | Q(response_body__icontains=query)
+            )
+        if status_code:
+            logs = logs.filter(status_code=int(status_code))
+    return form, logs
+
+
 def _akismet_payload_for_comment(comment, request):
     return {
         "blog": request.build_absolute_uri("/"),
@@ -1122,6 +1142,63 @@ def micropub_error_detail(request, log_id):
     return render(
         request,
         "site_admin/micropub_errors/detail.html",
+        {
+            "log": log_entry,
+            "headers_text": headers_text,
+            "query_text": query_text,
+        },
+    )
+
+
+@require_http_methods(["GET"])
+def indieauth_error_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    filter_form, logs = _filtered_indieauth_errors(request)
+    paginator = Paginator(logs, 20)
+    page_number = request.GET.get("page")
+    try:
+        page_obj = paginator.page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+
+    endpoint_urls = [
+        ("Authorization", request.build_absolute_uri(reverse("indieauth-authorize"))),
+        ("Token", request.build_absolute_uri(reverse("indieauth-token"))),
+        ("Introspection", request.build_absolute_uri(reverse("indieauth-introspect"))),
+        ("Userinfo", request.build_absolute_uri(reverse("indieauth-userinfo"))),
+    ]
+
+    context = {
+        "filter_form": filter_form,
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "base_query": _strip_page_query(request),
+        "endpoint_urls": endpoint_urls,
+    }
+
+    if request.headers.get("HX-Request"):
+        return render(request, "site_admin/indieauth_errors/_list.html", context)
+
+    return render(request, "site_admin/indieauth_errors/index.html", context)
+
+
+@require_http_methods(["GET"])
+def indieauth_error_detail(request, log_id):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    log_entry = get_object_or_404(IndieAuthRequestLog, pk=log_id)
+    headers_text = json.dumps(log_entry.request_headers or {}, indent=2, sort_keys=True)
+    query_text = json.dumps(log_entry.request_query or {}, indent=2, sort_keys=True)
+    return render(
+        request,
+        "site_admin/indieauth_errors/detail.html",
         {
             "log": log_entry,
             "headers_text": headers_text,

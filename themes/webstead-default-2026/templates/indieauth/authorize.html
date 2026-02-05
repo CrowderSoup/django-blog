@@ -1,8 +1,14 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <section class="indieauth-approve">
-    <h1>Authorize application</h1>
+  <section class="indieauth-approve entry-summary">
+    <header class="indieauth-header">
+      <h1>Authorize application</h1>
+      <p class="indieauth-subtitle">
+        Review what this app is asking for before you approve the request.
+      </p>
+    </header>
+
     <div class="indieauth-client">
       {% if client.logo_url %}
       <img class="indieauth-client-logo" src="{{ client.logo_url }}" alt="" />
@@ -13,18 +19,20 @@
       </div>
     </div>
 
-    <p>This application is requesting access to {{ me }}.</p>
+    <p class="indieauth-request">This application is requesting access to <strong>{{ me }}</strong>.</p>
 
     {% if scopes %}
-    <p>Requested scopes:</p>
-    <ul>
-      {% for scope_item in scopes %}
-      <li>{{ scope_item }}</li>
-      {% endfor %}
-    </ul>
+    <div class="indieauth-scopes">
+      <p class="indieauth-scopes-label">Requested scopes:</p>
+      <ul>
+        {% for scope_item in scopes %}
+        <li>{{ scope_item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
     {% endif %}
 
-    <form method="post">
+    <form method="post" class="indieauth-form">
       {% csrf_token %}
       <input type="hidden" name="client_id" value="{{ client_id }}" />
       <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}" />
@@ -34,14 +42,18 @@
       <input type="hidden" name="code_challenge" value="{{ code_challenge }}" />
       <input type="hidden" name="code_challenge_method" value="{{ code_challenge_method }}" />
 
-      <label>
+      <label class="indieauth-remember">
         <input type="checkbox" name="remember" value="1" />
         Remember this approval
       </label>
 
       <div class="indieauth-actions">
-        <button type="submit" name="decision" value="approve">Approve</button>
-        <button type="submit" name="decision" value="deny">Deny</button>
+        <button type="submit" name="decision" value="approve" class="indieauth-button indieauth-button--approve">
+          Approve
+        </button>
+        <button type="submit" name="decision" value="deny" class="indieauth-button indieauth-button--deny">
+          Deny
+        </button>
       </div>
     </form>
   </section>
