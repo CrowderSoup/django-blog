@@ -140,6 +140,30 @@ def _parse_scope(scope_value):
     return []
 
 
+def _token_from_post(request) -> str | None:
+    token = request.POST.get("access_token")
+    if not token:
+        token = request.POST.get("access_token[]")
+    if not token:
+        tokens = request.POST.getlist("access_token") or request.POST.getlist("access_token[]")
+        if tokens:
+            token = tokens[0]
+    if isinstance(token, str) and token:
+        return token
+    return None
+
+
+def _token_from_json(raw) -> str | None:
+    if not isinstance(raw, dict):
+        return None
+    token_value = raw.get("access_token")
+    if isinstance(token_value, list):
+        token_value = _first_value({"access_token": token_value}, "access_token")
+    if isinstance(token_value, str) and token_value:
+        return token_value
+    return None
+
+
 def _has_token_conflict(request):
     auth_header = request.META.get("HTTP_AUTHORIZATION", "")
     header_token = None
@@ -150,12 +174,11 @@ def _has_token_conflict(request):
     if request.content_type and "json" in request.content_type:
         try:
             raw = json.loads(request.body or "{}")
-            if isinstance(raw, dict) and raw.get("access_token"):
-                body_token = raw.get("access_token")
+            body_token = _token_from_json(raw)
         except json.JSONDecodeError:
             body_token = None
     else:
-        body_token = request.POST.get("access_token")
+        body_token = _token_from_post(request)
 
     query_token = request.GET.get("access_token")
 
@@ -180,8 +203,15 @@ def _redact_payload(value):
     if isinstance(value, dict):
         redacted = {}
         for key, item in value.items():
-            if str(key).lower() in SENSITIVE_FIELD_NAMES and isinstance(item, str):
-                redacted[key] = _redact_secret(item)
+            key_name = str(key).lower()
+            normalized_key = key_name[:-2] if key_name.endswith("[]") else key_name
+            if normalized_key in SENSITIVE_FIELD_NAMES:
+                if isinstance(item, str):
+                    redacted[key] = _redact_secret(item)
+                elif isinstance(item, list):
+                    redacted[key] = [_redact_secret(v) if isinstance(v, str) else _redact_payload(v) for v in item]
+                else:
+                    redacted[key] = _redact_payload(item)
             else:
                 redacted[key] = _redact_payload(item)
         return redacted
@@ -832,9 +862,9 @@ def _download_and_attach_photo(post, url: str, alt_text: str = ""):
 def _authorized(request):
     auth_header = request.META.get("HTTP_AUTHORIZATION", "")
     if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
+        token = auth_header[7:].strip()
     else:
-        token = request.POST.get("access_token") or request.GET.get("access_token")
+        token = _token_from_post(request) or request.GET.get("access_token")
 
     if not token:
         return False, []
