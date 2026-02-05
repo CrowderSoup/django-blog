@@ -2317,7 +2317,7 @@ def theme_settings(request):
 
     return render(
         request,
-            "site_admin/settings/themes/index.html",
+        "site_admin/settings/themes/index.html",
         {
             "upload_form": upload_form,
             "git_form": git_form,

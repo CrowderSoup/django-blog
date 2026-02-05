@@ -3,14 +3,47 @@
 :root {
   --ink: #161413;
   --muted: #5a605f;
+  --inverse-text: #ffffff;
   --paper: #f6f2ea;
   --panel: #ffffff;
+  --surface-cream: #fffdf9;
+  --surface-warm: #f3eee5;
+  --surface-accent-soft: #fff4e8;
+  --surface-accent-soft-alt: #fff3e6;
+  --surface-accent-hover: #ffe6cc;
+  --activity-surface: #fff9f1;
+  --activity-border: #e8ddcd;
+  --interaction-surface: #f9f5ef;
+  --map-surface: #f3ede2;
+  --photo-dark: #0f0f0f;
   --accent: #d56b30;
   --accent-deep: #9a4c2b;
   --line: #ded8cd;
   --shadow: rgba(22, 20, 19, 0.08);
+  --accent-shadow: rgba(213, 107, 48, 0.18);
+  --accent-shadow-strong: rgba(154, 76, 43, 0.2);
+  --interaction-shadow: rgba(68, 41, 6, 0.08);
+  --input-shadow: rgba(22, 20, 19, 0.04);
+  --focus-shadow: rgba(213, 107, 48, 0.15);
+  --scrollbar-shadow: rgba(22, 20, 19, 0.25);
+  --glass-light: rgba(255, 255, 255, 0.6);
+  --glass-lighter: rgba(255, 255, 255, 0.7);
+  --photo-dot: rgba(0, 0, 0, 0.18);
+  --photo-dot-active: rgba(0, 0, 0, 0.6);
   --site-admin-bar-bg: #f5efe6;
   --site-admin-bar-hamburger-bg: #6b6a69;
+  --bg-start: #f5efe6;
+  --bg-mid: #f8f4ee;
+  --bg-end: #fbfaf7;
+  --bg-pattern: url("../img/pattern.svg");
+  --font-body: "IBM Plex Sans", "Avenir", "Trebuchet MS", sans-serif;
+  --font-heading: "Fraunces", "Iowan Old Style", "Palatino", serif;
+  --font-mono: "IBM Plex Mono", "Menlo", "Consolas", "Courier New", monospace;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
 }
 
 * {
@@ -24,15 +57,20 @@ html {
 body {
   margin: 0;
   color: var(--ink);
-  background: linear-gradient(120deg, #f5efe6 0%, #f8f4ee 60%, #fbfaf7 100%);
+  background: linear-gradient(
+    120deg,
+    var(--bg-start) 0%,
+    var(--bg-mid) 60%,
+    var(--bg-end) 100%
+  );
   background-image: linear-gradient(
       120deg,
-      #f5efe6 0%,
-      #f8f4ee 60%,
-      #fbfaf7 100%
+      var(--bg-start) 0%,
+      var(--bg-mid) 60%,
+      var(--bg-end) 100%
     ),
-    url("../img/pattern.svg");
-  font-family: "IBM Plex Sans", "Avenir", "Trebuchet MS", sans-serif;
+    var(--bg-pattern);
+  font-family: var(--font-body);
   line-height: 1.6;
 }
 
@@ -43,7 +81,7 @@ body {
 img {
   max-width: 100%;
   height: auto;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
 }
 
 a {
@@ -62,8 +100,8 @@ a:focus {
   top: 1rem;
   padding: 0.5rem 0.75rem;
   background: var(--accent-deep);
-  color: #fff;
-  border-radius: 999px;
+  color: var(--inverse-text);
+  border-radius: var(--radius-pill);
   z-index: 10;
 }
 
@@ -77,7 +115,7 @@ a:focus {
 }
 
 .site-title a {
-  font-family: "Fraunces", "Iowan Old Style", "Palatino", serif;
+  font-family: var(--font-heading);
   font-size: clamp(2rem, 3vw, 3.25rem);
   letter-spacing: 0.02em;
   color: var(--ink);
@@ -98,7 +136,7 @@ a:focus {
 
 .site-nav a {
   padding: 0.4rem 0.9rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   background: var(--panel);
   box-shadow: 0 6px 18px var(--shadow);
@@ -139,13 +177,13 @@ a:focus {
   padding: 2rem;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: var(--radius-xl);
   box-shadow: 0 12px 30px var(--shadow);
   animation: rise 0.6s ease;
 }
 
 .author-details h1 {
-  font-family: "Fraunces", "Iowan Old Style", "Palatino", serif;
+  font-family: var(--font-heading);
   margin-top: 0;
   margin-bottom: 0.5rem;
 }
@@ -190,7 +228,7 @@ a:focus {
 
 .entry-header h1,
 .entry-header h3 {
-  font-family: "Fraunces", "Iowan Old Style", "Palatino", serif;
+  font-family: var(--font-heading);
 }
 
 .entry-meta {
@@ -211,7 +249,7 @@ a:focus {
 .entry-repost {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   padding: 2rem;
   margin-bottom: 2rem;
   box-shadow: 0 10px 24px var(--shadow);
@@ -250,18 +288,18 @@ a:focus {
   align-items: center;
   gap: 1rem;
   padding: 1rem 1.25rem;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--line);
-  background: #fffdf9;
+  background: var(--surface-cream);
 }
 
 .indieauth-client-logo {
   width: 56px;
   height: 56px;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--line);
   object-fit: cover;
-  background: #fff;
+  background: var(--panel);
 }
 
 .indieauth-client-meta {
@@ -279,7 +317,7 @@ a:focus {
   margin: 0;
   font-size: 0.85rem;
   color: var(--muted);
-  font-family: "IBM Plex Mono", "Menlo", "Consolas", "Courier New", monospace;
+  font-family: var(--font-mono);
   word-break: break-all;
 }
 
@@ -313,9 +351,9 @@ a:focus {
 
 .indieauth-scopes li {
   padding: 0.35rem 0.8rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
-  background: #fff4e8;
+  background: var(--surface-accent-soft);
   color: var(--accent-deep);
   font-size: 0.85rem;
   font-weight: 600;
@@ -343,13 +381,13 @@ a:focus {
 .indieauth-button {
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--inverse-text);
   padding: 0.6rem 1.2rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
-  box-shadow: 0 10px 18px rgba(213, 107, 48, 0.18);
+  box-shadow: 0 10px 18px var(--accent-shadow);
   transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
@@ -358,11 +396,11 @@ a:focus {
   background: var(--accent-deep);
   transform: translateY(-1px);
   outline: none;
-  box-shadow: 0 12px 22px rgba(154, 76, 43, 0.2);
+  box-shadow: 0 12px 22px var(--accent-shadow-strong);
 }
 
 .indieauth-button--deny {
-  background: #fff;
+  background: var(--panel);
   color: var(--accent-deep);
   border: 1px solid var(--line);
   box-shadow: none;
@@ -370,7 +408,7 @@ a:focus {
 
 .indieauth-button--deny:hover,
 .indieauth-button--deny:focus {
-  background: #ffe6cc;
+  background: var(--surface-accent-hover);
   color: var(--accent);
   border-color: var(--accent);
   box-shadow: none;
@@ -380,9 +418,9 @@ a:focus {
 .p-content pre {
   margin: 1.25rem 0;
   padding: 1rem 1.25rem;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--line);
-  background: #f3eee5;
+  background: var(--surface-warm);
   overflow-x: auto;
   max-width: 100%;
 }
@@ -390,7 +428,7 @@ a:focus {
 .e-content pre code,
 .p-content pre code {
   display: block;
-  font-family: "IBM Plex Mono", "Menlo", "Consolas", "Courier New", monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
   white-space: pre;
 }
@@ -427,9 +465,9 @@ a:focus {
 }
 
 .tags a {
-  background: #f3eee5;
+  background: var(--surface-warm);
   padding: 0.25rem 0.7rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.85rem;
   color: var(--accent-deep);
   cursor: pointer;
@@ -439,8 +477,8 @@ a:focus {
   margin-bottom: 2rem;
   padding: 1rem 1.5rem;
   border: 1px dashed var(--line);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius-md);
+  background: var(--glass-light);
 }
 
 .post-filter form {
@@ -464,7 +502,7 @@ a:focus {
 .filter-clear {
   border: 1px solid var(--line);
   background: var(--panel);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.35rem 0.9rem;
   font-size: 0.85rem;
 }
@@ -472,7 +510,7 @@ a:focus {
 .filter-toggle {
   border: 1px solid var(--line);
   background: var(--panel);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.35rem 0.9rem;
   font-size: 0.85rem;
 }
@@ -513,8 +551,8 @@ html.js-enabled .post-filter.is-collapsed .filter-header {
   gap: 0.35rem;
   align-items: center;
   padding: 0.3rem 0.6rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.7);
+  border-radius: var(--radius-pill);
+  background: var(--glass-lighter);
   border: 1px solid var(--line);
   font-size: 0.85rem;
 }
@@ -534,7 +572,7 @@ html.js-enabled .post-filter.is-collapsed .filter-header {
   align-items: center;
   gap: 0.5rem;
   padding: 0.45rem 0.9rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   background: var(--panel);
   font-size: 0.85rem;
@@ -545,7 +583,7 @@ html.js-enabled .post-filter.is-collapsed .filter-header {
 
 .filter-feed-link:hover,
 .filter-feed-link:focus-visible {
-  background: #fff;
+  background: var(--panel);
 }
 
 .filter-feed-icon {
@@ -562,9 +600,9 @@ html.js-enabled .post-filter.is-collapsed .filter-header {
   flex-wrap: wrap;
   gap: 0.5rem;
   padding: 0.5rem 0.7rem;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--panel);
 }
 
 .tag-chips {
@@ -575,9 +613,9 @@ html.js-enabled .post-filter.is-collapsed .filter-header {
 
 .tag-chip {
   border: none;
-  background: #f3eee5;
+  background: var(--surface-warm);
   color: var(--accent-deep);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.2rem 0.7rem;
   font-size: 0.8rem;
 }
@@ -608,7 +646,7 @@ html.js-enabled .post-filter.is-collapsed .filter-header {
 .tag-suggestion {
   border: 1px solid var(--line);
   background: var(--panel);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.25rem 0.75rem;
   font-size: 0.8rem;
   color: var(--ink);
@@ -624,7 +662,7 @@ html.js-enabled .post-filter.is-collapsed .filter-header {
 
 .pagination-item {
   padding: 0.4rem 0.8rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   background: var(--panel);
 }
@@ -636,7 +674,7 @@ html.js-enabled .post-filter.is-collapsed .filter-header {
 .photo-slider {
   margin: 2rem 0;
   padding: 1rem 1.25rem 1.25rem;
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--line);
   background: var(--panel);
   box-shadow: 0 12px 24px var(--shadow);
@@ -654,7 +692,7 @@ html.js-enabled .post-filter.is-collapsed .filter-header {
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   scrollbar-width: thin;
-  scrollbar-color: rgba(22, 20, 19, 0.25) transparent;
+  scrollbar-color: var(--scrollbar-shadow) transparent;
 }
 
 html[data-motion="full"] .photo-slider.is-enhanced .slides {
@@ -671,7 +709,7 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
   position: relative;
   overflow: hidden;
   border-radius: 0;
-  background: #fff;
+  background: var(--panel);
   border: none;
   box-shadow: none;
 }
@@ -717,7 +755,7 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
   min-width: 2.25rem;
   height: 2.25rem;
   padding: 0 0.85rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--accent-deep);
@@ -734,7 +772,7 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 .slider-button:focus {
   transform: translateY(-1px);
   background: var(--accent);
-  color: #fff;
+  color: var(--inverse-text);
   border-color: var(--accent);
   outline: none;
 }
@@ -767,9 +805,9 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
   justify-content: center;
   width: 1.4rem;
   height: 1.4rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--panel);
   color: var(--accent-deep);
   font-size: 0.7rem;
   transition:
@@ -781,7 +819,7 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 
 .slider-nav a[aria-current="true"] {
   background: var(--accent);
-  color: #fff;
+  color: var(--inverse-text);
   border-color: var(--accent);
 }
 
@@ -789,7 +827,7 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 .slider-nav a:focus {
   transform: translateY(-1px);
   background: var(--accent);
-  color: #fff;
+  color: var(--inverse-text);
   border-color: var(--accent);
   outline: none;
 }
@@ -800,16 +838,16 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
   align-items: center;
   gap: 0.35rem;
   padding: 0.35rem 0.7rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
-  background: #fff4e8;
+  background: var(--surface-accent-soft);
   color: var(--muted);
   font-size: 0.85rem;
 }
 
 .entry-activity {
-  background: linear-gradient(160deg, #fff9f1 0%, #ffffff 85%);
-  border-color: #e8ddcd;
+  background: linear-gradient(160deg, var(--activity-surface) 0%, var(--panel) 85%);
+  border-color: var(--activity-border);
 }
 
 .entry-activity .entry-header,
@@ -826,9 +864,9 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 .interaction-kicker {
   align-self: flex-start;
   padding: 0.25rem 0.75rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
-  background: #fff3e6;
+  background: var(--surface-accent-soft-alt);
   color: var(--accent-deep);
   font-size: 0.72rem;
   font-weight: 600;
@@ -838,10 +876,10 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 
 .interaction-card {
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   padding: 1rem 1.25rem;
-  background: #f9f5ef;
-  box-shadow: 0 8px 24px rgba(68, 41, 6, 0.08);
+  background: var(--interaction-surface);
+  box-shadow: 0 8px 24px var(--interaction-shadow);
   margin: 1.25rem 0;
 }
 
@@ -914,9 +952,9 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
   align-items: center;
   gap: 0.35rem;
   padding: 0.32rem 0.75rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--accent-deep);
-  background: #fff;
+  background: var(--panel);
   color: var(--accent-deep);
   font-size: 0.8rem;
   font-weight: 600;
@@ -926,7 +964,7 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 }
 
 .interaction-read-more:hover {
-  background: #ffe6cc;
+  background: var(--surface-accent-hover);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -951,11 +989,11 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 .activity-map {
   height: clamp(16rem, 45vh, 30rem);
   margin: 1.25rem 0 1rem;
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--line);
   overflow: hidden;
   box-shadow: 0 18px 32px var(--shadow);
-  background: linear-gradient(145deg, #f3ede2 0%, #ffffff 100%);
+  background: linear-gradient(145deg, var(--map-surface) 0%, var(--panel) 100%);
   z-index: 0;
 }
 
@@ -969,7 +1007,7 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 
 .activity-stats div {
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   padding: 0.85rem 1rem;
   background: var(--panel);
   box-shadow: 0 10px 20px var(--shadow);
@@ -1025,7 +1063,7 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 }
 
 .activity-elevation__fill {
-  fill: rgba(213, 107, 48, 0.18);
+  fill: var(--accent-shadow);
 }
 
 .activity-elevation__line {
@@ -1036,7 +1074,7 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 
 .activity-elevation__cursor {
   fill: var(--accent);
-  stroke: #ffffff;
+  stroke: var(--panel);
   stroke-width: 2;
   display: none;
 }
@@ -1073,14 +1111,14 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
   border: 1px solid var(--line);
   background: var(--panel);
   padding: 0.4rem 0.9rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
 }
 
 .interaction-form-card {
   margin-top: 2rem;
   padding: 1.5rem;
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--line);
   background: var(--panel);
   box-shadow: 0 12px 24px var(--shadow);
@@ -1097,14 +1135,14 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 
 .interaction-form-title {
   margin: 0;
-  font-family: "Fraunces", "Iowan Old Style", "Palatino", serif;
+  font-family: var(--font-heading);
 }
 
 .interaction-form-toggle {
   display: none;
   align-items: center;
   gap: 0.25rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   background: var(--panel);
   padding: 0.2rem;
@@ -1119,7 +1157,7 @@ html.js-enabled .interaction-form-toggle {
   background: transparent;
   color: var(--muted);
   padding: 0.35rem 0.85rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -1130,7 +1168,7 @@ html.js-enabled .interaction-form-toggle {
 
 .interaction-toggle-button.is-active {
   background: var(--accent);
-  color: #fff;
+  color: var(--inverse-text);
 }
 
 .interaction-toggle-button:focus {
@@ -1145,7 +1183,7 @@ html.js-enabled .interaction-form-toggle {
 
 .interaction-form-panel h3 {
   margin-top: 0;
-  font-family: "Fraunces", "Iowan Old Style", "Palatino", serif;
+  font-family: var(--font-heading);
 }
 
 html.js-enabled .interaction-form-panel.is-hidden {
@@ -1157,7 +1195,7 @@ html.js-enabled .interaction-form-panel.is-hidden {
 .comments {
   margin-top: 2rem;
   padding: 1.5rem;
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--line);
   background: var(--panel);
   box-shadow: 0 12px 24px var(--shadow);
@@ -1167,7 +1205,7 @@ html.js-enabled .interaction-form-panel.is-hidden {
 .comments-form h2,
 .comments h2 {
   margin-top: 0;
-  font-family: "Fraunces", "Iowan Old Style", "Palatino", serif;
+  font-family: var(--font-heading);
 }
 
 .interaction-form-panel form,
@@ -1195,12 +1233,12 @@ html.js-enabled .interaction-form-panel.is-hidden {
 .comments-form textarea {
   width: 100%;
   padding: 0.6rem 0.75rem;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
-  background: #fffdf9;
+  background: var(--surface-cream);
   color: var(--ink);
   font-size: 0.95rem;
-  box-shadow: inset 0 1px 2px rgba(22, 20, 19, 0.04);
+  box-shadow: inset 0 1px 2px var(--input-shadow);
 }
 
 .interaction-form-panel input:focus,
@@ -1212,7 +1250,7 @@ html.js-enabled .interaction-form-panel.is-hidden {
 .comments-form textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(213, 107, 48, 0.15);
+  box-shadow: 0 0 0 3px var(--focus-shadow);
 }
 
 .interaction-form-panel button,
@@ -1221,13 +1259,13 @@ html.js-enabled .interaction-form-panel.is-hidden {
   justify-self: start;
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--inverse-text);
   padding: 0.6rem 1.1rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
-  box-shadow: 0 10px 18px rgba(213, 107, 48, 0.18);
+  box-shadow: 0 10px 18px var(--accent-shadow);
   transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
@@ -1240,7 +1278,7 @@ html.js-enabled .interaction-form-panel.is-hidden {
   background: var(--accent-deep);
   transform: translateY(-1px);
   outline: none;
-  box-shadow: 0 12px 22px rgba(154, 76, 43, 0.2);
+  box-shadow: 0 12px 22px var(--accent-shadow-strong);
 }
 
 .comment-field-group,
@@ -1265,9 +1303,9 @@ html.js-enabled .interaction-form-panel.is-hidden {
 
 .comment {
   padding: 1rem 1.2rem;
-  border-radius: 16px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--line);
-  background: #fffdf9;
+  background: var(--surface-cream);
 }
 
 .comment-meta {
@@ -1364,7 +1402,7 @@ html.js-enabled .interaction-form-panel.is-hidden {
   .entry-photo .photo-frame {
     padding: 0;
     border-radius: 0;
-    background: #0f0f0f;
+    background: var(--photo-dark);
     box-shadow: none;
     aspect-ratio: 4 / 5;
   }
@@ -1374,7 +1412,7 @@ html.js-enabled .interaction-form-panel.is-hidden {
     height: 100%;
     max-height: none;
     object-fit: cover;
-    background: #0f0f0f;
+    background: var(--photo-dark);
   }
 
   .entry-photo .photo-frame::before {
@@ -1394,12 +1432,12 @@ html.js-enabled .interaction-form-panel.is-hidden {
     width: 0.55rem;
     height: 0.55rem;
     border: none;
-    background: rgba(0, 0, 0, 0.18);
+    background: var(--photo-dot);
     color: transparent;
   }
 
   .entry-photo .slider-nav a[aria-current="true"] {
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--photo-dot-active);
   }
 
   .entry-photo .photo-slider figcaption {

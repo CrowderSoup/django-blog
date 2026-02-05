@@ -2,5 +2,224 @@
   "label": "Webstead Default 2026",
   "author": "CrowderSoup",
   "version": "0.1.3",
-  "description": "Reference theme with annotated templates and assets for Webstead-style blogs."
+  "description": "Reference theme with annotated templates and assets for Webstead-style blogs.",
+  "settings": {
+    "fields": {
+      "ink_color": {
+        "type": "color",
+        "label": "Ink",
+        "default": "#161413"
+      },
+      "muted_color": {
+        "type": "color",
+        "label": "Muted text",
+        "default": "#5a605f"
+      },
+      "inverse_text_color": {
+        "type": "color",
+        "label": "Inverse text",
+        "default": "#ffffff"
+      },
+      "paper_color": {
+        "type": "color",
+        "label": "Paper",
+        "default": "#f6f2ea"
+      },
+      "panel_color": {
+        "type": "color",
+        "label": "Panel",
+        "default": "#ffffff"
+      },
+      "surface_cream_color": {
+        "type": "color",
+        "label": "Surface cream",
+        "default": "#fffdf9"
+      },
+      "surface_warm_color": {
+        "type": "color",
+        "label": "Surface warm",
+        "default": "#f3eee5"
+      },
+      "surface_accent_soft_color": {
+        "type": "color",
+        "label": "Accent soft",
+        "default": "#fff4e8"
+      },
+      "surface_accent_soft_alt_color": {
+        "type": "color",
+        "label": "Accent soft alt",
+        "default": "#fff3e6"
+      },
+      "surface_accent_hover_color": {
+        "type": "color",
+        "label": "Accent hover",
+        "default": "#ffe6cc"
+      },
+      "activity_surface_color": {
+        "type": "color",
+        "label": "Activity surface",
+        "default": "#fff9f1"
+      },
+      "activity_border_color": {
+        "type": "color",
+        "label": "Activity border",
+        "default": "#e8ddcd"
+      },
+      "interaction_surface_color": {
+        "type": "color",
+        "label": "Interaction surface",
+        "default": "#f9f5ef"
+      },
+      "map_surface_color": {
+        "type": "color",
+        "label": "Map surface",
+        "default": "#f3ede2"
+      },
+      "photo_dark_color": {
+        "type": "color",
+        "label": "Photo dark",
+        "default": "#0f0f0f"
+      },
+      "accent_color": {
+        "type": "color",
+        "label": "Accent",
+        "default": "#d56b30"
+      },
+      "accent_deep_color": {
+        "type": "color",
+        "label": "Accent deep",
+        "default": "#9a4c2b"
+      },
+      "line_color": {
+        "type": "color",
+        "label": "Line",
+        "default": "#ded8cd"
+      },
+      "shadow_color": {
+        "type": "color_alpha",
+        "label": "Shadow color",
+        "default": "rgba(22, 20, 19, 0.08)"
+      },
+      "accent_shadow_color": {
+        "type": "color_alpha",
+        "label": "Accent shadow",
+        "default": "rgba(213, 107, 48, 0.18)"
+      },
+      "accent_shadow_strong_color": {
+        "type": "color_alpha",
+        "label": "Accent shadow strong",
+        "default": "rgba(154, 76, 43, 0.2)"
+      },
+      "interaction_shadow_color": {
+        "type": "color_alpha",
+        "label": "Interaction shadow",
+        "default": "rgba(68, 41, 6, 0.08)"
+      },
+      "input_shadow_color": {
+        "type": "color_alpha",
+        "label": "Input shadow",
+        "default": "rgba(22, 20, 19, 0.04)"
+      },
+      "focus_shadow_color": {
+        "type": "color_alpha",
+        "label": "Focus ring shadow",
+        "default": "rgba(213, 107, 48, 0.15)"
+      },
+      "scrollbar_shadow_color": {
+        "type": "color_alpha",
+        "label": "Scrollbar thumb",
+        "default": "rgba(22, 20, 19, 0.25)"
+      },
+      "glass_light_color": {
+        "type": "color_alpha",
+        "label": "Glass light",
+        "default": "rgba(255, 255, 255, 0.6)"
+      },
+      "glass_lighter_color": {
+        "type": "color_alpha",
+        "label": "Glass lighter",
+        "default": "rgba(255, 255, 255, 0.7)"
+      },
+      "photo_dot_color": {
+        "type": "color_alpha",
+        "label": "Photo dot",
+        "default": "rgba(0, 0, 0, 0.18)"
+      },
+      "photo_dot_active_color": {
+        "type": "color_alpha",
+        "label": "Photo dot active",
+        "default": "rgba(0, 0, 0, 0.6)"
+      },
+      "admin_bar_bg_color": {
+        "type": "color",
+        "label": "Admin bar background",
+        "default": "#f5efe6"
+      },
+      "admin_bar_hamburger_color": {
+        "type": "color",
+        "label": "Admin bar hamburger",
+        "default": "#6b6a69"
+      },
+      "background_gradient_start": {
+        "type": "color",
+        "label": "Background gradient start",
+        "default": "#f5efe6"
+      },
+      "background_gradient_mid": {
+        "type": "color",
+        "label": "Background gradient mid",
+        "default": "#f8f4ee"
+      },
+      "background_gradient_end": {
+        "type": "color",
+        "label": "Background gradient end",
+        "default": "#fbfaf7"
+      },
+      "show_background_pattern": {
+        "type": "boolean",
+        "label": "Show background pattern",
+        "default": true
+      },
+      "font_body": {
+        "type": "string",
+        "label": "Body font stack",
+        "default": "\"IBM Plex Sans\", \"Avenir\", \"Trebuchet MS\", sans-serif"
+      },
+      "font_heading": {
+        "type": "string",
+        "label": "Heading font stack",
+        "default": "\"Fraunces\", \"Iowan Old Style\", \"Palatino\", serif"
+      },
+      "font_mono": {
+        "type": "string",
+        "label": "Mono font stack",
+        "default": "\"IBM Plex Mono\", \"Menlo\", \"Consolas\", \"Courier New\", monospace"
+      },
+      "radius_sm": {
+        "type": "string",
+        "label": "Radius small",
+        "default": "12px"
+      },
+      "radius_md": {
+        "type": "string",
+        "label": "Radius medium",
+        "default": "16px"
+      },
+      "radius_lg": {
+        "type": "string",
+        "label": "Radius large",
+        "default": "20px"
+      },
+      "radius_xl": {
+        "type": "string",
+        "label": "Radius extra large",
+        "default": "24px"
+      },
+      "radius_pill": {
+        "type": "string",
+        "label": "Radius pill",
+        "default": "999px"
+      }
+    }
+  }
 }

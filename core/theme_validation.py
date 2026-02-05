@@ -8,7 +8,7 @@ from typing import Optional
 from django.utils.text import slugify
 
 
-THEME_SETTINGS_FIELD_TYPES = {"string", "text", "boolean", "number", "color", "select"}
+THEME_SETTINGS_FIELD_TYPES = {"string", "text", "boolean", "number", "color", "color_alpha", "select"}
 
 
 @dataclass

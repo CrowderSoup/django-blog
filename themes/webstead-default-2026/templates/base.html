@@ -14,6 +14,53 @@
     {# Theme assets live at themes/<slug>/... #}
     <link rel="stylesheet" href="{% theme_static 'css/theme.css' %}" />
     <link rel="stylesheet" href="{% theme_static 'css/print.css' %}" media="print" />
+    <style>
+      :root {
+        --ink: {{ theme.settings.ink_color|default:"#161413" }};
+        --muted: {{ theme.settings.muted_color|default:"#5a605f" }};
+        --inverse-text: {{ theme.settings.inverse_text_color|default:"#ffffff" }};
+        --paper: {{ theme.settings.paper_color|default:"#f6f2ea" }};
+        --panel: {{ theme.settings.panel_color|default:"#ffffff" }};
+        --surface-cream: {{ theme.settings.surface_cream_color|default:"#fffdf9" }};
+        --surface-warm: {{ theme.settings.surface_warm_color|default:"#f3eee5" }};
+        --surface-accent-soft: {{ theme.settings.surface_accent_soft_color|default:"#fff4e8" }};
+        --surface-accent-soft-alt: {{ theme.settings.surface_accent_soft_alt_color|default:"#fff3e6" }};
+        --surface-accent-hover: {{ theme.settings.surface_accent_hover_color|default:"#ffe6cc" }};
+        --activity-surface: {{ theme.settings.activity_surface_color|default:"#fff9f1" }};
+        --activity-border: {{ theme.settings.activity_border_color|default:"#e8ddcd" }};
+        --interaction-surface: {{ theme.settings.interaction_surface_color|default:"#f9f5ef" }};
+        --map-surface: {{ theme.settings.map_surface_color|default:"#f3ede2" }};
+        --photo-dark: {{ theme.settings.photo_dark_color|default:"#0f0f0f" }};
+        --accent: {{ theme.settings.accent_color|default:"#d56b30" }};
+        --accent-deep: {{ theme.settings.accent_deep_color|default:"#9a4c2b" }};
+        --line: {{ theme.settings.line_color|default:"#ded8cd" }};
+        --shadow: {{ theme.settings.shadow_color|default:"rgba(22, 20, 19, 0.08)" }};
+        --accent-shadow: {{ theme.settings.accent_shadow_color|default:"rgba(213, 107, 48, 0.18)" }};
+        --accent-shadow-strong: {{ theme.settings.accent_shadow_strong_color|default:"rgba(154, 76, 43, 0.2)" }};
+        --interaction-shadow: {{ theme.settings.interaction_shadow_color|default:"rgba(68, 41, 6, 0.08)" }};
+        --input-shadow: {{ theme.settings.input_shadow_color|default:"rgba(22, 20, 19, 0.04)" }};
+        --focus-shadow: {{ theme.settings.focus_shadow_color|default:"rgba(213, 107, 48, 0.15)" }};
+        --scrollbar-shadow: {{ theme.settings.scrollbar_shadow_color|default:"rgba(22, 20, 19, 0.25)" }};
+        --glass-light: {{ theme.settings.glass_light_color|default:"rgba(255, 255, 255, 0.6)" }};
+        --glass-lighter: {{ theme.settings.glass_lighter_color|default:"rgba(255, 255, 255, 0.7)" }};
+        --photo-dot: {{ theme.settings.photo_dot_color|default:"rgba(0, 0, 0, 0.18)" }};
+        --photo-dot-active: {{ theme.settings.photo_dot_active_color|default:"rgba(0, 0, 0, 0.6)" }};
+        --site-admin-bar-bg: {{ theme.settings.admin_bar_bg_color|default:"#f5efe6" }};
+        --site-admin-bar-hamburger-bg: {{ theme.settings.admin_bar_hamburger_color|default:"#6b6a69" }};
+        --bg-start: {{ theme.settings.background_gradient_start|default:"#f5efe6" }};
+        --bg-mid: {{ theme.settings.background_gradient_mid|default:"#f8f4ee" }};
+        --bg-end: {{ theme.settings.background_gradient_end|default:"#fbfaf7" }};
+        --bg-pattern: {% if theme.settings.show_background_pattern|default:true %}url("{% theme_static 'img/pattern.svg' %}"){% else %}none{% endif %};
+        --font-body: {{ theme.settings.font_body|default:"\"IBM Plex Sans\", \"Avenir\", \"Trebuchet MS\", sans-serif"|safe }};
+        --font-heading: {{ theme.settings.font_heading|default:"\"Fraunces\", \"Iowan Old Style\", \"Palatino\", serif"|safe }};
+        --font-mono: {{ theme.settings.font_mono|default:"\"IBM Plex Mono\", \"Menlo\", \"Consolas\", \"Courier New\", monospace"|safe }};
+        --radius-sm: {{ theme.settings.radius_sm|default:"12px" }};
+        --radius-md: {{ theme.settings.radius_md|default:"16px" }};
+        --radius-lg: {{ theme.settings.radius_lg|default:"20px" }};
+        --radius-xl: {{ theme.settings.radius_xl|default:"24px" }};
+        --radius-pill: {{ theme.settings.radius_pill|default:"999px" }};
+      }
+    </style>
 
     {# RSS feed (only present on pages where feed_url is provided) #}
     {% if feed_url %}

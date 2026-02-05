@@ -1,4 +1,5 @@
 from django import forms
+import re
 from django.core.exceptions import ValidationError
 from django.core.validators import EmailValidator, URLValidator
 from django.utils import timezone
@@ -527,6 +528,23 @@ class ThemeFileForm(forms.Form):
 class ThemeSettingsForm(forms.Form):
     def __init__(self, schema: dict, *args, **kwargs):
         self.schema = schema or {}
+        initial = kwargs.get("initial")
+        if isinstance(initial, dict):
+            initial = dict(initial)
+            fields = self.schema.get("fields")
+            if isinstance(fields, dict):
+                for name, definition in fields.items():
+                    if not isinstance(definition, dict):
+                        continue
+                    if definition.get("type") != "color_alpha":
+                        continue
+                    value = initial.get(name)
+                    if isinstance(value, str):
+                        hex_value, alpha = _rgba_to_hex_alpha(value)
+                        initial[name] = [hex_value, alpha]
+                    elif value is None:
+                        initial[name] = ["#000000", 1.0]
+            kwargs["initial"] = initial
         super().__init__(*args, **kwargs)
         fields = self.schema.get("fields")
         if not isinstance(fields, dict):
@@ -577,6 +595,12 @@ def _theme_settings_field(field_type, *, label, required, help_text, definition)
             help_text=help_text,
             widget=forms.TextInput(attrs={"type": "color"}),
         )
+    elif field_type == "color_alpha":
+        field = ColorAlphaField(
+            required=required,
+            label=label,
+            help_text=help_text,
+        )
     elif field_type == "select":
         choices = _theme_settings_choices(definition.get("choices"))
         if not choices:
@@ -599,12 +623,137 @@ def _theme_settings_field(field_type, *, label, required, help_text, definition)
             "class",
             "h-4 w-4 rounded border-[color:var(--admin-border)] text-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
         )
+    elif isinstance(field.widget, forms.MultiWidget):
+        for subwidget in field.widget.widgets:
+            subwidget.attrs.setdefault(
+                "class",
+                "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+            )
     else:
         field.widget.attrs.setdefault(
             "class",
             "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
         )
     return field
+
+
+_RGBA_RE = re.compile(
+    r"rgba?\(\s*(?P<r>\d{1,3})\s*,\s*(?P<g>\d{1,3})\s*,\s*(?P<b>\d{1,3})(?:\s*,\s*(?P<a>[\d.]+))?\s*\)"
+)
+
+
+def _clamp(value, min_value, max_value):
+    return max(min_value, min(max_value, value))
+
+
+def _rgba_to_hex_alpha(value):
+    if not isinstance(value, str):
+        return "#000000", 1.0
+    match = _RGBA_RE.fullmatch(value.strip())
+    if not match:
+        return value.strip(), 1.0
+    r = _clamp(int(match.group("r")), 0, 255)
+    g = _clamp(int(match.group("g")), 0, 255)
+    b = _clamp(int(match.group("b")), 0, 255)
+    alpha = match.group("a")
+    a = float(alpha) if alpha is not None else 1.0
+    a = _clamp(a, 0.0, 1.0)
+    return f"#{r:02x}{g:02x}{b:02x}", a
+
+
+def _hex_to_rgb(value):
+    if not isinstance(value, str):
+        return 0, 0, 0
+    raw = value.strip().lstrip("#")
+    if len(raw) == 3:
+        raw = "".join(ch * 2 for ch in raw)
+    if len(raw) != 6:
+        return 0, 0, 0
+    try:
+        return int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16)
+    except ValueError:
+        return 0, 0, 0
+
+
+class ColorHexInput(forms.TextInput):
+    input_type = "color"
+
+    def format_value(self, value):
+        if value is None:
+            return None
+        hex_value, _alpha = _rgba_to_hex_alpha(value)
+        return hex_value
+
+
+class ColorAlphaWidget(forms.MultiWidget):
+    def __init__(self, attrs=None):
+        widgets = [
+            ColorHexInput(),
+            forms.NumberInput(attrs={"min": "0", "max": "1", "step": "0.01"}),
+        ]
+        super().__init__(widgets, attrs)
+
+    def decompress(self, value):
+        if value is None:
+            return ["#000000", 1.0]
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            hex_value, alpha = _rgba_to_hex_alpha(value[0])
+            try:
+                alpha = float(value[1])
+            except (TypeError, ValueError):
+                alpha = alpha
+            return [hex_value, _clamp(alpha, 0.0, 1.0)]
+        hex_value, alpha = _rgba_to_hex_alpha(value)
+        return [hex_value, alpha]
+
+    def format_value(self, value):
+        if value is None:
+            return [None, None]
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            return list(value)
+        return self.decompress(value)
+
+    def get_context(self, name, value, attrs):
+        decompressed = self.decompress(value)
+        context = super().get_context(name, decompressed, attrs)
+        subwidgets = context.get("widget", {}).get("subwidgets", [])
+        if len(subwidgets) >= 2:
+            subwidgets[0]["value"] = decompressed[0]
+            subwidgets[1]["value"] = f"{float(decompressed[1]):.2f}" if decompressed[1] is not None else "1.00"
+        return context
+
+
+class ColorAlphaField(forms.Field):
+    widget = ColorAlphaWidget
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.widget = ColorAlphaWidget()
+
+    def prepare_value(self, value):
+        if isinstance(value, (list, tuple)) and len(value) >= 2:
+            hex_value, alpha = _rgba_to_hex_alpha(value[0])
+            try:
+                alpha = float(value[1])
+            except (TypeError, ValueError):
+                pass
+            return [hex_value, f"{_clamp(alpha, 0.0, 1.0):.2f}"]
+        hex_value, alpha = _rgba_to_hex_alpha(value)
+        return [hex_value, f"{_clamp(alpha, 0.0, 1.0):.2f}"]
+
+    def to_python(self, value):
+        if isinstance(value, (list, tuple)) and len(value) >= 2:
+            hex_value = value[0] or "#000000"
+            alpha = value[1]
+        else:
+            hex_value, alpha = _rgba_to_hex_alpha(value)
+        try:
+            alpha = float(alpha)
+        except (TypeError, ValueError):
+            alpha = 1.0
+        alpha = _clamp(alpha, 0.0, 1.0)
+        r, g, b = _hex_to_rgb(hex_value)
+        return f"rgba({r}, {g}, {b}, {alpha:.2f})"
 
 
 def _theme_settings_choices(raw_choices):
