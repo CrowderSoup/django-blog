@@ -13,7 +13,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from django.conf import settings
 from django.db import transaction
-from django.http import HttpResponseBadRequest, JsonResponse
+from django.http import HttpResponseBadRequest, JsonResponse, RawPostDataException
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -79,8 +79,17 @@ def _truncate_body(body: str) -> str:
 
 def _capture_request_body(request) -> str:
     content_type = request.content_type or ""
-    body_bytes = request.body or b""
+    try:
+        body_bytes = request.body or b""
+    except RawPostDataException:
+        if "application/x-www-form-urlencoded" in content_type:
+            parsed = {key: values for key, values in request.POST.lists()}
+            return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
+        return ""
     if not body_bytes:
+        if "application/x-www-form-urlencoded" in content_type and request.POST:
+            parsed = {key: values for key, values in request.POST.lists()}
+            return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
         return ""
     body_text = body_bytes.decode("utf-8", errors="replace")
 
@@ -661,17 +670,13 @@ def token(request):
         _log_indieauth_error(request, response)
         return response
 
-    token_value = request.POST.get("token") or request.POST.get("access_token")
-    if not token_value:
-        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
-        if auth_header.startswith("Bearer "):
-            token_value = auth_header[7:].strip()
-    if token_value or request.POST.get("action") == "verify":
-        return _verify_access_token(request, token_value or "")
-
     action = request.POST.get("action", "")
     if action == "revoke":
         token_value = request.POST.get("token") or request.POST.get("access_token")
+        if not token_value:
+            auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+            if auth_header.startswith("Bearer "):
+                token_value = auth_header[7:].strip()
         if not token_value:
             return JsonResponse({"revoked": False})
         token_hash = _hash_token(token_value)
@@ -679,6 +684,17 @@ def token(request):
             revoked_at=timezone.now()
         )
         return JsonResponse({"revoked": True})
+    if action == "verify":
+        token_value = request.POST.get("token") or request.POST.get("access_token") or ""
+        return _verify_access_token(request, token_value)
+
+    token_value = request.POST.get("token") or request.POST.get("access_token")
+    if not token_value:
+        auth_header = request.META.get("HTTP_AUTHORIZATION", "")
+        if auth_header.startswith("Bearer "):
+            token_value = auth_header[7:].strip()
+    if token_value:
+        return _verify_access_token(request, token_value or "")
 
     grant_type = request.POST.get("grant_type", "")
     if grant_type and grant_type != "authorization_code":

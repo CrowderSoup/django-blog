@@ -32,7 +32,7 @@ from blog.models import Post, Tag
 from core.models import Page, SiteConfiguration
 from files.models import Attachment, File
 from .models import MicropubRequestLog, Webmention
-from .webmention import queue_webmentions_for_post, verify_webmention_source
+from .webmention import BRIDGY_PUBLISH_TARGETS, queue_webmentions_for_post, verify_webmention_source
 
 DEFAULT_TOKEN_ENDPOINT = "https://tokens.indieauth.com/token"
 logger = logging.getLogger(__name__)
@@ -538,6 +538,22 @@ def _require_scope(request, needed):
     return None
 
 
+def _syndication_targets(settings_obj) -> list[dict]:
+    if not settings_obj:
+        return []
+    targets = []
+    for field_name, target_url in BRIDGY_PUBLISH_TARGETS:
+        if not getattr(settings_obj, field_name, False):
+            continue
+        name = field_name
+        try:
+            name = settings_obj._meta.get_field(field_name).verbose_name
+        except Exception:
+            pass
+        targets.append({"uid": target_url, "name": str(name)})
+    return targets
+
+
 def _slug_from_url(target_url, error_prefix):
     if not target_url:
         return None, HttpResponseBadRequest(f"Missing url for {error_prefix}")
@@ -984,6 +1000,7 @@ class MicropubView(View):
             if insufficient:
                 return insufficient
             media_endpoint = request.build_absolute_uri(reverse("micropub-media"))
+            settings_obj = SiteConfiguration.get_solo()
             return JsonResponse(
                 {
                     "media-endpoint": media_endpoint,
@@ -995,14 +1012,15 @@ class MicropubView(View):
                         {"type": Post.REPOST, "name": "Repost"},
                         {"type": Post.REPLY, "name": "Reply"},
                     ],
-                    "syndicate-to": [],
+                    "syndicate-to": _syndication_targets(settings_obj),
                 }
             )
         if query == "syndicate-to":
             insufficient = _require_scope(request, None)
             if insufficient:
                 return insufficient
-            return JsonResponse({"syndicate-to": []})
+            settings_obj = SiteConfiguration.get_solo()
+            return JsonResponse({"syndicate-to": _syndication_targets(settings_obj)})
         if query == "source":
             insufficient = _require_scope(request, "read")
             if insufficient:

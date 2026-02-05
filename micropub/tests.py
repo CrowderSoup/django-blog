@@ -8,6 +8,7 @@ from django.test.utils import override_settings
 from django.urls import reverse
 
 from blog.models import Post, Tag
+from core.models import SiteConfiguration
 from micropub.models import MicropubRequestLog, Webmention
 from micropub.webmention import send_bridgy_publish_webmentions
 
@@ -146,6 +147,53 @@ class MicropubViewTests(TestCase):
         props = body.get("properties", {})
         self.assertEqual(props.get("content"), ["Body"])
         self.assertIn("tag1", props.get("category", []))
+
+    @patch("micropub.views._authorized", return_value=(True, []))
+    def test_syndicate_to_returns_enabled_bridgy_targets(self, _authorized):
+        settings_obj = SiteConfiguration.get_solo()
+        settings_obj.bridgy_publish_bluesky = False
+        settings_obj.bridgy_publish_flickr = True
+        settings_obj.bridgy_publish_github = False
+        settings_obj.bridgy_publish_mastodon = False
+        settings_obj.save()
+
+        response = self.client.get(
+            MICROPUB_URL,
+            data={"q": "syndicate-to"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "syndicate-to": [
+                    {"uid": "https://brid.gy/publish/flickr", "name": "Bridgy Publish: Flickr"},
+                ]
+            },
+        )
+
+    @patch("micropub.views._authorized", return_value=(True, []))
+    def test_config_includes_syndicate_targets(self, _authorized):
+        settings_obj = SiteConfiguration.get_solo()
+        settings_obj.bridgy_publish_bluesky = True
+        settings_obj.bridgy_publish_flickr = False
+        settings_obj.bridgy_publish_github = False
+        settings_obj.bridgy_publish_mastodon = False
+        settings_obj.save()
+
+        response = self.client.get(
+            MICROPUB_URL,
+            data={"q": "config"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(
+            body["syndicate-to"],
+            [{"uid": "https://brid.gy/publish/bluesky", "name": "Bridgy Publish: Bluesky"}],
+        )
 
 
 class IndieAuthLoginTests(TestCase):
