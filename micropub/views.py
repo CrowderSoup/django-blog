@@ -29,9 +29,10 @@ from django.db import transaction
 from markdownify import markdownify as html_to_markdown
 
 from blog.models import Post, Tag
-from core.models import Page, SiteConfiguration
+from core.models import Page, SiteConfiguration, RequestErrorLog
+from core.request_logs import extract_response_error, log_request_error
 from files.models import Attachment, File
-from .models import MicropubRequestLog, Webmention
+from .models import Webmention
 from .webmention import BRIDGY_PUBLISH_TARGETS, queue_webmentions_for_post, verify_webmention_source
 
 DEFAULT_TOKEN_ENDPOINT = "https://tokens.indieauth.com/token"
@@ -186,139 +187,25 @@ def _has_token_conflict(request):
     return len(set(tokens)) > 1
 
 
-SENSITIVE_HEADER_NAMES = {"authorization", "cookie"}
-SENSITIVE_FIELD_NAMES = {"access_token", "refresh_token", "client_secret"}
-MAX_LOG_BODY_CHARS = 10000
-
-
-def _redact_secret(value: str) -> str:
-    if not value:
-        return value
-    if len(value) <= 12:
-        return "***"
-    return f"{value[:6]}...{value[-4:]}"
-
-
-def _redact_payload(value):
-    if isinstance(value, dict):
-        redacted = {}
-        for key, item in value.items():
-            key_name = str(key).lower()
-            normalized_key = key_name[:-2] if key_name.endswith("[]") else key_name
-            if normalized_key in SENSITIVE_FIELD_NAMES:
-                if isinstance(item, str):
-                    redacted[key] = _redact_secret(item)
-                elif isinstance(item, list):
-                    redacted[key] = [_redact_secret(v) if isinstance(v, str) else _redact_payload(v) for v in item]
-                else:
-                    redacted[key] = _redact_payload(item)
-            else:
-                redacted[key] = _redact_payload(item)
-        return redacted
-    if isinstance(value, list):
-        return [_redact_payload(item) for item in value]
-    return value
-
-
-def _truncate_body(body: str) -> str:
-    if len(body) <= MAX_LOG_BODY_CHARS:
-        return body
-    return f"{body[:MAX_LOG_BODY_CHARS]}\n...(truncated)"
-
-
-def _capture_request_body(request) -> str:
-    content_type = request.content_type or ""
-    if content_type.startswith("multipart/"):
-        fields = {key: request.POST.getlist(key) for key in request.POST.keys()}
-        files = {}
-        for key, items in request.FILES.lists():
-            files[key] = [
-                {
-                    "name": item.name,
-                    "size": item.size,
-                    "content_type": item.content_type,
-                }
-                for item in items
-            ]
-        payload = {"fields": _redact_payload(fields), "files": files}
-        return json.dumps(payload, indent=2, sort_keys=True)
-
-    body_bytes = request.body or b""
-    if not body_bytes:
-        return ""
-    body_text = body_bytes.decode("utf-8", errors="replace")
-
-    if "application/json" in content_type:
-        try:
-            parsed = json.loads(body_text)
-        except json.JSONDecodeError:
-            return _truncate_body(body_text)
-        return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
-
-    if "application/x-www-form-urlencoded" in content_type:
-        parsed = parse_qs(body_text, keep_blank_values=True)
-        return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
-
-    return _truncate_body(body_text)
-
-
-def _capture_request_headers(request) -> dict:
-    headers = dict(request.headers)
-    redacted = {}
-    for key, value in headers.items():
-        if key.lower() in SENSITIVE_HEADER_NAMES and isinstance(value, str):
-            redacted[key] = _redact_secret(value)
-        else:
-            redacted[key] = value
-    return redacted
-
-
-def _extract_response_error(response) -> tuple[str, str]:
-    content_type = response.get("Content-Type", "")
-    body = ""
-    if hasattr(response, "content"):
-        body = response.content.decode("utf-8", errors="replace")
-    if "application/json" in content_type and body:
-        try:
-            payload = json.loads(body)
-        except json.JSONDecodeError:
-            return "", body
-        if isinstance(payload, dict):
-            error = payload.get("error") or payload.get("error_description") or ""
-            return str(error), body
-    if body and response.status_code >= 400:
-        return body.strip(), body
-    return "", body
-
-
-def _client_ip(request) -> Optional[str]:
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
+MICROPUB_REDACT_FIELDS = {"access_token", "refresh_token", "client_secret"}
 
 
 def _log_micropub_error(request, response):
     if response.status_code < 400:
         return
     try:
-        error, response_body = _extract_response_error(response)
+        error, response_body = extract_response_error(response)
         if response.status_code == 401 and error == "unauthorized":
             auth_error = getattr(request, "micropub_auth_error", "")
             if auth_error:
                 error = f"unauthorized:{auth_error}"
-        MicropubRequestLog.objects.create(
-            method=request.method,
-            path=request.path,
-            status_code=response.status_code,
-            error=error or "",
-            request_headers=_capture_request_headers(request),
-            request_query={key: request.GET.getlist(key) for key in request.GET.keys()},
-            request_body=_capture_request_body(request),
-            response_body=response_body or "",
-            remote_addr=_client_ip(request),
-            user_agent=request.META.get("HTTP_USER_AGENT", ""),
-            content_type=request.content_type or "",
+        log_request_error(
+            RequestErrorLog.SOURCE_MICROPUB,
+            request,
+            response,
+            error=error,
+            response_body=response_body,
+            redact_fields=MICROPUB_REDACT_FIELDS,
         )
     except Exception:
         logger.exception(

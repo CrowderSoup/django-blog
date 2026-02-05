@@ -54,6 +54,8 @@ urlpatterns = [
         views.redirect_delete,
         name="redirect_delete",
     ),
+    path("settings/errors/", views.error_log_list, name="error_log_list"),
+    path("settings/errors/<int:log_id>/", views.error_log_detail, name="error_log_detail"),
     path("pages/", views.page_list, name="page_list"),
     path("pages/new/", views.page_edit, name="page_create"),
     path("pages/<slug:slug>/delete/", views.page_delete, name="page_delete"),

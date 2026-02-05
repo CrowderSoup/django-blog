@@ -1,5 +1,6 @@
 import json
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -13,7 +14,7 @@ from django.utils import timezone
 
 from analytics.models import Visit
 from blog.models import Comment, Post
-from core.models import HCard, HCardPhoto, SiteConfiguration, ThemeInstall
+from core.models import HCard, HCardPhoto, RequestErrorLog, SiteConfiguration, ThemeInstall
 from core.themes import ThemeDefinition, ThemeUpdateResult
 from core.test_utils import build_test_theme
 from files.models import Attachment, File
@@ -712,3 +713,117 @@ class SiteAdminCommentModerationTests(TestCase):
         comment.refresh_from_db()
         self.assertEqual(comment.status, Comment.SPAM)
         submit_spam.assert_called_once()
+
+
+class SiteAdminErrorLogTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        self.staff = get_user_model().objects.create_user(
+            username="editor",
+            email="editor@example.com",
+            password="password",
+            is_staff=True,
+        )
+
+    def test_error_log_list_filters(self):
+        self.client.force_login(self.staff)
+        settings_obj = SiteConfiguration.get_solo()
+        settings_obj.developer_tools_enabled = True
+        settings_obj.save()
+        micropub_log = RequestErrorLog.objects.create(
+            source=RequestErrorLog.SOURCE_MICROPUB,
+            method="POST",
+            path="/micropub",
+            status_code=400,
+            error="invalid_request",
+            request_headers={},
+            request_query={},
+            request_body="access_token=bad",
+            response_body="",
+        )
+        indieauth_log = RequestErrorLog.objects.create(
+            source=RequestErrorLog.SOURCE_INDIEAUTH,
+            method="POST",
+            path="/indieauth/token",
+            status_code=401,
+            error="invalid_token",
+            request_headers={},
+            request_query={},
+            request_body="",
+            response_body="bad token",
+        )
+
+        response = self.client.get(
+            reverse("site_admin:error_log_list"),
+            {"source": "micropub", "status_code": "400", "q": "invalid_request"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context["page_obj"].object_list), [micropub_log])
+
+        response = self.client.get(
+            reverse("site_admin:error_log_list"),
+            {"q": "bad token"},
+        )
+        self.assertEqual(list(response.context["page_obj"].object_list), [indieauth_log])
+
+    def test_error_log_list_orders_by_created_at(self):
+        self.client.force_login(self.staff)
+        settings_obj = SiteConfiguration.get_solo()
+        settings_obj.developer_tools_enabled = True
+        settings_obj.save()
+        older_log = RequestErrorLog.objects.create(
+            source=RequestErrorLog.SOURCE_MICROPUB,
+            method="POST",
+            path="/micropub",
+            status_code=415,
+            error="unsupported",
+            request_headers={},
+            request_query={},
+            request_body="",
+            response_body="",
+        )
+        newer_log = RequestErrorLog.objects.create(
+            source=RequestErrorLog.SOURCE_INDIEAUTH,
+            method="POST",
+            path="/indieauth/token",
+            status_code=400,
+            error="invalid_request",
+            request_headers={},
+            request_query={},
+            request_body="",
+            response_body="",
+        )
+
+        RequestErrorLog.objects.filter(pk=older_log.pk).update(
+            created_at=timezone.now() - timedelta(days=1)
+        )
+
+        response = self.client.get(reverse("site_admin:error_log_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context["page_obj"].object_list)[:2], [newer_log, older_log])
+
+    def test_error_log_detail_view(self):
+        self.client.force_login(self.staff)
+        settings_obj = SiteConfiguration.get_solo()
+        settings_obj.developer_tools_enabled = True
+        settings_obj.save()
+        log_entry = RequestErrorLog.objects.create(
+            source=RequestErrorLog.SOURCE_MICROPUB,
+            method="POST",
+            path="/micropub",
+            status_code=400,
+            error="invalid_request",
+            request_headers={"Content-Type": "application/json"},
+            request_query={"q": ["value"]},
+            request_body="{\"name\":\"test\"}",
+            response_body="{\"error\":\"invalid_request\"}",
+        )
+
+        response = self.client.get(
+            reverse("site_admin:error_log_detail", kwargs={"log_id": log_entry.id})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "invalid_request")

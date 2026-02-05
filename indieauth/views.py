@@ -13,26 +13,25 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from django.conf import settings
 from django.db import transaction
-from django.http import HttpResponseBadRequest, JsonResponse, RawPostDataException
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from core.models import SiteConfiguration
+from core.models import SiteConfiguration, RequestErrorLog
+from core.request_logs import log_request_error
 
 from .models import (
     IndieAuthAccessToken,
     IndieAuthAuthorizationCode,
     IndieAuthClient,
     IndieAuthConsent,
-    IndieAuthRequestLog,
 )
 
 logger = logging.getLogger(__name__)
 
-SENSITIVE_HEADER_NAMES = {"authorization", "cookie"}
-SENSITIVE_FIELD_NAMES = {
+INDIEAUTH_REDACT_FIELDS = {
     "access_token",
     "refresh_token",
     "client_secret",
@@ -41,7 +40,6 @@ SENSITIVE_FIELD_NAMES = {
     "code_challenge",
     "token",
 }
-MAX_LOG_BODY_CHARS = 10000
 
 AUTH_CODE_TTL = timedelta(minutes=10)
 ACCESS_TOKEN_TTL = timedelta(days=30)
@@ -49,117 +47,15 @@ CLIENT_CACHE_TTL = timedelta(hours=12)
 MAX_METADATA_BYTES = 1_000_000
 
 
-def _redact_secret(value: str) -> str:
-    if not value:
-        return value
-    if len(value) <= 12:
-        return "***"
-    return f"{value[:6]}...{value[-4:]}"
-
-
-def _redact_payload(value):
-    if isinstance(value, dict):
-        redacted = {}
-        for key, item in value.items():
-            if str(key).lower() in SENSITIVE_FIELD_NAMES and isinstance(item, str):
-                redacted[key] = _redact_secret(item)
-            else:
-                redacted[key] = _redact_payload(item)
-        return redacted
-    if isinstance(value, list):
-        return [_redact_payload(item) for item in value]
-    return value
-
-
-def _truncate_body(body: str) -> str:
-    if len(body) <= MAX_LOG_BODY_CHARS:
-        return body
-    return f"{body[:MAX_LOG_BODY_CHARS]}\n...(truncated)"
-
-
-def _capture_request_body(request) -> str:
-    content_type = request.content_type or ""
-    try:
-        body_bytes = request.body or b""
-    except RawPostDataException:
-        if "application/x-www-form-urlencoded" in content_type:
-            parsed = {key: values for key, values in request.POST.lists()}
-            return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
-        return ""
-    if not body_bytes:
-        if "application/x-www-form-urlencoded" in content_type and request.POST:
-            parsed = {key: values for key, values in request.POST.lists()}
-            return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
-        return ""
-    body_text = body_bytes.decode("utf-8", errors="replace")
-
-    if "application/json" in content_type:
-        try:
-            parsed = json.loads(body_text)
-        except json.JSONDecodeError:
-            return _truncate_body(body_text)
-        return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
-
-    if "application/x-www-form-urlencoded" in content_type:
-        parsed = parse_qs(body_text, keep_blank_values=True)
-        return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
-
-    return _truncate_body(body_text)
-
-
-def _capture_request_headers(request) -> dict:
-    headers = dict(request.headers)
-    redacted = {}
-    for key, value in headers.items():
-        if key.lower() in SENSITIVE_HEADER_NAMES and isinstance(value, str):
-            redacted[key] = _redact_secret(value)
-        else:
-            redacted[key] = value
-    return redacted
-
-
-def _extract_response_error(response) -> tuple[str, str]:
-    content_type = response.get("Content-Type", "")
-    body = ""
-    if hasattr(response, "content"):
-        body = response.content.decode("utf-8", errors="replace")
-    if "application/json" in content_type and body:
-        try:
-            payload = json.loads(body)
-        except json.JSONDecodeError:
-            return "", body
-        if isinstance(payload, dict):
-            error = payload.get("error") or payload.get("error_description") or ""
-            return str(error), body
-    if body and response.status_code >= 400:
-        return body.strip(), body
-    return "", body
-
-
-def _client_ip(request) -> str | None:
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
-
-
 def _log_indieauth_error(request, response) -> None:
     if response.status_code < 400:
         return
     try:
-        error, response_body = _extract_response_error(response)
-        IndieAuthRequestLog.objects.create(
-            method=request.method,
-            path=request.path,
-            status_code=response.status_code,
-            error=error or "",
-            request_headers=_capture_request_headers(request),
-            request_query={key: request.GET.getlist(key) for key in request.GET.keys()},
-            request_body=_capture_request_body(request),
-            response_body=response_body or "",
-            remote_addr=_client_ip(request),
-            user_agent=request.META.get("HTTP_USER_AGENT", ""),
-            content_type=request.content_type or "",
+        log_request_error(
+            RequestErrorLog.SOURCE_INDIEAUTH,
+            request,
+            response,
+            redact_fields=INDIEAUTH_REDACT_FIELDS,
         )
     except Exception:
         logger.exception(

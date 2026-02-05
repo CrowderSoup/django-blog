@@ -221,32 +221,17 @@ class WebmentionFilterForm(forms.Form):
             )
 
 
-class MicropubErrorFilterForm(forms.Form):
+class ErrorLogFilterForm(forms.Form):
     q = forms.CharField(required=False, label="Search")
-    status_code = forms.ChoiceField(
+    source = forms.ChoiceField(
         required=False,
         choices=[
-            ("", "Any status"),
-            ("400", "400"),
-            ("401", "401"),
-            ("403", "403"),
-            ("404", "404"),
-            ("415", "415"),
+            ("", "Any type"),
+            ("micropub", "Micropub"),
+            ("indieauth", "IndieAuth"),
         ],
-        label="Status",
+        label="Type",
     )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for field in self.fields.values():
-            field.widget.attrs.setdefault(
-                "class",
-                "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
-            )
-
-
-class IndieAuthErrorFilterForm(forms.Form):
-    q = forms.CharField(required=False, label="Search")
     status_code = forms.ChoiceField(
         required=False,
         choices=[
@@ -256,6 +241,7 @@ class IndieAuthErrorFilterForm(forms.Form):
             ("403", "403"),
             ("404", "404"),
             ("405", "405"),
+            ("415", "415"),
         ],
         label="Status",
     )
@@ -416,6 +402,7 @@ class SiteConfigurationForm(forms.ModelForm):
             "main_menu",
             "footer_menu",
             "comments_enabled",
+            "developer_tools_enabled",
             "bridgy_publish_bluesky",
             "bridgy_publish_flickr",
             "bridgy_publish_github",

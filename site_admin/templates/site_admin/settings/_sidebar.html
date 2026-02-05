@@ -39,6 +39,14 @@
       >
         Redirects
       </a>
+      {% if settings.developer_tools_enabled %}
+        <a
+          href="{% url 'site_admin:error_log_list' %}"
+          class="rounded-2xl px-4 py-2 transition {% if current == 'error_log_list' or current == 'error_log_detail' %}bg-[color:var(--admin-bg)] text-[color:var(--admin-ink)]{% else %}text-[color:var(--admin-muted)] hover:bg-[color:var(--admin-bg)] hover:text-[color:var(--admin-ink)]{% endif %}"
+        >
+          Error logs
+        </a>
+      {% endif %}
     </nav>
   </aside>
   <style>

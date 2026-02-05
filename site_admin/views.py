@@ -36,6 +36,7 @@ from core.models import (
     MenuItem,
     Page,
     Redirect,
+    RequestErrorLog,
     SiteConfiguration,
     ThemeInstall,
 )
@@ -87,8 +88,7 @@ from .forms import (
     ThemeUploadForm,
     WebmentionCreateForm,
     WebmentionFilterForm,
-    MicropubErrorFilterForm,
-    IndieAuthErrorFilterForm,
+    ErrorLogFilterForm,
 )
 
 logger = logging.getLogger(__name__)
@@ -992,29 +992,16 @@ def _filtered_webmentions(request):
     return form, webmentions
 
 
-def _filtered_micropub_errors(request):
-    form = MicropubErrorFilterForm(request.GET or None)
-    logs = MicropubRequestLog.objects.order_by("-created_at", "-id")
+def _filtered_error_logs(request):
+    data = request.GET.copy() if request.GET else None
+    if data is not None and data.get("type") and not data.get("source"):
+        data["source"] = data.get("type")
+    form = ErrorLogFilterForm(data or None)
+    logs = RequestErrorLog.objects.order_by("-created_at", "-id")
     if form.is_valid():
         query = form.cleaned_data.get("q")
         status_code = form.cleaned_data.get("status_code")
-        if query:
-            logs = logs.filter(
-                Q(path__icontains=query)
-                | Q(error__icontains=query)
-                | Q(request_body__icontains=query)
-            )
-        if status_code:
-            logs = logs.filter(status_code=int(status_code))
-    return form, logs
-
-
-def _filtered_indieauth_errors(request):
-    form = IndieAuthErrorFilterForm(request.GET or None)
-    logs = IndieAuthRequestLog.objects.order_by("-created_at", "-id")
-    if form.is_valid():
-        query = form.cleaned_data.get("q")
-        status_code = form.cleaned_data.get("status_code")
+        source = form.cleaned_data.get("source")
         if query:
             logs = logs.filter(
                 Q(path__icontains=query)
@@ -1024,6 +1011,8 @@ def _filtered_indieauth_errors(request):
             )
         if status_code:
             logs = logs.filter(status_code=int(status_code))
+        if source:
+            logs = logs.filter(source=source)
     return form, logs
 
 
@@ -1101,12 +1090,17 @@ def webmention_list(request):
 
 
 @require_http_methods(["GET"])
-def micropub_error_list(request):
+def error_log_list(request):
     guard = _staff_guard(request)
     if guard:
         return guard
 
-    filter_form, logs = _filtered_micropub_errors(request)
+    settings_obj = SiteConfiguration.get_solo()
+    if not settings_obj.developer_tools_enabled:
+        messages.warning(request, "Enable developer tools to access error logs.")
+        return redirect("site_admin:site_settings")
+
+    filter_form, logs = _filtered_error_logs(request)
     paginator = Paginator(logs, 20)
     page_number = request.GET.get("page")
     try:
@@ -1121,13 +1115,82 @@ def micropub_error_list(request):
         "page_obj": page_obj,
         "paginator": paginator,
         "base_query": _strip_page_query(request),
-        "endpoint_url": request.build_absolute_uri(reverse("micropub-endpoint")),
+        "endpoint_urls": [
+            ("Micropub", request.build_absolute_uri(reverse("micropub-endpoint"))),
+            ("IndieAuth Authorization", request.build_absolute_uri(reverse("indieauth-authorize"))),
+            ("IndieAuth Token", request.build_absolute_uri(reverse("indieauth-token"))),
+            ("IndieAuth Introspection", request.build_absolute_uri(reverse("indieauth-introspect"))),
+            ("IndieAuth Userinfo", request.build_absolute_uri(reverse("indieauth-userinfo"))),
+        ],
     }
 
     if request.headers.get("HX-Request"):
-        return render(request, "site_admin/micropub_errors/_list.html", context)
+        return render(request, "site_admin/settings/errors/_list.html", context)
 
-    return render(request, "site_admin/micropub_errors/index.html", context)
+    return render(request, "site_admin/settings/errors/index.html", context)
+
+
+@require_http_methods(["GET"])
+def error_log_detail(request, log_id):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    settings_obj = SiteConfiguration.get_solo()
+    if not settings_obj.developer_tools_enabled:
+        messages.warning(request, "Enable developer tools to access error logs.")
+        return redirect("site_admin:site_settings")
+
+    log_entry = get_object_or_404(RequestErrorLog, pk=log_id)
+    headers_text = json.dumps(log_entry.request_headers or {}, indent=2, sort_keys=True)
+    query_text = json.dumps(log_entry.request_query or {}, indent=2, sort_keys=True)
+    return render(
+        request,
+        "site_admin/settings/errors/detail.html",
+        {
+            "log": log_entry,
+            "headers_text": headers_text,
+            "query_text": query_text,
+        },
+    )
+
+
+@require_http_methods(["GET"])
+def micropub_error_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    settings_obj = SiteConfiguration.get_solo()
+    if not settings_obj.developer_tools_enabled:
+        messages.warning(request, "Enable developer tools to access error logs.")
+        return redirect("site_admin:site_settings")
+
+    query = request.GET.copy()
+    query["type"] = RequestErrorLog.SOURCE_MICROPUB
+    target = reverse("site_admin:error_log_list")
+    if query:
+        target = f"{target}?{query.urlencode()}"
+    return redirect(target)
+
+
+@require_http_methods(["GET"])
+def indieauth_error_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    settings_obj = SiteConfiguration.get_solo()
+    if not settings_obj.developer_tools_enabled:
+        messages.warning(request, "Enable developer tools to access error logs.")
+        return redirect("site_admin:site_settings")
+
+    query = request.GET.copy()
+    query["type"] = RequestErrorLog.SOURCE_INDIEAUTH
+    target = reverse("site_admin:error_log_list")
+    if query:
+        target = f"{target}?{query.urlencode()}"
+    return redirect(target)
 
 
 @require_http_methods(["GET"])
@@ -1148,43 +1211,6 @@ def micropub_error_detail(request, log_id):
             "query_text": query_text,
         },
     )
-
-
-@require_http_methods(["GET"])
-def indieauth_error_list(request):
-    guard = _staff_guard(request)
-    if guard:
-        return guard
-
-    filter_form, logs = _filtered_indieauth_errors(request)
-    paginator = Paginator(logs, 20)
-    page_number = request.GET.get("page")
-    try:
-        page_obj = paginator.page(page_number)
-    except PageNotAnInteger:
-        page_obj = paginator.page(1)
-    except EmptyPage:
-        page_obj = paginator.page(paginator.num_pages)
-
-    endpoint_urls = [
-        ("Authorization", request.build_absolute_uri(reverse("indieauth-authorize"))),
-        ("Token", request.build_absolute_uri(reverse("indieauth-token"))),
-        ("Introspection", request.build_absolute_uri(reverse("indieauth-introspect"))),
-        ("Userinfo", request.build_absolute_uri(reverse("indieauth-userinfo"))),
-    ]
-
-    context = {
-        "filter_form": filter_form,
-        "page_obj": page_obj,
-        "paginator": paginator,
-        "base_query": _strip_page_query(request),
-        "endpoint_urls": endpoint_urls,
-    }
-
-    if request.headers.get("HX-Request"):
-        return render(request, "site_admin/indieauth_errors/_list.html", context)
-
-    return render(request, "site_admin/indieauth_errors/index.html", context)
 
 
 @require_http_methods(["GET"])

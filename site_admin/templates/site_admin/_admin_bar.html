@@ -481,16 +481,10 @@
             Comments
           </a>
           <a
-            href="{% url 'site_admin:micropub_error_list' %}"
+            href="{% url 'site_admin:error_log_list' %}"
             class="site-admin-bar__mobile-link"
           >
-            Micropub errors
-          </a>
-          <a
-            href="{% url 'site_admin:indieauth_error_list' %}"
-            class="site-admin-bar__mobile-link"
-          >
-            IndieAuth errors
+            Error logs
           </a>
           <a
             href="{% url 'site_admin:profile_edit' %}"
@@ -543,18 +537,6 @@
           Comments
         </a>
         <a
-          href="{% url 'site_admin:micropub_error_list' %}"
-          class="site-admin-bar__menu-link"
-        >
-          Micropub errors
-        </a>
-        <a
-          href="{% url 'site_admin:indieauth_error_list' %}"
-          class="site-admin-bar__menu-link"
-        >
-          IndieAuth errors
-        </a>
-        <a
           href="{% url 'site_admin:profile_edit' %}"
           class="site-admin-bar__menu-link"
         >
@@ -588,3 +570,17 @@
     {% endif %}
   </div>
 </div>
+<script>
+  (() => {
+    const menus = document.querySelectorAll(".site-admin-bar details");
+    if (!menus.length) return;
+    document.addEventListener("click", (event) => {
+      menus.forEach((menu) => {
+        if (!menu.open) return;
+        if (!menu.contains(event.target)) {
+          menu.open = false;
+        }
+      });
+    });
+  })();
+</script>

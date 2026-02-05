@@ -8,8 +8,8 @@ from django.test.utils import override_settings
 from django.urls import reverse
 
 from blog.models import Post, Tag
-from core.models import SiteConfiguration
-from micropub.models import MicropubRequestLog, Webmention
+from core.models import RequestErrorLog, SiteConfiguration
+from micropub.models import Webmention
 from micropub.webmention import send_bridgy_publish_webmentions
 
 
@@ -25,8 +25,9 @@ class MicropubViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json(), {"error": "invalid_request"})
-        self.assertEqual(MicropubRequestLog.objects.count(), 1)
-        log_entry = MicropubRequestLog.objects.first()
+        self.assertEqual(RequestErrorLog.objects.count(), 1)
+        log_entry = RequestErrorLog.objects.first()
+        self.assertEqual(log_entry.source, RequestErrorLog.SOURCE_MICROPUB)
         self.assertEqual(log_entry.status_code, 400)
         self.assertEqual(log_entry.error, "invalid_request")
         self.assertEqual(log_entry.path, MICROPUB_URL)
