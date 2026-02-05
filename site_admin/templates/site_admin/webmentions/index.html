@@ -22,6 +22,23 @@
       </a>
     </section>
 
+    <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-4 shadow-sm">
+      <div class="flex flex-wrap gap-2">
+        <a
+          href="{% url 'site_admin:webmention_list' %}?direction=incoming"
+          class="rounded-full border px-4 py-2 text-sm font-semibold transition {% if direction == 'incoming' %}border-[color:var(--admin-accent)] bg-[color:var(--admin-bg)] text-[color:var(--admin-accent)]{% else %}border-[color:var(--admin-border)] text-[color:var(--admin-ink)] hover:bg-[color:var(--admin-bg)]{% endif %}"
+        >
+          Incoming
+        </a>
+        <a
+          href="{% url 'site_admin:webmention_list' %}?direction=outgoing"
+          class="rounded-full border px-4 py-2 text-sm font-semibold transition {% if direction == 'outgoing' %}border-[color:var(--admin-accent)] bg-[color:var(--admin-bg)] text-[color:var(--admin-accent)]{% else %}border-[color:var(--admin-border)] text-[color:var(--admin-ink)] hover:bg-[color:var(--admin-bg)]{% endif %}"
+        >
+          Outgoing
+        </a>
+      </div>
+    </section>
+
     <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
       <form
         id="webmention-filter"
@@ -32,6 +49,7 @@
         hx-push-url="true"
         hx-trigger="keyup delay:400ms, change"
       >
+        <input type="hidden" name="direction" value="{{ direction }}" />
         <div class="flex-1">
           <label
             for="{{ filter_form.q.id_for_label }}"

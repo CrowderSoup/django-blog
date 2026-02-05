@@ -1,0 +1,101 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}Interactions{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-6">
+    <section class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-semibold">Interactions</h1>
+        <p class="mt-1 text-sm text-[color:var(--admin-muted)]">
+          Incoming comments and webmentions that need your review.
+        </p>
+      </div>
+    </section>
+
+    <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Comments to review</h2>
+          <p class="text-sm text-[color:var(--admin-muted)]">
+            {{ pending_comment_count }} pending review.
+          </p>
+        </div>
+        <a
+          href="{% url 'site_admin:comment_list' %}?status=pending"
+          class="text-sm font-semibold text-[color:var(--admin-accent)]"
+        >
+          View comments
+        </a>
+      </div>
+      <div class="mt-5 grid gap-3">
+        {% for comment in pending_comments %}
+          <a
+            href="{% url 'site_admin:comment_detail' comment_id=comment.id %}"
+            class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4 transition hover:border-[color:var(--admin-accent)]"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="text-sm font-semibold">{{ comment.author_name }}</div>
+              <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
+                {{ comment.get_status_display }}
+              </span>
+            </div>
+            <div class="mt-2 text-sm text-[color:var(--admin-muted)]">
+              {{ comment.excerpt|default:comment.content|truncatechars:120 }}
+            </div>
+            <div class="mt-2 text-xs text-[color:var(--admin-muted)]">
+              {{ comment.post.title|default:comment.post.slug }} · {{ comment.created_at|date:"M j, Y" }}
+            </div>
+          </a>
+        {% empty %}
+          <p class="text-sm text-[color:var(--admin-muted)]">No comments waiting for review.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Incoming webmentions</h2>
+          <p class="text-sm text-[color:var(--admin-muted)]">
+            {{ pending_webmention_count }} pending approval.
+          </p>
+        </div>
+        <a
+          href="{% url 'site_admin:webmention_list' %}?direction=incoming&status=pending"
+          class="text-sm font-semibold text-[color:var(--admin-accent)]"
+        >
+          View webmentions
+        </a>
+      </div>
+      <div class="mt-5 grid gap-3">
+        {% for mention in pending_webmentions %}
+          <a
+            href="{% url 'site_admin:webmention_detail' mention_id=mention.id %}"
+            class="rounded-2xl border border-[color:var(--admin-border)] bg-[color:var(--admin-bg)] p-4 transition hover:border-[color:var(--admin-accent)]"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="text-sm font-semibold">{{ mention.get_mention_type_display }}</div>
+              <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
+                Pending
+              </span>
+            </div>
+            <div class="mt-2 text-sm text-[color:var(--admin-muted)]">
+              {{ mention.source|truncatechars:80 }}
+            </div>
+            <div class="mt-2 text-xs text-[color:var(--admin-muted)]">
+              {% if mention.target_post %}
+                {{ mention.target_post.title|default:mention.target_post.slug }}
+              {% else %}
+                {{ mention.target }}
+              {% endif %}
+              · {{ mention.created_at|date:"M j, Y" }}
+            </div>
+          </a>
+        {% empty %}
+          <p class="text-sm text-[color:var(--admin-muted)]">No incoming webmentions waiting for review.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

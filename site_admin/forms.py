@@ -206,6 +206,15 @@ class WebmentionFilterForm(forms.Form):
         choices=[("", "Any status"), *Webmention.STATUS_CHOICES],
         label="Status",
     )
+    direction = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("", "Any direction"),
+            ("incoming", "Incoming"),
+            ("outgoing", "Outgoing"),
+        ],
+        label="Direction",
+    )
     mention_type = forms.ChoiceField(
         required=False,
         choices=[("", "Any type"), *Webmention.MENTION_CHOICES],

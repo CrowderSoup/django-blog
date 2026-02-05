@@ -391,6 +391,30 @@ def _is_local_url(url, request):
     return parsed.netloc == request.get_host()
 
 
+def _webmention_host_prefixes(request):
+    host = request.get_host()
+    if not host:
+        return []
+    return [f"http://{host}", f"https://{host}"]
+
+
+def _filter_webmentions_by_direction(webmentions, direction, request):
+    if direction not in ("incoming", "outgoing"):
+        return webmentions
+    prefixes = _webmention_host_prefixes(request)
+    if not prefixes:
+        return webmentions
+    if direction == "incoming":
+        query = Q()
+        for prefix in prefixes:
+            query |= Q(target__startswith=prefix)
+        return webmentions.filter(query)
+    query = Q()
+    for prefix in prefixes:
+        query |= Q(source__startswith=prefix)
+    return webmentions.filter(query)
+
+
 def _build_daily_counts(qs, start_date, end_date):
     day_rows = (
         qs.annotate(day=TruncDate("started_at"))
@@ -479,6 +503,36 @@ def dashboard(request):
             "analytics_labels": analytics_labels,
             "analytics_counts": analytics_counts,
             "analytics_top_paths": top_paths,
+        },
+    )
+
+
+def interactions(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    pending_comments = (
+        Comment.objects.select_related("post")
+        .filter(status=Comment.PENDING)
+        .order_by("-created_at", "-id")
+    )
+    pending_webmentions = _filter_webmentions_by_direction(
+        Webmention.objects.select_related("target_post")
+        .filter(status=Webmention.PENDING)
+        .order_by("-created_at", "-id"),
+        "incoming",
+        request,
+    )
+
+    return render(
+        request,
+        "site_admin/interactions/index.html",
+        {
+            "pending_comment_count": pending_comments.count(),
+            "pending_webmention_count": pending_webmentions.count(),
+            "pending_comments": pending_comments[:5],
+            "pending_webmentions": pending_webmentions[:5],
         },
     )
 
@@ -974,12 +1028,13 @@ def post_list(request):
     return render(request, "site_admin/posts/index.html", context)
 
 
-def _filtered_webmentions(request):
-    form = WebmentionFilterForm(request.GET or None)
+def _filtered_webmentions(request, data=None):
+    form = WebmentionFilterForm(data or request.GET or None)
     webmentions = Webmention.objects.select_related("target_post").order_by("-created_at", "-id")
     if form.is_valid():
         query = form.cleaned_data.get("q")
         status = form.cleaned_data.get("status")
+        direction = form.cleaned_data.get("direction")
         mention_type = form.cleaned_data.get("mention_type")
         if query:
             webmentions = webmentions.filter(
@@ -987,6 +1042,8 @@ def _filtered_webmentions(request):
             )
         if status:
             webmentions = webmentions.filter(status=status)
+        if direction:
+            webmentions = _filter_webmentions_by_direction(webmentions, direction, request)
         if mention_type:
             webmentions = webmentions.filter(mention_type=mention_type)
     return form, webmentions
@@ -1065,7 +1122,13 @@ def webmention_list(request):
     if guard:
         return guard
 
-    filter_form, webmentions = _filtered_webmentions(request)
+    data = request.GET.copy()
+    direction = data.get("direction") or "incoming"
+    if "direction" not in data:
+        data["direction"] = direction
+    filter_form, webmentions = _filtered_webmentions(request, data)
+    if filter_form.is_valid():
+        direction = filter_form.cleaned_data.get("direction") or direction
     paginator = Paginator(webmentions, 20)
     page_number = request.GET.get("page")
     try:
@@ -1079,8 +1142,9 @@ def webmention_list(request):
         "filter_form": filter_form,
         "page_obj": page_obj,
         "paginator": paginator,
-        "base_query": _strip_page_query(request),
+        "base_query": urlencode({key: value for key, value in data.items() if key != "page"}),
         "endpoint_url": request.build_absolute_uri(reverse("webmention-endpoint")),
+        "direction": direction,
     }
 
     if request.headers.get("HX-Request"):

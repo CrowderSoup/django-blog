@@ -9,6 +9,7 @@ urlpatterns = [
     path("logout/", views.SiteAdminLogoutView.as_view(), name="logout"),
     path("bar/", views.admin_bar, name="admin_bar"),
     path("", views.dashboard, name="dashboard"),
+    path("interactions/", views.interactions, name="interactions"),
     path("analytics/", views.analytics_dashboard, name="analytics_dashboard"),
     path(
         "analytics/ignore-user-agent/",

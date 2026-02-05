@@ -25,7 +25,16 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: 0.75rem;
+  }
+
+  .site-admin-bar__right {
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
     gap: 0.75rem;
   }
 
@@ -58,12 +67,37 @@
   }
 
   .site-admin-bar__user {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
     font-size: 0.875rem;
     color: var(--admin-muted);
   }
 
   .site-admin-bar__user strong {
     font-weight: 600;
+  }
+
+  .site-admin-bar__avatar {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 999px;
+    border: 1px solid var(--admin-border, rgba(15, 23, 42, 0.2));
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    color: var(--admin-ink);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .site-admin-bar__avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 
   .site-admin-bar__user-row {
@@ -76,10 +110,11 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
+    width: 2.5rem;
+    height: 2.5rem;
     border-radius: 999px;
-    border: 1px solid rgba(15, 23, 42, 0.2);
+    border: 1px solid var(--admin-border, rgba(15, 23, 42, 0.2));
+    background: transparent;
     color: var(--admin-ink);
     text-decoration: none;
     font-size: 1.1rem;
@@ -93,6 +128,18 @@
   .site-admin-bar__create:hover {
     background: rgba(15, 118, 110, 0.1);
     border-color: rgba(15, 118, 110, 0.4);
+  }
+
+  .site-admin-bar__badge {
+    margin-left: auto;
+    border-radius: 999px;
+    background: var(--admin-accent, #1f6f63);
+    padding: 0.125rem 0.5rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #fff;
   }
 
   .site-admin-bar__menu {
@@ -163,7 +210,9 @@
   }
 
   .site-admin-bar__mobile-link {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     padding: 0.4rem 0.25rem;
     color: var(--admin-ink);
     text-decoration: none;
@@ -236,7 +285,9 @@
   }
 
   .site-admin-bar__menu-link {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     padding: 0.45rem 0.75rem;
     border-radius: 0.5rem;
     color: var(--admin-ink);
@@ -293,6 +344,50 @@
     background: rgba(180, 83, 9, 0.12);
   }
 
+  .site-admin-bar__menu-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border-top: 1px solid var(--admin-border, rgba(15, 23, 42, 0.2));
+    padding-top: 0.75rem;
+    margin-top: 0.75rem;
+  }
+
+  .site-admin-bar__menu-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--admin-border, rgba(15, 23, 42, 0.2));
+    background: transparent;
+    appearance: none;
+    color: var(--admin-ink);
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+
+  .site-admin-bar__menu-action:hover {
+    background: rgba(15, 118, 110, 0.1);
+    border-color: rgba(15, 118, 110, 0.4);
+  }
+
+  .site-admin-bar__menu-action--logout {
+    color: var(--admin-warn);
+    border: 1px solid var(--admin-border, rgba(15, 23, 42, 0.2));
+  }
+
+  .site-admin-bar__menu-action--logout:hover {
+    background: rgba(180, 83, 9, 0.12);
+    border-color: rgba(180, 83, 9, 0.45);
+  }
+
+  .site-admin-bar__menu-action svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
   .site-admin-bar__mobile-link--logout {
     color: var(--admin-warn);
   }
@@ -330,66 +425,140 @@
         Admin: {{ settings.title|default:"Site" }}
       </a>
     </div>
-    <nav class="site-admin-bar__nav">
-      {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
-      <a
-        href="{% url 'site_admin:page_list' %}"
-        class="site-admin-bar__nav-pill"
-      >
-        Pages
-      </a>
-      <a
-        href="{% url 'site_admin:post_list' %}"
-        class="site-admin-bar__nav-pill"
-      >
-        Posts
-      </a>
-      <a
-        href="{% url 'site_admin:webmention_list' %}"
-        class="site-admin-bar__nav-pill"
-      >
-        Webmentions
-      </a>
-      <a
-        href="{% url 'site_admin:file_list' %}"
-        class="site-admin-bar__nav-pill"
-      >
-        Files
-      </a>
-      {% endif %}
-    </nav>
-    {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
-    <button
-      type="button"
-      class="site-admin-bar__theme-toggle"
-      data-admin-theme-toggle
-      aria-label="Dark mode"
-      title="Dark mode"
-      aria-pressed="false"
-    >
-      <svg class="site-admin-bar__theme-icon site-admin-bar__theme-icon--moon" viewBox="0 0 24 24" aria-hidden="true">
-        <path
-          d="M21 14.6c-1.4.5-2.9.5-4.3.1-1.4-.4-2.6-1.2-3.5-2.3-1-1.1-1.6-2.4-1.8-3.9-.2-1.5.1-3 .8-4.3-1.6.2-3.1.9-4.3 2-1.2 1.1-2 2.5-2.3 4.1-.3 1.6-.1 3.2.6 4.6.7 1.4 1.9 2.6 3.3 3.3 1.4.7 3.1.9 4.6.6 1.6-.3 3-1.1 4.1-2.3 1.1-1.2 1.8-2.7 2-4.3z"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.6"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
-      <svg class="site-admin-bar__theme-icon site-admin-bar__theme-icon--sun" viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6" />
-        <path
-          d="M12 3v2.2M12 18.8V21M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M3 12h2.2M18.8 12H21M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.6"
-          stroke-linecap="round"
-        />
-      </svg>
-    </button>
-    {% endif %}
-    <details class="site-admin-bar__mobile">
+    <div class="site-admin-bar__right">
+      <nav class="site-admin-bar__nav">
+        {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
+        <a
+          href="{% url 'site_admin:page_list' %}"
+          class="site-admin-bar__nav-pill"
+        >
+          Pages
+        </a>
+        <a
+          href="{% url 'site_admin:post_list' %}"
+          class="site-admin-bar__nav-pill"
+        >
+          Posts
+        </a>
+        <a
+          href="{% url 'site_admin:file_list' %}"
+          class="site-admin-bar__nav-pill"
+        >
+          Files
+        </a>
+        {% endif %}
+      </nav>
+      <details class="site-admin-bar__menu">
+        <summary class="site-admin-bar__user" aria-label="Account menu">
+          <span class="site-admin-bar__avatar">
+            {% if admin_profile_photo_url %}
+              <img src="{{ admin_profile_photo_url }}" alt="{{ admin_profile_display_name|default:request.user.get_username }}" />
+            {% else %}
+              {{ admin_profile_initials|default:"U" }}
+            {% endif %}
+          </span>
+          <span>{{ admin_profile_display_name|default:request.user.get_username }}</span>
+        </summary>
+        <div class="site-admin-bar__menu-panel">
+          <a
+            href="{% url 'site_admin:interactions' %}"
+            class="site-admin-bar__menu-link"
+          >
+            <span>Interactions</span>
+            {% if interactions_pending_count %}
+              <span class="site-admin-bar__badge">
+                {{ interactions_pending_count }}
+              </span>
+            {% endif %}
+          </a>
+          <a
+            href="{% url 'site_admin:analytics_dashboard' %}"
+            class="site-admin-bar__menu-link"
+          >
+            Analytics
+          </a>
+          <a
+            href="{% url 'site_admin:site_settings' %}"
+            class="site-admin-bar__menu-link"
+          >
+            Site settings
+          </a>
+          <a
+            href="{% url 'site_admin:profile_edit' %}"
+            class="site-admin-bar__menu-link"
+          >
+            Profile
+          </a>
+          <a href="{% url 'index' %}" class="site-admin-bar__menu-link">
+            View Site
+          </a>
+          <div class="site-admin-bar__menu-actions">
+            <a
+              href="{% url 'site_admin:post_create' %}"
+              class="site-admin-bar__create"
+              aria-label="Create new post"
+              title="New post"
+            >
+              +
+            </a>
+            {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
+            <button
+              type="button"
+              class="site-admin-bar__menu-action"
+              data-admin-theme-toggle
+              aria-label="Dark mode"
+              title="Dark mode"
+              aria-pressed="false"
+            >
+              <svg class="site-admin-bar__theme-icon site-admin-bar__theme-icon--moon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M21 14.6c-1.4.5-2.9.5-4.3.1-1.4-.4-2.6-1.2-3.5-2.3-1-1.1-1.6-2.4-1.8-3.9-.2-1.5.1-3 .8-4.3-1.6.2-3.1.9-4.3 2-1.2 1.1-2 2.5-2.3 4.1-.3 1.6-.1 3.2.6 4.6.7 1.4 1.9 2.6 3.3 3.3 1.4.7 3.1.9 4.6.6 1.6-.3 3-1.1 4.1-2.3 1.1-1.2 1.8-2.7 2-4.3z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <svg class="site-admin-bar__theme-icon site-admin-bar__theme-icon--sun" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6" />
+                <path
+                  d="M12 3v2.2M12 18.8V21M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M3 12h2.2M18.8 12H21M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </button>
+            {% endif %}
+            <form method="post" action="{% url 'site_admin:logout' %}">
+              {% csrf_token %}
+              <button type="submit" class="site-admin-bar__menu-action site-admin-bar__menu-action--logout" aria-label="Log out" title="Log out">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M15 3h2.5A2.5 2.5 0 0 1 20 5.5v13A2.5 2.5 0 0 1 17.5 21H15"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M10 17l5-5-5-5M15 12H4"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+            </form>
+          </div>
+        </div>
+      </details>
+      <details class="site-admin-bar__mobile">
       <summary class="site-admin-bar__hamburger" aria-label="Open admin menu">
         <span class="site-admin-bar__hamburger-lines"></span>
       </summary>
@@ -408,12 +577,6 @@
             class="site-admin-bar__mobile-link"
           >
             Posts
-          </a>
-          <a
-            href="{% url 'site_admin:webmention_list' %}"
-            class="site-admin-bar__mobile-link"
-          >
-            Webmentions
           </a>
           <a
             href="{% url 'site_admin:file_list' %}"
@@ -463,10 +626,15 @@
           </div>
           {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
           <a
-            href="{% url 'site_admin:site_settings' %}"
+            href="{% url 'site_admin:interactions' %}"
             class="site-admin-bar__mobile-link"
           >
-            Site settings
+            Interactions
+            {% if interactions_pending_count %}
+              <span class="site-admin-bar__badge">
+                {{ interactions_pending_count }}
+              </span>
+            {% endif %}
           </a>
           <a
             href="{% url 'site_admin:analytics_dashboard' %}"
@@ -475,16 +643,10 @@
             Analytics
           </a>
           <a
-            href="{% url 'site_admin:comment_list' %}"
+            href="{% url 'site_admin:site_settings' %}"
             class="site-admin-bar__mobile-link"
           >
-            Comments
-          </a>
-          <a
-            href="{% url 'site_admin:error_log_list' %}"
-            class="site-admin-bar__mobile-link"
-          >
-            Error logs
+            Site settings
           </a>
           <a
             href="{% url 'site_admin:profile_edit' %}"
@@ -494,6 +656,12 @@
           </a>
           <a href="{% url 'index' %}" class="site-admin-bar__mobile-link">
             View Site
+          </a>
+          <a
+            href="{% url 'site_admin:error_log_list' %}"
+            class="site-admin-bar__mobile-link"
+          >
+            Error logs
           </a>
           {% else %}
           <a
@@ -512,62 +680,7 @@
         </div>
       </div>
     </details>
-    {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
-    <details class="site-admin-bar__menu">
-      <summary class="site-admin-bar__user">
-        Signed in as <strong>{{ request.user.get_username }}</strong>
-      </summary>
-      <div class="site-admin-bar__menu-panel">
-        <a
-          href="{% url 'site_admin:site_settings' %}"
-          class="site-admin-bar__menu-link"
-        >
-          Site settings
-        </a>
-        <a
-          href="{% url 'site_admin:analytics_dashboard' %}"
-          class="site-admin-bar__menu-link"
-        >
-          Analytics
-        </a>
-        <a
-          href="{% url 'site_admin:comment_list' %}"
-          class="site-admin-bar__menu-link"
-        >
-          Comments
-        </a>
-        <a
-          href="{% url 'site_admin:profile_edit' %}"
-          class="site-admin-bar__menu-link"
-        >
-          Profile
-        </a>
-        <a href="{% url 'index' %}" class="site-admin-bar__menu-link">
-          View Site
-        </a>
-        <form method="post" action="{% url 'site_admin:logout' %}">
-          {% csrf_token %}
-          <button type="submit" class="site-admin-bar__menu-button site-admin-bar__menu-button--logout">
-            Log out
-          </button>
-        </form>
-      </div>
-    </details>
-    {% else %}
-    <div class="site-admin-bar__user-row">
-      <div class="site-admin-bar__user">
-        Signed in as <strong>{{ request.user.get_username }}</strong>
-      </div>
-      <a
-        href="{% url 'site_admin:post_create' %}"
-        class="site-admin-bar__create"
-        aria-label="Create new post"
-        title="New post"
-      >
-        +
-      </a>
     </div>
-    {% endif %}
   </div>
 </div>
 <script>
