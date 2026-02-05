@@ -487,6 +487,12 @@
             Micropub errors
           </a>
           <a
+            href="{% url 'site_admin:indieauth_error_list' %}"
+            class="site-admin-bar__mobile-link"
+          >
+            IndieAuth errors
+          </a>
+          <a
             href="{% url 'site_admin:profile_edit' %}"
             class="site-admin-bar__mobile-link"
           >
@@ -541,6 +547,12 @@
           class="site-admin-bar__menu-link"
         >
           Micropub errors
+        </a>
+        <a
+          href="{% url 'site_admin:indieauth_error_list' %}"
+          class="site-admin-bar__menu-link"
+        >
+          IndieAuth errors
         </a>
         <a
           href="{% url 'site_admin:profile_edit' %}"

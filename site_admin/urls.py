@@ -81,6 +81,12 @@ urlpatterns = [
         views.micropub_error_detail,
         name="micropub_error_detail",
     ),
+    path("indieauth/errors/", views.indieauth_error_list, name="indieauth_error_list"),
+    path(
+        "indieauth/errors/<int:log_id>/",
+        views.indieauth_error_detail,
+        name="indieauth_error_detail",
+    ),
     path("webmentions/new/", views.webmention_create, name="webmention_create"),
     path("webmentions/<int:mention_id>/", views.webmention_detail, name="webmention_detail"),
     path(

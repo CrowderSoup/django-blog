@@ -26,14 +26,137 @@ from .models import (
     IndieAuthAuthorizationCode,
     IndieAuthClient,
     IndieAuthConsent,
+    IndieAuthRequestLog,
 )
 
 logger = logging.getLogger(__name__)
+
+SENSITIVE_HEADER_NAMES = {"authorization", "cookie"}
+SENSITIVE_FIELD_NAMES = {
+    "access_token",
+    "refresh_token",
+    "client_secret",
+    "code",
+    "code_verifier",
+    "code_challenge",
+    "token",
+}
+MAX_LOG_BODY_CHARS = 10000
 
 AUTH_CODE_TTL = timedelta(minutes=10)
 ACCESS_TOKEN_TTL = timedelta(days=30)
 CLIENT_CACHE_TTL = timedelta(hours=12)
 MAX_METADATA_BYTES = 1_000_000
+
+
+def _redact_secret(value: str) -> str:
+    if not value:
+        return value
+    if len(value) <= 12:
+        return "***"
+    return f"{value[:6]}...{value[-4:]}"
+
+
+def _redact_payload(value):
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            if str(key).lower() in SENSITIVE_FIELD_NAMES and isinstance(item, str):
+                redacted[key] = _redact_secret(item)
+            else:
+                redacted[key] = _redact_payload(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_payload(item) for item in value]
+    return value
+
+
+def _truncate_body(body: str) -> str:
+    if len(body) <= MAX_LOG_BODY_CHARS:
+        return body
+    return f"{body[:MAX_LOG_BODY_CHARS]}\n...(truncated)"
+
+
+def _capture_request_body(request) -> str:
+    content_type = request.content_type or ""
+    body_bytes = request.body or b""
+    if not body_bytes:
+        return ""
+    body_text = body_bytes.decode("utf-8", errors="replace")
+
+    if "application/json" in content_type:
+        try:
+            parsed = json.loads(body_text)
+        except json.JSONDecodeError:
+            return _truncate_body(body_text)
+        return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
+
+    if "application/x-www-form-urlencoded" in content_type:
+        parsed = parse_qs(body_text, keep_blank_values=True)
+        return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
+
+    return _truncate_body(body_text)
+
+
+def _capture_request_headers(request) -> dict:
+    headers = dict(request.headers)
+    redacted = {}
+    for key, value in headers.items():
+        if key.lower() in SENSITIVE_HEADER_NAMES and isinstance(value, str):
+            redacted[key] = _redact_secret(value)
+        else:
+            redacted[key] = value
+    return redacted
+
+
+def _extract_response_error(response) -> tuple[str, str]:
+    content_type = response.get("Content-Type", "")
+    body = ""
+    if hasattr(response, "content"):
+        body = response.content.decode("utf-8", errors="replace")
+    if "application/json" in content_type and body:
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            return "", body
+        if isinstance(payload, dict):
+            error = payload.get("error") or payload.get("error_description") or ""
+            return str(error), body
+    if body and response.status_code >= 400:
+        return body.strip(), body
+    return "", body
+
+
+def _client_ip(request) -> str | None:
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR")
+
+
+def _log_indieauth_error(request, response) -> None:
+    if response.status_code < 400:
+        return
+    try:
+        error, response_body = _extract_response_error(response)
+        IndieAuthRequestLog.objects.create(
+            method=request.method,
+            path=request.path,
+            status_code=response.status_code,
+            error=error or "",
+            request_headers=_capture_request_headers(request),
+            request_query={key: request.GET.getlist(key) for key in request.GET.keys()},
+            request_body=_capture_request_body(request),
+            response_body=response_body or "",
+            remote_addr=_client_ip(request),
+            user_agent=request.META.get("HTTP_USER_AGENT", ""),
+            content_type=request.content_type or "",
+        )
+    except Exception:
+        logger.exception(
+            "IndieAuth error log failed",
+            extra={"indieauth_path": request.path, "indieauth_status": response.status_code},
+        )
 
 
 class _ClientMetadataParser(HTMLParser):
@@ -526,7 +649,9 @@ def _issue_authorization_code(
 @csrf_exempt
 def token(request):
     if request.method != "POST":
-        return HttpResponseBadRequest("Invalid request")
+        response = HttpResponseBadRequest("Invalid request")
+        _log_indieauth_error(request, response)
+        return response
 
     action = request.POST.get("action", "")
     if action == "revoke":
@@ -541,7 +666,9 @@ def token(request):
 
     grant_type = request.POST.get("grant_type", "")
     if grant_type and grant_type != "authorization_code":
-        return JsonResponse({"error": "unsupported_grant_type"}, status=400)
+        response = JsonResponse({"error": "unsupported_grant_type"}, status=400)
+        _log_indieauth_error(request, response)
+        return response
 
     code = request.POST.get("code", "")
     client_id = request.POST.get("client_id", "")
@@ -549,7 +676,9 @@ def token(request):
     code_verifier = request.POST.get("code_verifier", "")
 
     if not code or not client_id or not redirect_uri or not code_verifier:
-        return JsonResponse({"error": "invalid_request"}, status=400)
+        response = JsonResponse({"error": "invalid_request"}, status=400)
+        _log_indieauth_error(request, response)
+        return response
 
     with transaction.atomic():
         code_hash = _hash_token(code)
@@ -559,17 +688,27 @@ def token(request):
             .first()
         )
         if not auth_code:
-            return JsonResponse({"error": "invalid_grant"}, status=400)
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
         if auth_code.expires_at <= timezone.now():
-            return JsonResponse({"error": "invalid_grant"}, status=400)
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
         if auth_code.client_id != client_id or auth_code.redirect_uri != redirect_uri:
-            return JsonResponse({"error": "invalid_grant"}, status=400)
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
         if auth_code.code_challenge_method != "S256":
-            return JsonResponse({"error": "invalid_grant"}, status=400)
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
 
         computed = _base64url_sha256(code_verifier)
         if computed != auth_code.code_challenge:
-            return JsonResponse({"error": "invalid_grant"}, status=400)
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
 
         auth_code.used_at = timezone.now()
         auth_code.save(update_fields=["used_at"])
@@ -610,7 +749,9 @@ def introspect(request):
         token_value = auth_header[7:].strip()
 
     if not token_value:
-        return JsonResponse({"active": False}, status=400)
+        response = JsonResponse({"active": False}, status=400)
+        _log_indieauth_error(request, response)
+        return response
 
     token_hash = _hash_token(token_value)
     token = IndieAuthAccessToken.objects.filter(token_hash=token_hash).first()
@@ -640,14 +781,20 @@ def introspect(request):
 def userinfo(request):
     auth_header = request.META.get("HTTP_AUTHORIZATION", "")
     if not auth_header.startswith("Bearer "):
-        return JsonResponse({"error": "unauthorized"}, status=401)
+        response = JsonResponse({"error": "unauthorized"}, status=401)
+        _log_indieauth_error(request, response)
+        return response
     token_value = auth_header[7:].strip()
     token_hash = _hash_token(token_value)
     token = IndieAuthAccessToken.objects.filter(token_hash=token_hash).first()
     if not token or token.revoked_at:
-        return JsonResponse({"error": "unauthorized"}, status=401)
+        response = JsonResponse({"error": "unauthorized"}, status=401)
+        _log_indieauth_error(request, response)
+        return response
     if token.expires_at and token.expires_at <= timezone.now():
-        return JsonResponse({"error": "unauthorized"}, status=401)
+        response = JsonResponse({"error": "unauthorized"}, status=401)
+        _log_indieauth_error(request, response)
+        return response
 
     user = token.user
     user_data = {
@@ -661,4 +808,6 @@ def userinfo(request):
 
 
 def _render_error(request, message: str, status: int = 400):
-    return render(request, "indieauth/error.html", {"message": message}, status=status)
+    response = render(request, "indieauth/error.html", {"message": message}, status=status)
+    _log_indieauth_error(request, response)
+    return response
