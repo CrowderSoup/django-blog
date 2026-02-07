@@ -76,7 +76,7 @@ class PostsFeed(Feed):
     def item_description(self, item):
         request = getattr(self, "request", None)
         interaction = (
-            _interaction_payload(item, request=request)
+            _interaction_payload(item, request=request, fetch_remote=False)
             if item.kind in (Post.LIKE, Post.REPOST, Post.REPLY)
             else None
         )

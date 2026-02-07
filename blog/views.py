@@ -102,7 +102,7 @@ def _local_target_from_url(target_url, request):
     }
 
 
-def _interaction_payload(post, request=None):
+def _interaction_payload(post, request=None, fetch_remote=True):
     if post.kind == Post.LIKE:
         target_url = post.like_of
         label = "Liked"
@@ -116,7 +116,7 @@ def _interaction_payload(post, request=None):
         return None
 
     target_url = target_url or ""
-    target = fetch_target_from_url(target_url) if target_url else None
+    target = fetch_target_from_url(target_url) if (fetch_remote and target_url) else None
     if not target and target_url:
         target = _local_target_from_url(target_url, request)
 
