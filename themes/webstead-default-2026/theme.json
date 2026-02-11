@@ -219,6 +219,16 @@
         "type": "string",
         "label": "Radius pill",
         "default": "999px"
+      },
+      "home_feed_mode": {
+        "type": "string",
+        "label": "Home feed mode (home or blog)",
+        "default": "home"
+      },
+      "home_feed_redirect": {
+        "type": "boolean",
+        "label": "Redirect /blog to / when home feed is enabled",
+        "default": false
       }
     }
   }

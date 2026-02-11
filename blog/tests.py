@@ -516,13 +516,13 @@ class PostFilterTests(TestCase):
         response = self.client.get(reverse("posts"))
 
         self.assertContains(response, 'data-tag="arcane"')
-        self.assertContains(response, "/blog?tag=arcane")
+        self.assertContains(response, "/?tag=arcane")
 
     def test_tag_page_redirects_to_filter(self):
         response = self.client.get(reverse("posts_by_tag", kwargs={"tag": "arcane"}))
 
         self.assertEqual(response.status_code, 301)
-        self.assertEqual(response["Location"], "/blog?tag=arcane")
+        self.assertEqual(response["Location"], "/?tag=arcane")
 
 
 class CommentSubmissionTests(TestCase):

@@ -19,6 +19,7 @@ from .forms import CommentForm
 from .mf2 import DEFAULT_AVATAR_URL, fetch_target_from_url
 from .comments import AkismetError, check_comment, comments_configured, verify_turnstile
 from core.models import SiteConfiguration
+from core.themes import get_posts_index_url, should_redirect_posts_index
 from core.og import absolute_url, first_attachment_image_url
 from micropub.models import Webmention
 
@@ -280,7 +281,8 @@ def _build_filter_query(selected_kinds, selected_tags):
         params.append(("tag", ",".join(selected_tags)))
     return urlencode(params, safe=",")
 
-def posts(request):
+
+def build_posts_listing_context(request, *, include_og=True):
     settings = SiteConfiguration.get_solo()
     requested_kinds = _split_filter_values(request.GET.getlist("kind"))
     selected_tags = _split_filter_values(request.GET.getlist("tag"))
@@ -323,28 +325,43 @@ def posts(request):
         elif post.kind in (Post.LIKE, Post.REPLY, Post.REPOST):
             post.interaction = _interaction_payload(post, request=request)
 
-    return render(
-        request,
-        'blog/posts.html',
-        {
-            "posts": posts,
-            "post_kinds": Post.KIND_CHOICES,
-            "selected_kinds": selected_kinds,
-            "selected_tags": selected_tags,
-            "default_kinds": default_kinds,
-            "filter_query": filter_query,
-            "feed_filter_query": filter_query,
-            "has_active_filters": has_active_filters,
-            "has_activity": has_activity,
-            "og_title": f"{settings.title} posts" if settings.title else "Posts",
-            "og_description": settings.tagline,
-            "og_url": request.build_absolute_uri(),
-        },
-    )
+    context = {
+        "posts": posts,
+        "post_kinds": Post.KIND_CHOICES,
+        "selected_kinds": selected_kinds,
+        "selected_tags": selected_tags,
+        "default_kinds": default_kinds,
+        "filter_query": filter_query,
+        "feed_filter_query": filter_query,
+        "has_active_filters": has_active_filters,
+        "has_activity": has_activity,
+    }
+    if include_og:
+        context.update(
+            {
+                "og_title": f"{settings.title} posts" if settings.title else "Posts",
+                "og_description": settings.tagline,
+                "og_url": request.build_absolute_uri(),
+            }
+        )
+
+    return context
+
+def posts_index(request):
+    if should_redirect_posts_index():
+        target = reverse("index")
+        if request.META.get("QUERY_STRING"):
+            target = f"{target}?{request.META['QUERY_STRING']}"
+        return redirect(target, permanent=True)
+    return posts(request)
+
+def posts(request):
+    context = build_posts_listing_context(request, include_og=True)
+    return render(request, "blog/posts.html", context)
 
 def posts_by_tag(request, tag):
     tag = get_object_or_404(Tag, tag=tag)
-    posts_url = reverse("posts").rstrip("/")
+    posts_url = get_posts_index_url()
     target = f"{posts_url}?{urlencode({'tag': tag.tag})}"
     return redirect(target, permanent=True)
 
@@ -476,4 +493,4 @@ def delete_post(request, slug):
     post = get_object_or_404(Post, slug=slug)
     post.deleted = True
     post.save(update_fields=["deleted"])
-    return redirect(reverse("posts"))
+    return redirect(get_posts_index_url())

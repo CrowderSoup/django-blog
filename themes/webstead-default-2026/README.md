@@ -38,7 +38,7 @@ This theme is **just** a theme. It contains templates, static assets, and docume
 These are the main files you will override or delete depending on your needs.
 
 - `templates/base.html`: Global layout, head tags, nav, footer, and shared blocks.
-- `templates/core/index.html`: Home page layout. Demonstrates `site_author_hcard` usage and recent posts.
+- `templates/core/index.html`: Home page layout. Demonstrates `site_author_hcard` usage and the full posts feed.
 - `templates/core/page.html`: Static pages with author and publish date.
 - `templates/blog/posts.html`: Posts list + post kind filter UI + paginator.
 - `templates/blog/post.html`: Post detail switcher for `note`, `photo`, and `article` kinds.
@@ -160,7 +160,7 @@ Alpha-based colors use a color picker plus an opacity input in the theme setting
 - Delete any template you do not need. Django will fall back to the built-in app templates.
 - Keep `theme.json` at the root or the theme will not be discovered.
 - If you do not want external fonts, remove the `@import` line in `static/css/theme.css`.
-- This theme includes IndieWeb endpoints and the analytics beacon in `base.html`.
+- This theme includes IndieWeb endpoints plus the combined analytics/admin bar script (`js/webstead.js`) in `base.html`.
 - The photo gallery is intentionally lightweight and scrollable for accessibility.
 
 ## Defaults and discovery
