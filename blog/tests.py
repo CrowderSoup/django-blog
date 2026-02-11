@@ -114,6 +114,18 @@ class PostViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_post_view_accepts_no_trailing_slash(self):
+        post = Post.objects.create(
+            title="Published",
+            slug="published-post",
+            content="text",
+            published_on=timezone.now(),
+        )
+
+        response = self.client.get(f"/blog/post/{post.slug}")
+
+        self.assertEqual(response.status_code, 200)
+
 
 class WebmentionFormDisplayTests(TestCase):
     def setUp(self):
