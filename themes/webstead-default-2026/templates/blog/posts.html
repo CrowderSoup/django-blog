@@ -26,7 +26,7 @@
     data-suggest-url="{% url 'tag_suggestions' %}"
     data-default-kinds="{{ default_kinds|join:',' }}"
   >
-    <form action="{% url 'posts' %}" method="get" class="filter-form" data-filter-form>
+    <form action="{{ posts_index_url }}" method="get" class="filter-form" data-filter-form>
       <div class="filter-header" data-filter-header>
         <span class="filter-title">Filter this feed by...</span>
         <button

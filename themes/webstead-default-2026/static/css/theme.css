@@ -481,6 +481,11 @@ a:focus {
   background: var(--glass-light);
 }
 
+.author-card + .post-filter,
+.home-page-content + .post-filter {
+  margin-top: 2rem;
+}
+
 .post-filter form {
   display: grid;
   gap: 1rem;

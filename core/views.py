@@ -8,11 +8,22 @@ from django.urls import reverse
 from .models import Page, SiteConfiguration
 from .og import absolute_url, first_attachment_image_url, summarize_markdown
 from blog.models import Post, Tag
+from blog.views import build_posts_listing_context
+from core.themes import get_active_theme_settings
 
 def index(request):
-    recent_blog_posts = Post.objects.filter(kind=Post.ARTICLE).exclude(published_on__isnull=True).order_by('-published_on')[:5]
+    recent_blog_posts = (
+        Post.objects.filter(kind=Post.ARTICLE)
+        .exclude(published_on__isnull=True)
+        .order_by("-published_on")[:5]
+    )
     settings_obj = SiteConfiguration.get_solo()
     home_page = settings_obj.home_page if settings_obj.home_page_id else None
+    theme_settings = get_active_theme_settings()
+    home_feed_mode = theme_settings.get("home_feed_mode", "blog")
+    feed_context = {}
+    if home_feed_mode == "home":
+        feed_context = build_posts_listing_context(request, include_og=False)
 
     return render(
         request,
@@ -20,6 +31,7 @@ def index(request):
         {
             "recent_posts": recent_blog_posts,
             "home_page": home_page,
+            **feed_context,
         },
     )
 
@@ -58,9 +70,11 @@ def favicon(request):
 
 
 def sitemap(request):
+    theme_settings = get_active_theme_settings()
+    home_feed_mode = theme_settings.get("home_feed_mode", "blog")
+    home_feed_redirect = theme_settings.get("home_feed_redirect")
     static_route_names = [
         "index",
-        "posts",
         "posts_feed",
         "robots_txt",
         "sitemap",
@@ -69,6 +83,8 @@ def sitemap(request):
         "webmention-endpoint",
         "analytics-leave",
     ]
+    if not (home_feed_mode == "home" and home_feed_redirect):
+        static_route_names.insert(1, "posts")
 
     urls = set()
     for name in static_route_names:

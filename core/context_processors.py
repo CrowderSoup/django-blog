@@ -6,7 +6,7 @@ from django.db.models import Q
 
 from .models import HCard, SiteConfiguration
 from .og import default_image_url
-from .themes import get_active_theme, resolve_theme_settings
+from .themes import get_active_theme, resolve_theme_settings, get_active_theme_settings, get_posts_index_url
 from blog.models import Comment
 from micropub.models import Webmention
 
@@ -46,6 +46,10 @@ def site_configuration(request):
     except NoReverseMatch:
         feed_url = None
 
+    theme_settings = get_active_theme_settings()
+    home_feed_mode = theme_settings.get("home_feed_mode", "blog")
+    posts_index_url = get_posts_index_url()
+
     og_default_image = default_image_url(request, settings=settings, site_author_hcard=site_author_hcard)
 
     return {
@@ -53,6 +57,8 @@ def site_configuration(request):
         "menu_items": menu_items,
         "footer_menu_items": footer_menu_items,
         "feed_url": feed_url,
+        "home_feed_mode": home_feed_mode,
+        "posts_index_url": posts_index_url,
         "site_author_hcard": site_author_hcard,
         "site_author_display_name": site_author_display_name,
         "og_default_image": og_default_image,
