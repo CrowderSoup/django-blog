@@ -15,12 +15,20 @@
               These user agents will be skipped and removed from new analytics.
             </p>
           </div>
-          <a
-            href="{% url 'site_admin:analytics_user_agents' %}"
-            class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
-          >
-            Search user agents
-          </a>
+          <div class="flex flex-wrap items-center gap-3">
+            <a
+              href="{% url 'site_admin:analytics_ignored_user_agents_export' %}"
+              class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+            >
+              Export
+            </a>
+            <a
+              href="{% url 'site_admin:analytics_user_agents' %}"
+              class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+            >
+              Search user agents
+            </a>
+          </div>
         </div>
 
         {% include "site_admin/_messages.html" with wrapper_class="mt-6 space-y-2" %}

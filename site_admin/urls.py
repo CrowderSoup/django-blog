@@ -18,6 +18,11 @@ urlpatterns = [
         name="analytics_ignored_user_agents",
     ),
     path(
+        "analytics/ignored-user-agents/export/",
+        views.analytics_ignored_user_agents_export,
+        name="analytics_ignored_user_agents_export",
+    ),
+    path(
         "analytics/errors/user-agents/",
         views.analytics_errors_by_user_agent,
         name="analytics_errors_by_user_agent",

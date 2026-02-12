@@ -229,6 +229,20 @@ class SiteAdminAnalyticsTests(TestCase):
             UserAgentIgnore.objects.filter(user_agent="TestBot/1.0").exists()
         )
 
+    def test_ignored_user_agents_export(self):
+        self.client.force_login(self.staff)
+        UserAgentIgnore.objects.create(user_agent="Alpha/1.0")
+        UserAgentIgnore.objects.create(user_agent="Beta/2.0")
+
+        response = self.client.get(
+            reverse("site_admin:analytics_ignored_user_agents_export")
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/plain; charset=utf-8")
+        content = response.content.decode("utf-8").strip().splitlines()
+        self.assertEqual(content, ["Alpha/1.0", "Beta/2.0"])
+
     def test_errors_by_user_agent_counts_and_filters(self):
         self.client.force_login(self.staff)
         today = timezone.localdate()

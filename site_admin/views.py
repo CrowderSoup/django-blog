@@ -743,6 +743,21 @@ def analytics_ignored_user_agents(request):
     )
 
 
+@require_GET
+def analytics_ignored_user_agents_export(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    rows = UserAgentIgnore.objects.order_by("user_agent", "id").values_list(
+        "user_agent", flat=True
+    )
+    content = "\n".join(rows)
+    response = HttpResponse(content, content_type="text/plain; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="ignored-user-agents.txt"'
+    return response
+
+
 def analytics_errors_by_user_agent(request):
     guard = _staff_guard(request)
     if guard:

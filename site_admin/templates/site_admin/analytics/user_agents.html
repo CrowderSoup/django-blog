@@ -83,20 +83,26 @@
           <h2 class="text-lg font-semibold">Matching user agents</h2>
           <div class="flex flex-wrap items-center gap-3 text-sm">
             <span class="text-[color:var(--admin-muted)]">Showing up to 100 results</span>
-            <form method="post" action="{% url 'site_admin:analytics_ignore_user_agents_bulk' %}">
-              {% csrf_token %}
-              <input type="hidden" name="q" value="{{ query }}" />
-              <input type="hidden" name="start" value="{{ start_date|date:'Y-m-d' }}" />
-              <input type="hidden" name="end" value="{{ end_date|date:'Y-m-d' }}" />
-              <input type="hidden" name="ignore_all" value="1" />
-              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-              <button
-                type="submit"
-                class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+            {% if query %}
+              <form
+                method="post"
+                action="{% url 'site_admin:analytics_ignore_user_agents_bulk' %}"
+                data-confirm-message="Ignore all user agents matching “{{ query|escapejs }}”?"
               >
-                Ignore all matches
-              </button>
-            </form>
+                {% csrf_token %}
+                <input type="hidden" name="q" value="{{ query }}" />
+                <input type="hidden" name="start" value="{{ start_date|date:'Y-m-d' }}" />
+                <input type="hidden" name="end" value="{{ end_date|date:'Y-m-d' }}" />
+                <input type="hidden" name="ignore_all" value="1" />
+                <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                <button
+                  type="submit"
+                  class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+                >
+                  Ignore all matches
+                </button>
+              </form>
+            {% endif %}
           </div>
         </div>
         <form method="post" action="{% url 'site_admin:analytics_ignore_user_agents_bulk' %}">
@@ -202,6 +208,19 @@
       items.forEach((item) => {
         item.addEventListener("change", () => {
           selectAll.checked = items.every((checkbox) => checkbox.checked);
+        });
+      });
+    })();
+    (() => {
+      const forms = document.querySelectorAll("[data-confirm-message]");
+      if (!forms.length) return;
+      forms.forEach((form) => {
+        form.addEventListener("submit", (event) => {
+          const message = form.getAttribute("data-confirm-message");
+          if (!message) return;
+          if (!window.confirm(message)) {
+            event.preventDefault();
+          }
         });
       });
     })();
