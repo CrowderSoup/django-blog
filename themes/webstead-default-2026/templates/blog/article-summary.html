@@ -1,8 +1,9 @@
 {% load author %}
 
 <article class="h-entry entry-summary">
+  <a class="u-uid" href="{% url 'post' slug=post.slug %}" hidden></a>
   <header class="entry-header">
-    <a class="u-url" href="/blog/post/{{ post.slug }}">
+    <a class="u-url" href="{% url 'post' slug=post.slug %}">
       <h3 class="p-name">{{ post.title }}</h3>
     </a>
     <div class="entry-meta">
@@ -17,6 +18,6 @@
   <p class="p-summary">{{ post.summary }}</p>
   {% endif %}
 
-  <a class="u-url entry-link" href="/blog/post/{{ post.slug }}">Read more</a>
+  <a class="u-url entry-link" href="{% url 'post' slug=post.slug %}">Read more</a>
   {% include 'blog/tags.html' %}
 </article>

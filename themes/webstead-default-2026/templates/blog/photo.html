@@ -1,6 +1,8 @@
 {% load author %}
 
 <article class="h-entry entry-photo">
+  <a class="u-uid" href="{% url 'post' slug=post.slug %}" hidden></a>
+
   <section class="photo-slider" aria-labelledby="gallery-title" role="region">
     <h2 id="gallery-title" class="sr-only">Photo gallery</h2>
     <ol class="slides" tabindex="0">
@@ -36,14 +38,14 @@
     {% endif %}
   </section>
 
-  <div class="p-content">
+  <div class="e-content">
     {{ post.html }}
   </div>
 
   {% include 'blog/tags.html' %}
 
   <div class="entry-meta">
-    <a class="u-url" href="/blog/post/{{ post.slug }}">
+    <a class="u-url" href="{% url 'post' slug=post.slug %}">
       <time class="dt-published" datetime="{{ post.published_on|date:"c" }}">
         {{ post.published_on|date:"Y-m-d" }}
       </time>

@@ -1,14 +1,16 @@
 {% load author %}
 
 <article class="h-entry entry-note">
-  <div class="p-content">
+  <a class="u-uid" href="{% url 'post' slug=post.slug %}" hidden></a>
+
+  <div class="e-content">
     {{ post.html }}
   </div>
 
   {% include 'blog/tags.html' %}
 
   <div class="entry-meta">
-    <a class="u-url" href="/blog/post/{{ post.slug }}">
+    <a class="u-url" href="{% url 'post' slug=post.slug %}">
       <time class="dt-published" datetime="{{ post.published_on|date:"c" }}">
         {{ post.published_on|date:"Y-m-d" }}
       </time>

@@ -2,12 +2,19 @@
 
 {% with interaction=post.interaction %}
 <article class="h-entry entry-repost">
+  <a class="u-uid" href="{% url 'post' slug=post.slug %}" hidden></a>
+  {% if post.repost_of %}
+    <a class="u-repost-of" href="{{ post.repost_of }}" hidden></a>
+  {% elif interaction.target and interaction.target.original_url %}
+    <a class="u-repost-of" href="{{ interaction.target.original_url }}" hidden></a>
+  {% endif %}
+
   <header class="entry-header">
     <p class="interaction-kicker p-category">{{ interaction.label }}</p>
   </header>
 
   {% if interaction.show_content %}
-    <div class="p-content">
+    <div class="e-content">
       {{ post.html }}
     </div>
   {% endif %}
@@ -17,7 +24,7 @@
   {% include 'blog/tags.html' %}
 
   <div class="entry-meta">
-    <a class="u-url" href="/blog/post/{{ post.slug }}">
+    <a class="u-url" href="{% url 'post' slug=post.slug %}">
       <time class="dt-published" datetime="{{ post.published_on|date:"c" }}">
         {{ post.published_on|date:"Y-m-d" }}
       </time>

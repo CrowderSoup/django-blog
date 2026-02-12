@@ -1,12 +1,14 @@
 {% load author %}
 
 <article class="h-entry entry-activity">
+  <a class="u-uid" href="{% url 'post' slug=post.slug %}" hidden></a>
+
   <header class="entry-header">
     {% if activity.name %}
       <p class="activity-kicker p-category">{{ activity.name }}</p>
     {% endif %}
     {% if post.title %}
-      <a class="u-url" href="/blog/post/{{ post.slug }}">
+      <a class="u-url" href="{% url 'post' slug=post.slug %}">
         <h1 class="p-name">{{ post.title }}</h1>
       </a>
     {% endif %}
@@ -104,11 +106,11 @@
     </section>
   {% endif %}
 
-  <div class="p-content">{{ post.html }}</div>
+  <div class="e-content">{{ post.html }}</div>
   {% include 'blog/tags.html' %}
   <div class="entry-meta">
-    <a class="u-url" href="/blog/post/{{ post.slug }}">
-      <time class="dt-published" datetime="{{ page.published_on|date:"c" }}">
+    <a class="u-url" href="{% url 'post' slug=post.slug %}">
+      <time class="dt-published" datetime="{{ post.published_on|date:"c" }}">
         {{ post.published_on|date:"Y-m-d" }}
       </time>
     </a>

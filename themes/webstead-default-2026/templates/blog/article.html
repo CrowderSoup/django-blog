@@ -2,7 +2,7 @@
 
 <article class="h-entry entry-article">
   <header class="entry-header">
-    <a class="u-url" href="/blog/post/{{ post.slug }}">
+    <a class="u-url u-uid" href="{% url 'post' slug=post.slug %}">
       <h1 class="p-name">{{ post.title }}</h1>
     </a>
 
