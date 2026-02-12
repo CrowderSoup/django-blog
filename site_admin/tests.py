@@ -13,7 +13,12 @@ from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from analytics.models import UserAgentIgnore, Visit
+from analytics.models import (
+    UserAgentBotRule,
+    UserAgentFalsePositive,
+    UserAgentIgnore,
+    Visit,
+)
 from blog.models import Comment, Post
 from core.models import HCard, HCardPhoto, RequestErrorLog, SiteConfiguration, ThemeInstall
 from core.themes import ThemeDefinition, ThemeUpdateResult
@@ -145,6 +150,7 @@ class SiteAdminAnalyticsTests(TestCase):
     def test_analytics_pages_require_staff(self):
         urls = [
             reverse("site_admin:analytics_user_agents"),
+            reverse("site_admin:analytics_bot_detection"),
             reverse("site_admin:analytics_ignored_user_agents"),
             reverse("site_admin:analytics_errors_by_user_agent"),
         ]
@@ -331,6 +337,61 @@ class SiteAdminAnalyticsTests(TestCase):
         self.assertFalse(
             UserAgentIgnore.objects.filter(user_agent="Mozilla/5.0").exists()
         )
+
+    def test_bot_detection_rule_save_and_test(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("site_admin:analytics_bot_detection"),
+            {
+                "action": "save_rule",
+                "enabled": "1",
+                "pattern": r"(?i)bot|crawler",
+            },
+        )
+        self.assertRedirects(response, reverse("site_admin:analytics_bot_detection"))
+        rule = UserAgentBotRule.get_current()
+        self.assertTrue(rule.enabled)
+        self.assertEqual(rule.pattern, r"(?i)bot|crawler")
+
+        response = self.client.post(
+            reverse("site_admin:analytics_bot_detection"),
+            {
+                "action": "test_rule",
+                "enabled": "1",
+                "pattern": r"(?i)bot|crawler",
+                "test_user_agent": "CrawlerProbe/1.0",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["test_result"])
+
+    def test_mark_and_unmark_false_positive_user_agent(self):
+        self.client.force_login(self.staff)
+        UserAgentBotRule.objects.create(enabled=True, pattern=r"(?i)bot")
+        visit = self._create_visit(user_agent="NoiseBot/1.0")
+        Visit.objects.filter(id=visit.id).update(is_suspected_bot=True, suspected_bot_pattern_version=1)
+
+        response = self.client.post(
+            reverse("site_admin:analytics_mark_false_positive_user_agent"),
+            {"user_agent": "NoiseBot/1.0"},
+        )
+        self.assertRedirects(response, reverse("site_admin:analytics_bot_detection"))
+        self.assertTrue(
+            UserAgentFalsePositive.objects.filter(user_agent="NoiseBot/1.0").exists()
+        )
+        visit.refresh_from_db()
+        self.assertFalse(visit.is_suspected_bot)
+
+        response = self.client.post(
+            reverse("site_admin:analytics_unmark_false_positive_user_agent"),
+            {"user_agent": "NoiseBot/1.0"},
+        )
+        self.assertRedirects(response, reverse("site_admin:analytics_bot_detection"))
+        self.assertFalse(
+            UserAgentFalsePositive.objects.filter(user_agent="NoiseBot/1.0").exists()
+        )
+        visit.refresh_from_db()
+        self.assertTrue(visit.is_suspected_bot)
 
 
 class SiteAdminPostTests(TestCase):

@@ -13,9 +13,24 @@ urlpatterns = [
     path("analytics/", views.analytics_dashboard, name="analytics_dashboard"),
     path("analytics/user-agents/", views.analytics_user_agents, name="analytics_user_agents"),
     path(
+        "analytics/bot-detection/",
+        views.analytics_bot_detection,
+        name="analytics_bot_detection",
+    ),
+    path(
         "analytics/ignored-user-agents/",
         views.analytics_ignored_user_agents,
         name="analytics_ignored_user_agents",
+    ),
+    path(
+        "analytics/mark-false-positive-user-agent/",
+        views.analytics_mark_false_positive_user_agent,
+        name="analytics_mark_false_positive_user_agent",
+    ),
+    path(
+        "analytics/unmark-false-positive-user-agent/",
+        views.analytics_unmark_false_positive_user_agent,
+        name="analytics_unmark_false_positive_user_agent",
     ),
     path(
         "analytics/ignored-user-agents/export/",

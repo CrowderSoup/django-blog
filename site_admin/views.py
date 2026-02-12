@@ -23,7 +23,13 @@ from django.forms import inlineformset_factory
 from django.views.decorators.http import require_http_methods, require_GET, require_POST
 
 from blog.models import Comment, Post
-from analytics.models import UserAgentIgnore, Visit
+from analytics.bot_detection import evaluate_user_agent_against_pattern, validate_bot_pattern
+from analytics.models import (
+    UserAgentBotRule,
+    UserAgentFalsePositive,
+    UserAgentIgnore,
+    Visit,
+)
 
 from files.models import Attachment, File
 from files.gpx import GpxAnonymizeError, GpxAnonymizeOptions, anonymize_gpx
@@ -93,6 +99,7 @@ from .forms import (
     ThemeFileForm,
     ThemeSettingsForm,
     ThemeUploadForm,
+    UserAgentBotRuleForm,
     WebmentionCreateForm,
     WebmentionFilterForm,
     ErrorLogFilterForm,
@@ -758,6 +765,149 @@ def analytics_ignored_user_agents_export(request):
     return response
 
 
+@require_http_methods(["GET", "POST"])
+def analytics_bot_detection(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    start_date, end_date, window_days, presets = _parse_analytics_date_range(request)
+    rule = UserAgentBotRule.get_current()
+    test_user_agent = ""
+    test_result = None
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "save_rule":
+            form = UserAgentBotRuleForm(request.POST, instance=rule)
+            if form.is_valid():
+                form.save()
+                messages.success(request, "Bot detection rule saved.")
+                return redirect("site_admin:analytics_bot_detection")
+        elif action == "test_rule":
+            form = UserAgentBotRuleForm(request.POST, instance=rule)
+            test_user_agent = (request.POST.get("test_user_agent") or "").strip()
+            pattern = (request.POST.get("pattern") or "")
+            if not pattern.strip():
+                messages.error(request, "Provide a regex pattern to test.")
+            elif not test_user_agent:
+                messages.error(request, "Provide a user agent string to test.")
+            else:
+                try:
+                    validate_bot_pattern(pattern)
+                    test_result = evaluate_user_agent_against_pattern(
+                        pattern, test_user_agent
+                    )
+                except ValueError as exc:
+                    messages.error(request, f"Invalid regex: {exc}")
+        else:
+            form = UserAgentBotRuleForm(instance=rule)
+    else:
+        form = UserAgentBotRuleForm(instance=rule)
+
+    flagged_user_agents = list(
+        Visit.objects.filter(
+            started_at__date__gte=start_date,
+            started_at__date__lte=end_date,
+            is_suspected_bot=True,
+        )
+        .exclude(path__startswith="/admin")
+        .exclude(path__startswith="/analytics")
+        .exclude(user_agent="")
+        .values("user_agent")
+        .annotate(count=Count("id"), last_seen=Max("started_at"))
+        .order_by("-count", "-last_seen")[:100]
+    )
+    flagged_values = [row["user_agent"] for row in flagged_user_agents]
+    ignored_user_agents = set(
+        UserAgentIgnore.objects.filter(user_agent__in=flagged_values).values_list(
+            "user_agent", flat=True
+        )
+    )
+    false_positive_user_agents = set(
+        UserAgentFalsePositive.objects.filter(user_agent__in=flagged_values).values_list(
+            "user_agent", flat=True
+        )
+    )
+    false_positive_rows = UserAgentFalsePositive.objects.order_by("user_agent", "id")
+
+    return render(
+        request,
+        "site_admin/analytics/bot_detection.html",
+        {
+            "form": form,
+            "rule": rule,
+            "test_user_agent": test_user_agent,
+            "test_result": test_result,
+            "flagged_user_agents": flagged_user_agents,
+            "ignored_user_agents": ignored_user_agents,
+            "false_positive_user_agents": false_positive_user_agents,
+            "false_positive_rows": false_positive_rows,
+            "window_days": window_days,
+            "start_date": start_date,
+            "end_date": end_date,
+            "presets": presets,
+        },
+    )
+
+
+@require_POST
+def analytics_mark_false_positive_user_agent(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    user_agent = (request.POST.get("user_agent") or "").strip()
+    if not user_agent:
+        messages.error(request, "Provide a user agent to mark as false positive.")
+    else:
+        _, created = UserAgentFalsePositive.objects.get_or_create(user_agent=user_agent)
+        Visit.objects.filter(user_agent=user_agent).update(
+            is_suspected_bot=False,
+            suspected_bot_pattern_version=None,
+        )
+        if created:
+            messages.success(request, "User agent marked as false positive.")
+        else:
+            messages.info(request, "User agent is already marked as false positive.")
+
+    return redirect("site_admin:analytics_bot_detection")
+
+
+@require_POST
+def analytics_unmark_false_positive_user_agent(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    user_agent = (request.POST.get("user_agent") or "").strip()
+    if not user_agent:
+        messages.error(request, "Provide a user agent to remove from false positives.")
+        return redirect("site_admin:analytics_bot_detection")
+
+    deleted, _ = UserAgentFalsePositive.objects.filter(user_agent=user_agent).delete()
+    if not deleted:
+        messages.info(request, "User agent was not marked as false positive.")
+        return redirect("site_admin:analytics_bot_detection")
+
+    rule = UserAgentBotRule.get_current()
+    if (
+        rule.enabled
+        and rule.pattern
+        and not UserAgentIgnore.objects.filter(user_agent=user_agent).exists()
+    ):
+        try:
+            if evaluate_user_agent_against_pattern(rule.pattern, user_agent):
+                Visit.objects.filter(user_agent=user_agent).update(
+                    is_suspected_bot=True,
+                    suspected_bot_pattern_version=rule.version,
+                )
+        except Exception:
+            pass
+    messages.success(request, "User agent removed from false positives.")
+    return redirect("site_admin:analytics_bot_detection")
+
+
 def analytics_errors_by_user_agent(request):
     guard = _staff_guard(request)
     if guard:
@@ -832,9 +982,8 @@ def analytics_ignore_user_agent(request):
     if not user_agent:
         messages.error(request, "Provide a user agent to ignore.")
     else:
-        ignore_entry, created = UserAgentIgnore.objects.get_or_create(
-            user_agent=user_agent
-        )
+        _, created = UserAgentIgnore.objects.get_or_create(user_agent=user_agent)
+        UserAgentFalsePositive.objects.filter(user_agent=user_agent).delete()
         if created:
             messages.success(request, "User agent added to ignore list.")
         else:
@@ -902,9 +1051,8 @@ def analytics_ignore_user_agents_bulk(request):
         created_count = 0
         deleted_total = 0
         for user_agent in user_agents:
-            ignore_entry, created = UserAgentIgnore.objects.get_or_create(
-                user_agent=user_agent
-            )
+            _, created = UserAgentIgnore.objects.get_or_create(user_agent=user_agent)
+            UserAgentFalsePositive.objects.filter(user_agent=user_agent).delete()
             if created:
                 created_count += 1
             deleted, _ = Visit.objects.filter(user_agent=user_agent).delete()

@@ -5,6 +5,8 @@ from django.core.validators import EmailValidator, URLValidator
 from django.utils import timezone
 from django.utils.text import slugify
 
+from analytics.bot_detection import validate_bot_pattern
+from analytics.models import UserAgentBotRule
 from blog.models import Comment, Post, Tag
 from core.models import (
     HCard,
@@ -868,6 +870,42 @@ class RedirectForm(forms.ModelForm):
             "class",
             "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
         )
+
+
+class UserAgentBotRuleForm(forms.ModelForm):
+    class Meta:
+        model = UserAgentBotRule
+        fields = ["enabled", "pattern"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["enabled"].widget.attrs.setdefault(
+            "class",
+            "h-4 w-4 rounded border-[color:var(--admin-border)] text-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+        )
+        self.fields["pattern"].widget.attrs.setdefault(
+            "class",
+            "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm font-mono focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+        )
+        self.fields["pattern"].widget.attrs.setdefault("rows", 4)
+        self.fields["pattern"].widget.attrs.setdefault(
+            "placeholder",
+            r"(?i)(bot|crawler|spider|headless)",
+        )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        enabled = cleaned_data.get("enabled")
+        pattern = cleaned_data.get("pattern", "")
+        if enabled and not pattern.strip():
+            self.add_error("pattern", "Regex pattern is required when bot detection is enabled.")
+            return cleaned_data
+        if pattern:
+            try:
+                validate_bot_pattern(pattern)
+            except ValueError as exc:
+                self.add_error("pattern", f"Invalid regex: {exc}")
+        return cleaned_data
 
 
 class HCardForm(forms.ModelForm):

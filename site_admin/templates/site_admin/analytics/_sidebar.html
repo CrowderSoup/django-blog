@@ -28,6 +28,12 @@
         User agents
       </a>
       <a
+        href="{% url 'site_admin:analytics_bot_detection' %}"
+        class="rounded-2xl px-4 py-2 transition {% if current == 'analytics_bot_detection' %}bg-[color:var(--admin-bg)] text-[color:var(--admin-ink)]{% else %}text-[color:var(--admin-muted)] hover:bg-[color:var(--admin-bg)] hover:text-[color:var(--admin-ink)]{% endif %}"
+      >
+        Bot detection
+      </a>
+      <a
         href="{% url 'site_admin:analytics_ignored_user_agents' %}"
         class="rounded-2xl px-4 py-2 transition {% if current == 'analytics_ignored_user_agents' %}bg-[color:var(--admin-bg)] text-[color:var(--admin-ink)]{% else %}text-[color:var(--admin-muted)] hover:bg-[color:var(--admin-bg)] hover:text-[color:var(--admin-ink)]{% endif %}"
       >
