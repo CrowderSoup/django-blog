@@ -81,61 +81,129 @@
       <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold">Matching user agents</h2>
-          <span class="text-sm text-[color:var(--admin-muted)]">
-            Showing up to 100 results
-          </span>
+          <div class="flex flex-wrap items-center gap-3 text-sm">
+            <span class="text-[color:var(--admin-muted)]">Showing up to 100 results</span>
+            <form method="post" action="{% url 'site_admin:analytics_ignore_user_agents_bulk' %}">
+              {% csrf_token %}
+              <input type="hidden" name="q" value="{{ query }}" />
+              <input type="hidden" name="start" value="{{ start_date|date:'Y-m-d' }}" />
+              <input type="hidden" name="end" value="{{ end_date|date:'Y-m-d' }}" />
+              <input type="hidden" name="ignore_all" value="1" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <button
+                type="submit"
+                class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+              >
+                Ignore all matches
+              </button>
+            </form>
+          </div>
         </div>
-        <div class="mt-4 overflow-hidden rounded-2xl border border-[color:var(--admin-border)]">
-          <table class="min-w-full table-fixed text-left text-sm">
-            <thead class="bg-[color:var(--admin-bg)] text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
-              <tr>
-                <th scope="col" class="px-4 py-3 w-full">User agent</th>
-                <th scope="col" class="px-4 py-3 w-28">Count</th>
-                <th scope="col" class="px-4 py-3 w-40">Last seen</th>
-                <th scope="col" class="px-4 py-3 w-28">Action</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-[color:var(--admin-border)]">
-              {% for row in user_agents %}
+        <form method="post" action="{% url 'site_admin:analytics_ignore_user_agents_bulk' %}">
+          {% csrf_token %}
+          <input type="hidden" name="q" value="{{ query }}" />
+          <input type="hidden" name="start" value="{{ start_date|date:'Y-m-d' }}" />
+          <input type="hidden" name="end" value="{{ end_date|date:'Y-m-d' }}" />
+          <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+          <div class="mt-4 overflow-hidden rounded-2xl border border-[color:var(--admin-border)]">
+            <table class="min-w-full table-fixed text-left text-sm">
+              <thead class="bg-[color:var(--admin-bg)] text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
                 <tr>
-                  <td class="px-4 py-3 text-[color:var(--admin-ink)] min-w-0 max-w-0 overflow-hidden">
-                    <div class="block w-full truncate" title="{{ row.user_agent }}">{{ row.user_agent|default:"(unknown)" }}</div>
-                  </td>
-                  <td class="px-4 py-3 text-[color:var(--admin-ink)]">{{ row.count }}</td>
-                  <td class="px-4 py-3 text-[color:var(--admin-ink)]">{{ row.last_seen|date:"M j, Y" }}</td>
-                  <td class="px-4 py-3">
-                    {% if row.user_agent in ignored_user_agents %}
-                      <span class="rounded-full bg-[color:var(--admin-bg)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-muted)]">
-                        Ignored
-                      </span>
-                    {% else %}
-                      <form method="post" action="{% url 'site_admin:analytics_ignore_user_agent' %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="user_agent" value="{{ row.user_agent }}" />
-                        <input type="hidden" name="start" value="{{ start_date|date:'Y-m-d' }}" />
-                        <input type="hidden" name="end" value="{{ end_date|date:'Y-m-d' }}" />
-                        <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                  <th scope="col" class="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      id="analytics-select-all"
+                      class="h-4 w-4 rounded border-[color:var(--admin-border)]"
+                      aria-label="Select all matching user agents"
+                    />
+                  </th>
+                  <th scope="col" class="px-4 py-3 w-full">User agent</th>
+                  <th scope="col" class="px-4 py-3 w-28">Count</th>
+                  <th scope="col" class="px-4 py-3 w-40">Last seen</th>
+                  <th scope="col" class="px-4 py-3 w-28">Action</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-[color:var(--admin-border)]">
+                {% for row in user_agents %}
+                  <tr>
+                    <td class="px-4 py-3">
+                      {% if row.user_agent in ignored_user_agents %}
+                        <span class="text-xs text-[color:var(--admin-muted)]">—</span>
+                      {% else %}
+                        <input
+                          type="checkbox"
+                          name="user_agents"
+                          value="{{ row.user_agent }}"
+                          class="analytics-select h-4 w-4 rounded border-[color:var(--admin-border)]"
+                          aria-label="Select {{ row.user_agent }}"
+                        />
+                      {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-[color:var(--admin-ink)] min-w-0 max-w-0 overflow-hidden">
+                      <div class="block w-full truncate" title="{{ row.user_agent }}">{{ row.user_agent|default:"(unknown)" }}</div>
+                    </td>
+                    <td class="px-4 py-3 text-[color:var(--admin-ink)]">{{ row.count }}</td>
+                    <td class="px-4 py-3 text-[color:var(--admin-ink)]">{{ row.last_seen|date:"M j, Y" }}</td>
+                    <td class="px-4 py-3">
+                      {% if row.user_agent in ignored_user_agents %}
+                        <span class="rounded-full bg-[color:var(--admin-bg)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-muted)]">
+                          Ignored
+                        </span>
+                      {% else %}
                         <button
                           type="submit"
+                          name="user_agents"
+                          value="{{ row.user_agent }}"
                           class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
                         >
                           Ignore
                         </button>
-                      </form>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% empty %}
-                <tr>
-                  <td colspan="4" class="px-4 py-3 text-[color:var(--admin-muted)]">
-                    No user agents found. Try broad terms like “bot”, “curl”, or “Mozilla”.
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% empty %}
+                  <tr>
+                    <td colspan="5" class="px-4 py-3 text-[color:var(--admin-muted)]">
+                      No user agents found. Try broad terms like “bot”, “curl”, or “Mozilla”.
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p class="text-xs text-[color:var(--admin-muted)]">
+              Select user agents to ignore them in bulk.
+            </p>
+            <button
+              type="submit"
+              class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-xs font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+            >
+              Ignore selected
+            </button>
+          </div>
+        </form>
       </section>
     </div>
   </div>
+{% endblock %}
+
+{% block body_end %}
+  <script>
+    (() => {
+      const selectAll = document.getElementById("analytics-select-all");
+      const items = Array.from(document.querySelectorAll(".analytics-select"));
+      if (!selectAll || !items.length) return;
+      selectAll.addEventListener("change", () => {
+        items.forEach((item) => {
+          item.checked = selectAll.checked;
+        });
+      });
+      items.forEach((item) => {
+        item.addEventListener("change", () => {
+          selectAll.checked = items.every((checkbox) => checkbox.checked);
+        });
+      });
+    })();
+  </script>
 {% endblock %}

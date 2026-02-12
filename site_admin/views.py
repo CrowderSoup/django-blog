@@ -562,8 +562,8 @@ def interactions(request):
 def _parse_analytics_date_range(request, default_days=30):
     end_date = timezone.localdate()
     start_date = end_date - timedelta(days=default_days - 1)
-    start_param = request.GET.get("start")
-    end_param = request.GET.get("end")
+    start_param = request.GET.get("start") or request.POST.get("start")
+    end_param = request.GET.get("end") or request.POST.get("end")
     if start_param:
         try:
             start_date = date.fromisoformat(start_param)
@@ -852,6 +852,72 @@ def analytics_ignore_user_agent(request):
     if params:
         url = f"{url}?{urlencode(params)}"
     return redirect(url)
+
+
+@require_POST
+def analytics_ignore_user_agents_bulk(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    start_date, end_date, _, _ = _parse_analytics_date_range(request)
+    query = (request.POST.get("q") or "").strip()
+    ignore_all = request.POST.get("ignore_all") == "1"
+    selected = [value for value in request.POST.getlist("user_agents") if value]
+
+    user_agents = selected
+    if ignore_all:
+        qs = (
+            Visit.objects.filter(
+                started_at__date__gte=start_date, started_at__date__lte=end_date
+            )
+            .exclude(path__startswith="/admin")
+            .exclude(path__startswith="/analytics")
+            .exclude(user_agent="")
+        )
+        if query:
+            qs = qs.filter(user_agent__icontains=query)
+        user_agents = list(
+            qs.values_list("user_agent", flat=True).distinct()
+        )
+
+    if not user_agents:
+        messages.error(request, "Select at least one user agent to ignore.")
+    else:
+        created_count = 0
+        deleted_total = 0
+        for user_agent in user_agents:
+            ignore_entry, created = UserAgentIgnore.objects.get_or_create(
+                user_agent=user_agent
+            )
+            if created:
+                created_count += 1
+            deleted, _ = Visit.objects.filter(user_agent=user_agent).delete()
+            deleted_total += deleted
+
+        if created_count:
+            messages.success(
+                request,
+                f"Ignored {created_count} user agent{'s' if created_count != 1 else ''}.",
+            )
+        else:
+            messages.info(request, "All selected user agents were already ignored.")
+
+        if deleted_total:
+            messages.success(
+                request,
+                f"Removed {deleted_total} visit{'s' if deleted_total != 1 else ''}.",
+            )
+
+    redirect_target = (request.POST.get("next") or "").strip()
+    if redirect_target and url_has_allowed_host_and_scheme(
+        redirect_target,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return redirect(redirect_target)
+
+    return redirect("site_admin:analytics_user_agents")
 
 
 @require_POST

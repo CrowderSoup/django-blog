@@ -291,6 +291,33 @@ class SiteAdminAnalyticsTests(TestCase):
         )
         self.assertRedirects(response, reverse("site_admin:analytics_dashboard"))
 
+    def test_bulk_ignore_user_agents(self):
+        self.client.force_login(self.staff)
+        today = timezone.localdate()
+        in_range = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+        self._create_visit(user_agent="BotA/1.0", started_at=in_range)
+        self._create_visit(user_agent="BotB/1.0", started_at=in_range)
+        self._create_visit(user_agent="Mozilla/5.0", started_at=in_range)
+
+        response = self.client.post(
+            reverse("site_admin:analytics_ignore_user_agents_bulk"),
+            {
+                "q": "bot",
+                "start": (today - timedelta(days=1)).isoformat(),
+                "end": today.isoformat(),
+                "ignore_all": "1",
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse("site_admin:analytics_user_agents"),
+        )
+        self.assertTrue(UserAgentIgnore.objects.filter(user_agent="BotA/1.0").exists())
+        self.assertTrue(UserAgentIgnore.objects.filter(user_agent="BotB/1.0").exists())
+        self.assertFalse(
+            UserAgentIgnore.objects.filter(user_agent="Mozilla/5.0").exists()
+        )
+
 
 class SiteAdminPostTests(TestCase):
     def setUp(self):

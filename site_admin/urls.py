@@ -28,6 +28,11 @@ urlpatterns = [
         name="analytics_ignore_user_agent",
     ),
     path(
+        "analytics/ignore-user-agents/",
+        views.analytics_ignore_user_agents_bulk,
+        name="analytics_ignore_user_agents_bulk",
+    ),
+    path(
         "analytics/unignore-user-agent/",
         views.analytics_unignore_user_agent,
         name="analytics_unignore_user_agent",
