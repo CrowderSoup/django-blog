@@ -13,8 +13,9 @@ from django.core.files.base import ContentFile
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.db import transaction
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Max, Q
 from django.db.models.functions import TruncDate
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -558,13 +559,9 @@ def interactions(request):
     )
 
 
-def analytics_dashboard(request):
-    guard = _staff_guard(request)
-    if guard:
-        return guard
-
+def _parse_analytics_date_range(request, default_days=30):
     end_date = timezone.localdate()
-    start_date = end_date - timedelta(days=29)
+    start_date = end_date - timedelta(days=default_days - 1)
     start_param = request.GET.get("start")
     end_param = request.GET.get("end")
     if start_param:
@@ -604,6 +601,15 @@ def analytics_dashboard(request):
             "end": today.isoformat(),
         },
     }
+    return start_date, end_date, window_days, presets
+
+
+def analytics_dashboard(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    start_date, end_date, window_days, presets = _parse_analytics_date_range(request)
     qs = (
         Visit.objects.filter(
             started_at__date__gte=start_date, started_at__date__lte=end_date
@@ -678,6 +684,129 @@ def analytics_dashboard(request):
     )
 
 
+def analytics_user_agents(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    start_date, end_date, window_days, presets = _parse_analytics_date_range(request)
+    query = (request.GET.get("q") or "").strip()
+    qs = (
+        Visit.objects.filter(
+            started_at__date__gte=start_date, started_at__date__lte=end_date
+        )
+        .exclude(path__startswith="/admin")
+        .exclude(path__startswith="/analytics")
+        .exclude(user_agent="")
+    )
+    if query:
+        qs = qs.filter(user_agent__icontains=query)
+
+    user_agents = list(
+        qs.values("user_agent")
+        .annotate(count=Count("id"), last_seen=Max("started_at"))
+        .order_by("-count", "-last_seen")[:100]
+    )
+    ignored_user_agents = set(
+        UserAgentIgnore.objects.filter(
+            user_agent__in=[row["user_agent"] for row in user_agents]
+        ).values_list("user_agent", flat=True)
+    )
+
+    return render(
+        request,
+        "site_admin/analytics/user_agents.html",
+        {
+            "user_agents": user_agents,
+            "ignored_user_agents": ignored_user_agents,
+            "query": query,
+            "window_days": window_days,
+            "start_date": start_date,
+            "end_date": end_date,
+            "presets": presets,
+        },
+    )
+
+
+def analytics_ignored_user_agents(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    ignored_user_agents = UserAgentIgnore.objects.order_by("user_agent", "id")
+    return render(
+        request,
+        "site_admin/analytics/ignored_user_agents.html",
+        {
+            "ignored_user_agents": ignored_user_agents,
+        },
+    )
+
+
+def analytics_errors_by_user_agent(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    start_date, end_date, window_days, presets = _parse_analytics_date_range(request)
+    status_class = (request.GET.get("class") or "all").strip().lower()
+    if status_class not in {"all", "4xx", "5xx"}:
+        status_class = "all"
+    qs = (
+        Visit.objects.filter(
+            started_at__date__gte=start_date, started_at__date__lte=end_date
+        )
+        .exclude(path__startswith="/admin")
+        .exclude(path__startswith="/analytics")
+        .exclude(user_agent="")
+        .filter(response_status_code__gte=400)
+    )
+    if status_class == "4xx":
+        qs = qs.filter(response_status_code__gte=400, response_status_code__lt=500)
+    elif status_class == "5xx":
+        qs = qs.filter(response_status_code__gte=500, response_status_code__lt=600)
+
+    user_agent_counts = list(
+        qs.values("user_agent")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:100]
+    )
+    status_rows = qs.values("user_agent", "response_status_code").annotate(
+        count=Count("id")
+    )
+    status_map = {}
+    for row in status_rows:
+        ua = row["user_agent"]
+        status_map.setdefault(ua, []).append(
+            {"status": row["response_status_code"], "count": row["count"]}
+        )
+    for ua, rows in status_map.items():
+        rows.sort(key=lambda item: item["count"], reverse=True)
+
+    ignored_user_agents = set(
+        UserAgentIgnore.objects.filter(
+            user_agent__in=[row["user_agent"] for row in user_agent_counts]
+        ).values_list("user_agent", flat=True)
+    )
+
+    for row in user_agent_counts:
+        row["status_list"] = status_map.get(row["user_agent"], [])
+
+    return render(
+        request,
+        "site_admin/analytics/errors_by_user_agent.html",
+        {
+            "user_agent_counts": user_agent_counts,
+            "ignored_user_agents": ignored_user_agents,
+            "status_class": status_class,
+            "window_days": window_days,
+            "start_date": start_date,
+            "end_date": end_date,
+            "presets": presets,
+        },
+    )
+
+
 @require_POST
 def analytics_ignore_user_agent(request):
     guard = _staff_guard(request)
@@ -704,6 +833,14 @@ def analytics_ignore_user_agent(request):
         else:
             messages.info(request, "No visits matched that user agent.")
 
+    redirect_target = (request.POST.get("next") or "").strip()
+    if redirect_target and url_has_allowed_host_and_scheme(
+        redirect_target,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return redirect(redirect_target)
+
     params = {}
     start = request.POST.get("start")
     end = request.POST.get("end")
@@ -715,6 +852,25 @@ def analytics_ignore_user_agent(request):
     if params:
         url = f"{url}?{urlencode(params)}"
     return redirect(url)
+
+
+@require_POST
+def analytics_unignore_user_agent(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    user_agent = (request.POST.get("user_agent") or "").strip()
+    if not user_agent:
+        messages.error(request, "Provide a user agent to unignore.")
+    else:
+        deleted, _ = UserAgentIgnore.objects.filter(user_agent=user_agent).delete()
+        if deleted:
+            messages.success(request, "User agent removed from ignore list.")
+        else:
+            messages.info(request, "User agent was not ignored.")
+
+    return redirect("site_admin:analytics_ignored_user_agents")
 
 
 @require_POST

@@ -1,7 +1,7 @@
 import json
 import re
 import tempfile
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -13,7 +13,7 @@ from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from analytics.models import Visit
+from analytics.models import UserAgentIgnore, Visit
 from blog.models import Comment, Post
 from core.models import HCard, HCardPhoto, RequestErrorLog, SiteConfiguration, ThemeInstall
 from core.themes import ThemeDefinition, ThemeUpdateResult
@@ -130,6 +130,36 @@ class SiteAdminAnalyticsTests(TestCase):
             is_staff=True,
         )
 
+    def _create_visit(self, **kwargs):
+        visit = Visit.objects.create(
+            path=kwargs.get("path", "/"),
+            user_agent=kwargs.get("user_agent", "TestAgent/1.0"),
+            response_status_code=kwargs.get("response_status_code"),
+        )
+        started_at = kwargs.get("started_at")
+        if started_at:
+            Visit.objects.filter(id=visit.id).update(started_at=started_at)
+            visit.refresh_from_db()
+        return visit
+
+    def test_analytics_pages_require_staff(self):
+        urls = [
+            reverse("site_admin:analytics_user_agents"),
+            reverse("site_admin:analytics_ignored_user_agents"),
+            reverse("site_admin:analytics_errors_by_user_agent"),
+        ]
+        for url in urls:
+            response = self.client.get(url)
+            self.assertRedirects(
+                response,
+                f"{reverse('site_admin:login')}?next={url}",
+            )
+
+        self.client.force_login(self.staff)
+        for url in urls:
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+
     def test_delete_error_visits(self):
         self.client.force_login(self.staff)
         Visit.objects.create(path="/missing", response_status_code=404)
@@ -150,6 +180,116 @@ class SiteAdminAnalyticsTests(TestCase):
             Visit.objects.filter(path="/missing", response_status_code=500).count(),
             1,
         )
+
+    def test_user_agent_search_filters_and_counts(self):
+        self.client.force_login(self.staff)
+        today = timezone.localdate()
+        in_range = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+        out_of_range = in_range - timedelta(days=60)
+
+        self._create_visit(user_agent="BotCrawler/2.0", started_at=in_range)
+        self._create_visit(user_agent="BotCrawler/2.0", started_at=in_range)
+        self._create_visit(user_agent="Mozilla/5.0", started_at=in_range)
+        self._create_visit(user_agent="BotCrawler/2.0", started_at=out_of_range)
+
+        response = self.client.get(
+            reverse("site_admin:analytics_user_agents"),
+            {
+                "q": "bot",
+                "start": (today - timedelta(days=7)).isoformat(),
+                "end": today.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user_agents = response.context["user_agents"]
+        self.assertEqual(len(user_agents), 1)
+        self.assertEqual(user_agents[0]["user_agent"], "BotCrawler/2.0")
+        self.assertEqual(user_agents[0]["count"], 2)
+
+    def test_ignored_user_agents_list_and_unignore(self):
+        self.client.force_login(self.staff)
+        UserAgentIgnore.objects.create(user_agent="TestBot/1.0")
+        UserAgentIgnore.objects.create(user_agent="SkipMe/2.0")
+
+        response = self.client.get(reverse("site_admin:analytics_ignored_user_agents"))
+        self.assertEqual(response.status_code, 200)
+        ignored = list(response.context["ignored_user_agents"])
+        self.assertEqual(len(ignored), 2)
+
+        response = self.client.post(
+            reverse("site_admin:analytics_unignore_user_agent"),
+            {"user_agent": "TestBot/1.0"},
+        )
+        self.assertRedirects(
+            response,
+            reverse("site_admin:analytics_ignored_user_agents"),
+        )
+        self.assertFalse(
+            UserAgentIgnore.objects.filter(user_agent="TestBot/1.0").exists()
+        )
+
+    def test_errors_by_user_agent_counts_and_filters(self):
+        self.client.force_login(self.staff)
+        today = timezone.localdate()
+        in_range = timezone.make_aware(datetime.combine(today, datetime.min.time()))
+
+        self._create_visit(user_agent="ErrorBot/1.0", response_status_code=404, started_at=in_range)
+        self._create_visit(user_agent="ErrorBot/1.0", response_status_code=404, started_at=in_range)
+        self._create_visit(user_agent="ErrorBot/1.0", response_status_code=500, started_at=in_range)
+        self._create_visit(user_agent="OtherBot/2.0", response_status_code=500, started_at=in_range)
+
+        response = self.client.get(
+            reverse("site_admin:analytics_errors_by_user_agent"),
+            {
+                "class": "4xx",
+                "start": (today - timedelta(days=1)).isoformat(),
+                "end": today.isoformat(),
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        user_agent_counts = response.context["user_agent_counts"]
+        self.assertEqual(len(user_agent_counts), 1)
+        self.assertEqual(user_agent_counts[0]["user_agent"], "ErrorBot/1.0")
+        self.assertEqual(user_agent_counts[0]["count"], 2)
+
+        response = self.client.get(
+            reverse("site_admin:analytics_errors_by_user_agent"),
+            {
+                "class": "5xx",
+                "start": (today - timedelta(days=1)).isoformat(),
+                "end": today.isoformat(),
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        user_agent_counts = response.context["user_agent_counts"]
+        self.assertEqual(len(user_agent_counts), 2)
+        counts_by_agent = {row["user_agent"]: row["count"] for row in user_agent_counts}
+        self.assertEqual(counts_by_agent["ErrorBot/1.0"], 1)
+        self.assertEqual(counts_by_agent["OtherBot/2.0"], 1)
+
+    def test_redirects_moved_to_analytics(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("site_admin:redirect_list"))
+        self.assertEqual(response.status_code, 200)
+
+        response = self.client.get("/admin/settings/redirects/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_ignore_user_agent_respects_next_target(self):
+        self.client.force_login(self.staff)
+        safe_next = reverse("site_admin:analytics_user_agents")
+        response = self.client.post(
+            reverse("site_admin:analytics_ignore_user_agent"),
+            {"user_agent": "NextBot/1.0", "next": safe_next},
+        )
+        self.assertRedirects(response, safe_next)
+
+        response = self.client.post(
+            reverse("site_admin:analytics_ignore_user_agent"),
+            {"user_agent": "BadNext/1.0", "next": "https://example.com/phish"},
+        )
+        self.assertRedirects(response, reverse("site_admin:analytics_dashboard"))
 
 
 class SiteAdminPostTests(TestCase):
