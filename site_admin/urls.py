@@ -104,9 +104,19 @@ urlpatterns = [
     path("settings/errors/<int:log_id>/", views.error_log_detail, name="error_log_detail"),
     path("settings/indieauth/", views.indieauth_settings, name="indieauth_settings"),
     path(
+        "settings/indieauth/clients/new/",
+        views.indieauth_client_create,
+        name="indieauth_client_create",
+    ),
+    path(
         "settings/indieauth/clients/<int:client_pk>/",
         views.indieauth_client_detail,
         name="indieauth_client_detail",
+    ),
+    path(
+        "settings/indieauth/clients/<int:client_pk>/edit/",
+        views.indieauth_client_edit,
+        name="indieauth_client_edit",
     ),
     path("pages/", views.page_list, name="page_list"),
     path("pages/new/", views.page_edit, name="page_create"),

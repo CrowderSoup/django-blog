@@ -8,6 +8,7 @@ from django.utils.text import slugify
 from analytics.bot_detection import validate_bot_pattern
 from analytics.models import UserAgentBotRule
 from blog.models import Comment, Post, Tag
+from indieauth.models import IndieAuthClient
 from core.models import (
     HCard,
     HCardEmail,
@@ -993,3 +994,46 @@ class HCardEmailForm(forms.ModelForm):
                 "class",
                 "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
             )
+
+
+class IndieAuthClientForm(forms.ModelForm):
+    redirect_uris_text = forms.CharField(
+        required=False,
+        label="Redirect URIs",
+        help_text="One URI per line. Each must be http or https with no fragment.",
+        widget=forms.Textarea(attrs={"rows": 4, "placeholder": "https://example.com/callback"}),
+    )
+
+    class Meta:
+        model = IndieAuthClient
+        fields = ["client_id", "name", "logo_url"]
+        widgets = {
+            "client_id": forms.URLInput(attrs={"placeholder": "https://"}),
+            "logo_url": forms.URLInput(attrs={"placeholder": "https://"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk and self.instance.redirect_uris:
+            self.fields["redirect_uris_text"].initial = "\n".join(
+                self.instance.redirect_uris
+            )
+        for field in self.fields.values():
+            field.widget.attrs.setdefault(
+                "class",
+                "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+            )
+
+    def clean_redirect_uris_text(self):
+        raw = self.cleaned_data.get("redirect_uris_text", "")
+        uris = [line.strip() for line in raw.splitlines() if line.strip()]
+        url_validator = URLValidator(schemes=["http", "https"])
+        for uri in uris:
+            if "#" in uri:
+                raise ValidationError(f"Redirect URI must not contain a fragment: {uri}")
+            url_validator(uri)
+        return uris
+
+    def save(self, commit=True):
+        self.instance.redirect_uris = self.cleaned_data.get("redirect_uris_text", [])
+        return super().save(commit=commit)

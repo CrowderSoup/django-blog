@@ -104,6 +104,7 @@ from .forms import (
     WebmentionFilterForm,
     ErrorLogFilterForm,
     IndieAuthFilterForm,
+    IndieAuthClientForm,
 )
 
 logger = logging.getLogger(__name__)
@@ -1902,6 +1903,56 @@ def indieauth_client_detail(request, client_pk):
             "tokens": tokens,
             "consents": consents,
         },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def indieauth_client_create(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    if request.method == "POST":
+        form = IndieAuthClientForm(request.POST)
+        if form.is_valid():
+            client = form.save()
+            messages.success(request, f"Client \"{client}\" registered.")
+            return redirect(
+                "site_admin:indieauth_client_detail", client_pk=client.pk
+            )
+    else:
+        form = IndieAuthClientForm()
+
+    return render(
+        request,
+        "site_admin/settings/indieauth/client_form.html",
+        {"form": form, "is_edit": False},
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def indieauth_client_edit(request, client_pk):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    client = get_object_or_404(IndieAuthClient, pk=client_pk)
+
+    if request.method == "POST":
+        form = IndieAuthClientForm(request.POST, instance=client)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Client \"{client}\" updated.")
+            return redirect(
+                "site_admin:indieauth_client_detail", client_pk=client.pk
+            )
+    else:
+        form = IndieAuthClientForm(instance=client)
+
+    return render(
+        request,
+        "site_admin/settings/indieauth/client_form.html",
+        {"form": form, "client": client, "is_edit": True},
     )
 
 

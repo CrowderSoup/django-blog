@@ -19,6 +19,12 @@
           >
             Back to IndieAuth
           </a>
+          <a
+            href="{% url 'site_admin:indieauth_client_edit' client_pk=client.pk %}"
+            class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+          >
+            Edit
+          </a>
           <form method="post" class="inline">
             {% csrf_token %}
             <input type="hidden" name="action" value="delete_client" />
