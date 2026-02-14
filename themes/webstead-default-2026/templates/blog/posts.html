@@ -140,6 +140,10 @@
         {% include 'blog/reply.html' %}
       {% elif post.kind == 'repost' %}
         {% include 'blog/repost.html' %}
+      {% elif post.kind == 'event' %}
+        {% include 'blog/event.html' with event_data=post.event_data %}
+      {% elif post.kind == 'checkin' %}
+        {% include 'blog/checkin.html' with checkin_data=post.checkin_data %}
       {% else %}
         {% include 'blog/article-summary.html' %}
       {% endif %}

@@ -22,7 +22,7 @@ from core.models import (
 from files.models import File
 from micropub.models import Webmention
 from core.themes import discover_themes
-from core.widgets import CodeMirrorTextarea
+from core.widgets import EasyMDETextarea
 
 
 class PostFilterForm(forms.Form):
@@ -68,12 +68,45 @@ class PostForm(forms.ModelForm):
         label="Save as draft",
         help_text="Leaves publish time empty.",
     )
+    # Event fields
+    event_start = forms.DateTimeField(
+        required=False,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
+        input_formats=["%Y-%m-%dT%H:%M"],
+        label="Start",
+    )
+    event_end = forms.DateTimeField(
+        required=False,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
+        input_formats=["%Y-%m-%dT%H:%M"],
+        label="End",
+    )
+    event_location = forms.CharField(required=False, label="Location")
+    event_url = forms.URLField(required=False, label="Event URL")
+    # RSVP fields
+    rsvp_value = forms.ChoiceField(
+        required=False,
+        choices=[("", "---"), ("yes", "Yes"), ("no", "No"), ("maybe", "Maybe"), ("interested", "Interested")],
+        label="RSVP",
+    )
+    # Check-in fields
+    checkin_name = forms.CharField(required=False, label="Place name")
+    checkin_latitude = forms.FloatField(required=False, label="Latitude")
+    checkin_longitude = forms.FloatField(required=False, label="Longitude")
     field_order = [
         "title",
         "slug",
         "kind",
         "content",
         "activity_type",
+        "event_start",
+        "event_end",
+        "event_location",
+        "event_url",
+        "rsvp_value",
+        "checkin_name",
+        "checkin_latitude",
+        "checkin_longitude",
         "tags_text",
         "save_as_draft",
         "published_on",
@@ -103,7 +136,7 @@ class PostForm(forms.ModelForm):
             "in_reply_to",
         ]
         widgets = {
-            "content": CodeMirrorTextarea(),
+            "content": EasyMDETextarea(),
             "like_of": forms.URLInput(attrs={"placeholder": "https://"}),
             "repost_of": forms.URLInput(attrs={"placeholder": "https://"}),
             "in_reply_to": forms.URLInput(attrs={"placeholder": "https://"}),
@@ -145,9 +178,30 @@ class PostForm(forms.ModelForm):
             activity_type = _activity_type_from_mf2(self.instance.mf2)
             if activity_type:
                 self.fields["activity_type"].initial = activity_type
+            mf2 = self.instance.mf2 if isinstance(self.instance.mf2, dict) else {}
+            # Event
+            event_data = mf2.get("event") or {}
+            if isinstance(event_data, dict):
+                self.fields["event_start"].initial = event_data.get("start", "")
+                self.fields["event_end"].initial = event_data.get("end", "")
+                self.fields["event_location"].initial = event_data.get("location", "")
+                self.fields["event_url"].initial = event_data.get("url", "")
+            # RSVP
+            self.fields["rsvp_value"].initial = mf2.get("rsvp", "")
+            # Check-in
+            checkin_data = mf2.get("checkin") or {}
+            if isinstance(checkin_data, dict):
+                self.fields["checkin_name"].initial = checkin_data.get("name", "")
+                self.fields["checkin_latitude"].initial = checkin_data.get("latitude")
+                self.fields["checkin_longitude"].initial = checkin_data.get("longitude")
         if self.instance.pk and self.instance.published_on:
             local_time = timezone.localtime(self.instance.published_on)
             self.fields["published_on"].initial = local_time.strftime("%Y-%m-%dT%H:%M")
+        elif not self.instance.pk:
+            # New posts: mark the field so client-side JS fills in the
+            # browser's local time (server TIME_ZONE is UTC which is
+            # unlikely to match the author).
+            self.fields["published_on"].widget.attrs["data-default-now"] = "true"
 
     def clean_published_on(self):
         value = self.cleaned_data.get("published_on")
@@ -358,7 +412,7 @@ class PageForm(forms.ModelForm):
         model = Page
         fields = ["title", "slug", "content", "published_on"]
         widgets = {
-            "content": CodeMirrorTextarea(),
+            "content": EasyMDETextarea(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -384,10 +438,7 @@ class PageForm(forms.ModelForm):
                 "%Y-%m-%dT%H:%M"
             )
         elif not self.instance.pk and not self.initial.get("published_on"):
-            local_time = timezone.localtime(timezone.now())
-            self.fields["published_on"].initial = local_time.strftime(
-                "%Y-%m-%dT%H:%M"
-            )
+            self.fields["published_on"].widget.attrs["data-default-now"] = "true"
 
     def clean_published_on(self):
         value = self.cleaned_data.get("published_on")
@@ -448,7 +499,7 @@ class SiteConfigurationForm(forms.ModelForm):
             "robots_txt",
         ]
         widgets = {
-            "robots_txt": CodeMirrorTextarea(mode="text/plain"),
+            "robots_txt": EasyMDETextarea(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -927,7 +978,7 @@ class HCardForm(forms.ModelForm):
             "anniversary",
         ]
         widgets = {
-            "note": CodeMirrorTextarea(),
+            "note": EasyMDETextarea(),
             "bday": forms.DateInput(attrs={"type": "date"}),
             "anniversary": forms.DateInput(attrs={"type": "date"}),
             "uid": forms.URLInput(attrs={"placeholder": "https://"}),

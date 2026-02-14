@@ -1,17 +1,20 @@
+{# RSVP as h-entry with p-rsvp: https://microformats.org/wiki/h-entry #}
 {% load author %}
 
 {% with interaction=post.interaction %}
-<article class="h-entry entry-like">
+<article class="h-entry entry-reply">
   <a class="u-uid" href="{% url 'post' slug=post.slug %}" hidden></a>
   <span class="p-name" hidden>{{ post.title }}</span>
-  {% if post.like_of %}
-    <a class="u-like-of" href="{{ post.like_of }}" hidden></a>
+  {% if post.in_reply_to %}
+    <a class="u-in-reply-to" href="{{ post.in_reply_to }}" hidden></a>
   {% elif interaction.target and interaction.target.original_url %}
-    <a class="u-like-of" href="{{ interaction.target.original_url }}" hidden></a>
+    <a class="u-in-reply-to" href="{{ interaction.target.original_url }}" hidden></a>
   {% endif %}
 
   <header class="entry-header">
-    <p class="interaction-kicker">{{ interaction.label }}</p>
+    <p class="interaction-kicker">
+      RSVP {% if rsvp_value %}<data class="p-rsvp" value="{{ rsvp_value }}">{{ rsvp_value }}</data>{% endif %}
+    </p>
   </header>
 
   {% include 'blog/interaction-target.html' with target=interaction.target %}

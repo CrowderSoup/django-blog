@@ -3,7 +3,10 @@ from django.templatetags.static import static
 
 
 class CodeMirrorTextarea(forms.Textarea):
-    """Textarea widget that upgrades to a CodeMirror editor in the admin."""
+    """Textarea widget that upgrades to a CodeMirror editor in the admin.
+
+    Used for the theme editor where syntax highlighting for HTML/CSS/JS is needed.
+    """
 
     def __init__(self, *args, mode="markdown", dark_mode="auto", **kwargs):
         attrs = kwargs.setdefault("attrs", {})
@@ -35,3 +38,26 @@ class CodeMirrorTextarea(forms.Textarea):
             static("core/js/codemirror-init.js"),
         )
         return forms.Media(css=css, js=js)
+
+
+class EasyMDETextarea(forms.Textarea):
+    """Textarea widget that upgrades to an EasyMDE Markdown editor."""
+
+    def __init__(self, *args, **kwargs):
+        attrs = kwargs.setdefault("attrs", {})
+        attrs["data-easymde"] = "true"
+        super().__init__(*args, **kwargs)
+
+    @property
+    def media(self):
+        return forms.Media(
+            css={
+                "all": (
+                    "https://cdn.jsdelivr.net/npm/easymde@2.18.0/dist/easymde.min.css",
+                )
+            },
+            js=(
+                "https://cdn.jsdelivr.net/npm/easymde@2.18.0/dist/easymde.min.js",
+                static("core/js/easymde-init.js"),
+            ),
+        )

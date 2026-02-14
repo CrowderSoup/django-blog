@@ -173,13 +173,71 @@
     });
   };
 
+  const initCheckinMaps = () => {
+    if (!window.L) {
+      return;
+    }
+
+    document.querySelectorAll("[data-checkin-map]").forEach((el) => {
+      if (el.dataset.mapReady === "true") {
+        return;
+      }
+
+      const lat = Number.parseFloat(el.dataset.lat || "");
+      const lng = Number.parseFloat(el.dataset.lng || "");
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return;
+      }
+
+      const map = L.map(el, { scrollWheelZoom: false }).setView([lat, lng], 14);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+      }).addTo(map);
+      L.marker([lat, lng]).addTo(map);
+
+      el.dataset.mapReady = "true";
+      window.setTimeout(() => map.invalidateSize(), 120);
+    });
+  };
+
+  const localizeEventTimes = () => {
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+
+    document.querySelectorAll("time.js-local-datetime[datetime]").forEach((el) => {
+      if (el.dataset.localized === "true") {
+        return;
+      }
+
+      const sourceValue = el.getAttribute("datetime") || "";
+      const parsed = new Date(sourceValue);
+      if (Number.isNaN(parsed.getTime())) {
+        return;
+      }
+
+      el.textContent = formatter.format(parsed);
+      el.dataset.localized = "true";
+      if (!el.title) {
+        el.title = sourceValue;
+      }
+    });
+  };
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
       enhanceSliders();
       addCodeLineNumbers();
+      initCheckinMaps();
+      localizeEventTimes();
     });
   } else {
     enhanceSliders();
     addCodeLineNumbers();
+    initCheckinMaps();
+    localizeEventTimes();
   }
 })();

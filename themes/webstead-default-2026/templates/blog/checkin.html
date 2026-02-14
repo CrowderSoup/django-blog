@@ -1,0 +1,65 @@
+{# Checkin as h-entry with u-checkin: https://indieweb.org/checkin #}
+{% load author %}
+
+<article class="h-entry entry-note">
+  <header class="entry-header">
+    <a class="u-url u-uid" href="{% url 'post' slug=post.slug %}">
+      <h1 class="p-name">{{ post.title }}</h1>
+    </a>
+  </header>
+
+  {% if checkin_data %}
+  <p class="checkin-venue">
+    <span class="checkin-venue-label">Checked in at</span>
+    {% if checkin_data.latitude != None and checkin_data.longitude != None %}
+    <a
+      class="u-checkin h-card"
+      href="https://www.openstreetmap.org/?mlat={{ checkin_data.latitude }}&mlon={{ checkin_data.longitude }}#map=16/{{ checkin_data.latitude }}/{{ checkin_data.longitude }}"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+    {% else %}
+    <span class="u-checkin h-card">
+    {% endif %}
+      <span class="p-name checkin-place-name">{{ post.title }}</span>
+    {% if checkin_data.latitude != None and checkin_data.longitude != None %}
+    <data class="p-latitude" value="{{ checkin_data.latitude }}"></data>
+    <data class="p-longitude" value="{{ checkin_data.longitude }}"></data>
+    {% endif %}
+    {% if checkin_data.latitude != None and checkin_data.longitude != None %}
+    </a>
+    {% else %}
+    </span>
+    {% endif %}
+  </p>
+
+  {% if checkin_data.latitude != None and checkin_data.longitude != None %}
+  <div
+    class="checkin-map"
+    data-checkin-map
+    data-lat="{{ checkin_data.latitude }}"
+    data-lng="{{ checkin_data.longitude }}"
+  ></div>
+  <p class="checkin-map-caption">
+    <span class="checkin-map-caption__place">{{ post.title }}</span>
+    <span class="checkin-map-caption__coords">{{ checkin_data.latitude }}, {{ checkin_data.longitude }}</span>
+  </p>
+  {% endif %}
+  {% endif %}
+
+  <div class="e-content">
+    {{ post.html }}
+  </div>
+
+  {% include 'blog/tags.html' %}
+
+  <div class="entry-meta">
+    <a class="u-url" href="{% url 'post' slug=post.slug %}">
+      <time class="dt-published" datetime="{{ post.published_on|date:"c" }}">
+        {{ post.published_on|date:"Y-m-d" }}
+      </time>
+    </a>
+    <span class="p-author h-card">{% author_hcard_name post.author %}</span>
+  </div>
+  {% include 'blog/bridgy_publish_links.html' %}
+</article>

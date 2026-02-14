@@ -3,6 +3,7 @@
 {% with interaction=post.interaction %}
 <article class="h-entry entry-reply">
   <a class="u-uid" href="{% url 'post' slug=post.slug %}" hidden></a>
+  <span class="p-name" hidden>{{ post.title }}</span>
   {% if post.in_reply_to %}
     <a class="u-in-reply-to" href="{{ post.in_reply_to }}" hidden></a>
   {% elif interaction.target and interaction.target.original_url %}

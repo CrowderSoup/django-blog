@@ -221,7 +221,7 @@ def _comment_context(request, post, *, comment_form=None):
 
 def _post_context(request, post, *, comment_form=None):
     activity = _activity_from_mf2(post) if post.kind == Post.ACTIVITY else None
-    if post.kind in (Post.LIKE, Post.REPLY, Post.REPOST):
+    if post.kind in (Post.LIKE, Post.REPLY, Post.REPOST, Post.RSVP):
         post.interaction = _interaction_payload(post, request=request)
     activity_photos = list(post.photo_attachments) if post.kind == Post.ACTIVITY else []
     webmention_replies, webmention_likes, webmention_reposts = _webmentions_for_post(post, request=request)
@@ -233,10 +233,18 @@ def _post_context(request, post, *, comment_form=None):
     else:
         og_image, og_image_alt = first_attachment_image_url(post.attachments.all())
 
+    mf2 = post.mf2 if isinstance(post.mf2, dict) else {}
+    event_data = mf2.get("event") if post.kind == Post.EVENT else None
+    rsvp_value = mf2.get("rsvp") if post.kind == Post.RSVP else None
+    checkin_data = mf2.get("checkin") if post.kind == Post.CHECKIN else None
+
     context = {
         "post": post,
         "activity": activity,
         "activity_photos": activity_photos,
+        "event_data": event_data,
+        "rsvp_value": rsvp_value,
+        "checkin_data": checkin_data,
         "webmention_replies": webmention_replies,
         "webmention_likes": webmention_likes,
         "webmention_reposts": webmention_reposts,
@@ -288,7 +296,14 @@ def build_posts_listing_context(request, *, include_og=True):
     selected_tags = _split_filter_values(request.GET.getlist("tag"))
     valid_kinds = {kind for kind, _ in Post.KIND_CHOICES}
     selected_kinds = [kind for kind in requested_kinds if kind in valid_kinds]
-    default_kinds = [Post.ARTICLE, Post.NOTE, Post.PHOTO, Post.ACTIVITY]
+    default_kinds = [
+        Post.ARTICLE,
+        Post.NOTE,
+        Post.PHOTO,
+        Post.ACTIVITY,
+        Post.EVENT,
+        Post.CHECKIN,
+    ]
     if not selected_kinds and not selected_tags:
         selected_kinds = default_kinds[:]
     filter_query = _build_filter_query(selected_kinds, selected_tags)
@@ -322,6 +337,12 @@ def build_posts_listing_context(request, *, include_og=True):
         if post.kind == Post.ACTIVITY:
             has_activity = True
             post.activity = _activity_from_mf2(post)
+        elif post.kind == Post.EVENT:
+            mf2_data = post.mf2 if isinstance(post.mf2, dict) else {}
+            post.event_data = mf2_data.get("event")
+        elif post.kind == Post.CHECKIN:
+            mf2_data = post.mf2 if isinstance(post.mf2, dict) else {}
+            post.checkin_data = mf2_data.get("checkin")
         elif post.kind in (Post.LIKE, Post.REPLY, Post.REPOST):
             post.interaction = _interaction_payload(post, request=request)
 
@@ -377,6 +398,39 @@ def tag_suggestions(request):
         .values_list("tag", flat=True)[:8]
     )
     return JsonResponse({"tags": list(suggestions)})
+
+
+@require_POST
+def suggest_tags_for_content(request):
+    import json
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        body = {}
+    content = (body.get("content") or "").strip().lower()
+    title = (body.get("title") or "").strip().lower()
+    text = f"{title} {content}"
+
+    if not text.strip():
+        return JsonResponse({"tags": []})
+
+    all_tags = list(
+        Tag.objects.annotate(post_count=Count("post"))
+        .order_by("-post_count", "tag")
+        .values_list("tag", "post_count")
+    )
+
+    exact_matches = []
+    for tag_name, count in all_tags:
+        if tag_name.lower() in text:
+            exact_matches.append(tag_name)
+
+    popular_tags = [t for t, _ in all_tags[:10] if t not in exact_matches]
+
+    results = exact_matches[:10] + popular_tags[: 10 - len(exact_matches)]
+    return JsonResponse({"tags": results[:10]})
+
 
 def post(request, slug):
     post = get_object_or_404(

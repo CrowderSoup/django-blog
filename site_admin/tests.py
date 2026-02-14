@@ -474,6 +474,32 @@ class SiteAdminPostTests(TestCase):
             self.assertTrue(kwargs.get("include_bridgy"))
             self.assertIn("settings_obj", kwargs)
 
+    def test_post_form_renders_single_in_reply_to_field(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("site_admin:post_create"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="in_reply_to"', count=1)
+
+    def test_rsvp_post_uses_in_reply_to_as_event_url(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("site_admin:post_create"),
+            {
+                "kind": Post.RSVP,
+                "rsvp_value": "yes",
+                "in_reply_to": "https://events.example.com/meetup",
+                "content": "",
+                "title": "",
+                "slug": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        post = Post.objects.get()
+        self.assertEqual(post.kind, Post.RSVP)
+        self.assertEqual(post.content, "RSVP yes to https://events.example.com/meetup")
+
 
 class SiteAdminProfilePhotoTests(TestCase):
     def setUp(self):

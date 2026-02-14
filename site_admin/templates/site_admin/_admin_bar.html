@@ -396,6 +396,82 @@
     background: rgba(180, 83, 9, 0.12);
   }
 
+  .site-admin-bar__mobile-avatar {
+    list-style: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--admin-border, rgba(15, 23, 42, 0.2));
+    background: #fff;
+    overflow: hidden;
+    color: var(--admin-ink);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .site-admin-bar__mobile-avatar::-webkit-details-marker {
+    display: none;
+  }
+
+  .site-admin-bar__mobile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .site-admin-bar__mobile-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+  }
+
+  .site-admin-bar__mobile-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--admin-border, rgba(15, 23, 42, 0.2));
+    background: transparent;
+    appearance: none;
+    color: var(--admin-ink);
+    text-decoration: none;
+    font-size: 1.1rem;
+    font-weight: 600;
+    line-height: 1;
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  .site-admin-bar__mobile-action:hover {
+    background: rgba(15, 118, 110, 0.1);
+    border-color: rgba(15, 118, 110, 0.4);
+  }
+
+  .site-admin-bar__mobile-action svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .site-admin-bar__mobile-action--logout {
+    color: var(--admin-warn);
+    border: 1px solid var(--admin-border, rgba(15, 23, 42, 0.2));
+  }
+
+  .site-admin-bar__mobile-action--logout:hover {
+    background: rgba(180, 83, 9, 0.12);
+    border-color: rgba(180, 83, 9, 0.45);
+  }
+
   @media (max-width: 720px) {
     .site-admin-bar__inner {
       flex-direction: row;
@@ -585,39 +661,85 @@
         </div>
       </details>
       <details class="site-admin-bar__mobile">
-        <summary class="site-admin-bar__hamburger" aria-label="Open admin menu">
-          <span class="site-admin-bar__hamburger-lines"></span>
+        <summary class="site-admin-bar__mobile-avatar" aria-label="Open admin menu">
+          {% if admin_profile_photo_url %}
+          <img
+            src="{{ admin_profile_photo_url }}"
+            alt="{{ admin_profile_display_name|default:request.user.get_username }}"
+          />
+          {% else %}
+            {{ admin_profile_initials|default:"U" }}
+          {% endif %}
         </summary>
         <div class="site-admin-bar__mobile-panel">
           <div class="site-admin-bar__mobile-section">
-            <div class="site-admin-bar__mobile-label">Navigation</div>
-            {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
+            <div class="site-admin-bar__mobile-label">Create&hellip;</div>
             <a
-              href="{% url 'site_admin:page_list' %}"
+              href="{% url 'site_admin:page_create' %}"
               class="site-admin-bar__mobile-link"
             >
-              Pages
+              Page
             </a>
             <a
-              href="{% url 'site_admin:post_list' %}"
+              href="{% url 'site_admin:post_create' %}"
               class="site-admin-bar__mobile-link"
             >
-              Posts
+              Post
             </a>
             <a
               href="{% url 'site_admin:file_list' %}"
               class="site-admin-bar__mobile-link"
             >
-              Files
+              File
             </a>
-            {% endif %}
           </div>
           {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
           <div class="site-admin-bar__mobile-section">
-            <div class="site-admin-bar__mobile-label">Appearance</div>
+            <div class="site-admin-bar__mobile-label">Manage&hellip;</div>
+            <a
+              href="{% url 'site_admin:interactions' %}"
+              class="site-admin-bar__mobile-link"
+            >
+              Interactions {% if interactions_pending_count %}
+              <span class="site-admin-bar__badge">
+                {{ interactions_pending_count }}
+              </span>
+              {% endif %}
+            </a>
+            <a
+              href="{% url 'site_admin:analytics_dashboard' %}"
+              class="site-admin-bar__mobile-link"
+            >
+              Analytics
+            </a>
+            <a
+              href="{% url 'site_admin:site_settings' %}"
+              class="site-admin-bar__mobile-link"
+            >
+              Site settings
+            </a>
+            <a
+              href="{% url 'site_admin:profile_edit' %}"
+              class="site-admin-bar__mobile-link"
+            >
+              Profile
+            </a>
+            <a href="{% url 'index' %}" class="site-admin-bar__mobile-link">
+              View site
+            </a>
+          </div>
+          <div class="site-admin-bar__mobile-actions">
+            <a
+              href="{% url 'site_admin:post_create' %}"
+              class="site-admin-bar__mobile-action"
+              aria-label="New post"
+              title="New post"
+            >
+              +
+            </a>
             <button
               type="button"
-              class="site-admin-bar__mobile-link"
+              class="site-admin-bar__mobile-action"
               data-admin-theme-toggle
               aria-label="Dark mode"
               title="Dark mode"
@@ -659,68 +781,36 @@
                 />
               </svg>
             </button>
-          </div>
-          {% endif %}
-          <div class="site-admin-bar__mobile-section">
-            <div class="site-admin-bar__mobile-label">
-              Signed in as {{ request.user.get_username }}
-            </div>
-            {% if request.resolver_match and request.resolver_match.url_name != "admin_bar" %}
-            <a
-              href="{% url 'site_admin:interactions' %}"
-              class="site-admin-bar__mobile-link"
-            >
-              Interactions {% if interactions_pending_count %}
-              <span class="site-admin-bar__badge">
-                {{ interactions_pending_count }}
-              </span>
-              {% endif %}
-            </a>
-            <a
-              href="{% url 'site_admin:analytics_dashboard' %}"
-              class="site-admin-bar__mobile-link"
-            >
-              Analytics
-            </a>
-            <a
-              href="{% url 'site_admin:site_settings' %}"
-              class="site-admin-bar__mobile-link"
-            >
-              Site settings
-            </a>
-            <a
-              href="{% url 'site_admin:profile_edit' %}"
-              class="site-admin-bar__mobile-link"
-            >
-              Profile
-            </a>
-            <a href="{% url 'index' %}" class="site-admin-bar__mobile-link">
-              View Site
-            </a>
-            <a
-              href="{% url 'site_admin:error_log_list' %}"
-              class="site-admin-bar__mobile-link"
-            >
-              Error logs
-            </a>
-            {% else %}
-            <a
-              href="{% url 'site_admin:post_create' %}"
-              class="site-admin-bar__mobile-link"
-            >
-              New post
-            </a>
-            {% endif %}
             <form method="post" action="{% url 'site_admin:logout' %}">
               {% csrf_token %}
               <button
                 type="submit"
-                class="site-admin-bar__mobile-link site-admin-bar__mobile-link--logout"
+                class="site-admin-bar__mobile-action site-admin-bar__mobile-action--logout"
+                aria-label="Log out"
+                title="Log out"
               >
-                Log out
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M15 3h2.5A2.5 2.5 0 0 1 20 5.5v13A2.5 2.5 0 0 1 17.5 21H15"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M10 17l5-5-5-5M15 12H4"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
               </button>
             </form>
           </div>
+          {% endif %}
         </div>
       </details>
     </div>

@@ -3,16 +3,126 @@
 {% block title %} - {{ post.title }}{% endblock %}
 
 {% block content %}
-  <article>
+  {% if post.kind == "event" and event_data %}
+  {# h-event: https://microformats.org/wiki/h-event #}
+  <article class="h-event">
     <header>
-      <h1>{{ post.title }}</h1>
+      <h1 class="p-name">{{ post.title }}</h1>
       {% if post.published_on %}
-      <p>{{ post.published_on|date:"Y-m-d" }}</p>
+      <p><time class="dt-published" datetime="{{ post.published_on|date:'c' }}">{{ post.published_on|date:"Y-m-d" }}</time></p>
       {% endif %}
     </header>
-    <div>
+    <dl>
+      {% if event_data.start %}
+      <dt>Start</dt>
+      <dd><time class="dt-start" datetime="{{ event_data.start }}">{{ event_data.start }}</time></dd>
+      {% endif %}
+      {% if event_data.end %}
+      <dt>End</dt>
+      <dd><time class="dt-end" datetime="{{ event_data.end }}">{{ event_data.end }}</time></dd>
+      {% endif %}
+      {% if event_data.location %}
+      <dt>Location</dt>
+      <dd class="p-location">{{ event_data.location }}</dd>
+      {% endif %}
+      {% if event_data.url %}
+      <dt>Link</dt>
+      <dd><a class="u-url" href="{{ event_data.url }}">{{ event_data.url }}</a></dd>
+      {% endif %}
+    </dl>
+    <div class="e-content p-description">
       {{ post.html }}
     </div>
+    {% for tag in post.tags.all %}
+    <a class="p-category" href="{% url 'posts_by_tag' tag=tag.tag %}">{{ tag.tag }}</a>
+    {% endfor %}
   </article>
+
+  {% elif post.kind == "rsvp" and rsvp_value %}
+  {# RSVP as h-entry with p-rsvp: https://microformats.org/wiki/h-entry #}
+  <article class="h-entry">
+    <header>
+      <h1 class="p-name">{{ post.title }}</h1>
+      {% if post.published_on %}
+      <p><time class="dt-published" datetime="{{ post.published_on|date:'c' }}">{{ post.published_on|date:"Y-m-d" }}</time></p>
+      {% endif %}
+    </header>
+    {% if post.in_reply_to %}
+    <p>In response to: <a class="u-in-reply-to" href="{{ post.in_reply_to }}">{{ post.in_reply_to }}</a></p>
+    {% endif %}
+    <p>RSVP: <data class="p-rsvp" value="{{ rsvp_value }}">{{ rsvp_value }}</data></p>
+    <div class="e-content">
+      {{ post.html }}
+    </div>
+    {% for tag in post.tags.all %}
+    <a class="p-category" href="{% url 'posts_by_tag' tag=tag.tag %}">{{ tag.tag }}</a>
+    {% endfor %}
+  </article>
+
+  {% elif post.kind == "checkin" and checkin_data %}
+  {# Checkin as h-entry with u-checkin: https://indieweb.org/checkin #}
+  <article class="h-entry">
+    <header>
+      <h1 class="p-name">{{ post.title }}</h1>
+      {% if post.published_on %}
+      <p><time class="dt-published" datetime="{{ post.published_on|date:'c' }}">{{ post.published_on|date:"Y-m-d" }}</time></p>
+      {% endif %}
+    </header>
+    <p>Checked in at
+      <span class="u-checkin h-card">
+        {% if checkin_data.name %}<span class="p-name">{{ checkin_data.name }}</span>{% endif %}
+        {% if checkin_data.latitude and checkin_data.longitude %}
+        <data class="p-latitude" value="{{ checkin_data.latitude }}"></data>
+        <data class="p-longitude" value="{{ checkin_data.longitude }}"></data>
+        {% endif %}
+      </span>
+    </p>
+    {% if checkin_data.latitude and checkin_data.longitude %}
+    <div id="checkin-map" style="height: 300px; border-radius: 0.5rem;"></div>
+    <p><small>{{ checkin_data.latitude }}, {{ checkin_data.longitude }}</small></p>
+    {% endif %}
+    <div class="e-content">
+      {{ post.html }}
+    </div>
+    {% for tag in post.tags.all %}
+    <a class="p-category" href="{% url 'posts_by_tag' tag=tag.tag %}">{{ tag.tag }}</a>
+    {% endfor %}
+  </article>
+
+  {% else %}
+  {# Default h-entry for all other post types #}
+  <article class="h-entry">
+    <header>
+      <h1 class="p-name">{{ post.title }}</h1>
+      {% if post.published_on %}
+      <p><time class="dt-published" datetime="{{ post.published_on|date:'c' }}">{{ post.published_on|date:"Y-m-d" }}</time></p>
+      {% endif %}
+    </header>
+    <div class="e-content">
+      {{ post.html }}
+    </div>
+    {% for tag in post.tags.all %}
+    <a class="p-category" href="{% url 'posts_by_tag' tag=tag.tag %}">{{ tag.tag }}</a>
+    {% endfor %}
+  </article>
+  {% endif %}
+
   <p><a href="{{ posts_index_url }}">Back to posts</a></p>
+
+  {% if checkin_data.latitude and checkin_data.longitude %}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    (function () {
+      var lat = {{ checkin_data.latitude }};
+      var lng = {{ checkin_data.longitude }};
+      var map = L.map("checkin-map").setView([lat, lng], 14);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 19,
+      }).addTo(map);
+      L.marker([lat, lng]).addTo(map);
+    })();
+  </script>
+  {% endif %}
 {% endblock %}

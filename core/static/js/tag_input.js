@@ -173,10 +173,64 @@
       suggestions.addEventListener("click", (event) => {
         const button = event.target.closest("[data-suggest-tag]");
         if (!button) return;
-        const changed = addTags(button.dataset.suggestTag);
-        if (changed) {
-          input.value = "";
-          renderSuggestions([]);
+        addTags(button.dataset.suggestTag);
+        button.remove();
+        input.value = "";
+        if (!suggestions.querySelector("[data-suggest-tag]")) {
+          suggestions.hidden = true;
+        }
+      });
+    }
+
+    // "Suggest tags" button — fetches content-based suggestions and shows
+    // them in the existing suggestion dropdown so clicking works normally.
+    const suggestContentUrl = wrapper.dataset.suggestContentUrl;
+    const suggestBtn = wrapper.closest("form")
+      ? wrapper.closest("form").querySelector("[data-suggest-tags-btn]")
+      : null;
+
+    if (suggestBtn && suggestContentUrl) {
+      suggestBtn.addEventListener("click", async () => {
+        const parentForm = wrapper.closest("form");
+        if (!parentForm) return;
+
+        const titleField = parentForm.querySelector("input[name='title']");
+        const contentField = parentForm.querySelector("textarea[name='content']");
+        const title = titleField ? titleField.value : "";
+        let content = "";
+        if (contentField) {
+          const container = contentField.closest(".EasyMDEContainer");
+          if (container) {
+            const cm = container.querySelector(".CodeMirror");
+            content = cm && cm.CodeMirror ? cm.CodeMirror.getValue() : contentField.value;
+          } else {
+            content = contentField.value;
+          }
+        }
+
+        suggestBtn.disabled = true;
+        suggestBtn.textContent = "Suggesting\u2026";
+        try {
+          const csrfMatch = document.cookie.match(/csrftoken=([^;]+)/);
+          const csrfToken = csrfMatch ? csrfMatch[1] : "";
+          const resp = await fetch(suggestContentUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify({ title, content }),
+          });
+          const data = await resp.json();
+          const tags = Array.isArray(data.tags) ? data.tags : [];
+          // Filter out tags already selected
+          const filtered = tags.filter((t) => !selectedTags.includes(t));
+          renderSuggestions(filtered);
+        } catch (e) {
+          // Silently fail
+        } finally {
+          suggestBtn.disabled = false;
+          suggestBtn.textContent = "Suggest tags";
         }
       });
     }

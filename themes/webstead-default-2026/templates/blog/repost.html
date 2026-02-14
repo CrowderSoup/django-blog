@@ -3,6 +3,7 @@
 {% with interaction=post.interaction %}
 <article class="h-entry entry-repost">
   <a class="u-uid" href="{% url 'post' slug=post.slug %}" hidden></a>
+  <span class="p-name" hidden>{{ post.title }}</span>
   {% if post.repost_of %}
     <a class="u-repost-of" href="{{ post.repost_of }}" hidden></a>
   {% elif interaction.target and interaction.target.original_url %}

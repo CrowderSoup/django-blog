@@ -2449,6 +2449,17 @@ def post_edit(request, slug=None):
                 errors.append("Provide a URL for the reply.")
             if selected_kind in (Post.ARTICLE, Post.NOTE) and not content_value:
                 errors.append("Content is required for this post type.")
+            if selected_kind == Post.EVENT:
+                if not form.cleaned_data.get("event_start"):
+                    errors.append("Event start time is required.")
+            if selected_kind == Post.RSVP:
+                if not form.cleaned_data.get("rsvp_value"):
+                    errors.append("Select an RSVP response.")
+                if not in_reply_to_value:
+                    errors.append("Provide the event URL you're responding to.")
+            if selected_kind == Post.CHECKIN:
+                if form.cleaned_data.get("checkin_latitude") is None or form.cleaned_data.get("checkin_longitude") is None:
+                    errors.append("Latitude and longitude are required for check-ins.")
             existing_gpx = (
                 post.attachments.filter(role="gpx").exists()
                 if post
@@ -2508,6 +2519,14 @@ def post_edit(request, slug=None):
                     content_value = f"Reposted {repost_of_value}"
                 elif selected_kind == Post.REPLY:
                     content_value = f"Reply to {in_reply_to_value}"
+                elif selected_kind == Post.RSVP:
+                    rsvp_val = form.cleaned_data.get("rsvp_value", "yes")
+                    content_value = f"RSVP {rsvp_val} to {in_reply_to_value}"
+                elif selected_kind == Post.CHECKIN:
+                    place = form.cleaned_data.get("checkin_name", "")
+                    content_value = f"Checked in at {place}" if place else "Checked in"
+                elif selected_kind == Post.EVENT:
+                    content_value = saved_post.title or "Event"
             saved_post.content = content_value
             saved_post.save()
             form.save_tags(saved_post)
@@ -2626,6 +2645,44 @@ def post_edit(request, slug=None):
                     ]
             else:
                 mf2_payload.pop("activity", None)
+
+            # Event mf2 data — event name comes from the post title
+            if selected_kind == Post.EVENT:
+                event_data = {"name": saved_post.title}
+                for key in ("event_start", "event_end", "event_location", "event_url"):
+                    val = form.cleaned_data.get(key)
+                    if val:
+                        field_key = key.replace("event_", "")
+                        if hasattr(val, "isoformat"):
+                            val = val.isoformat()
+                        event_data[field_key] = val
+                mf2_payload["event"] = event_data
+            else:
+                mf2_payload.pop("event", None)
+
+            # RSVP mf2 data
+            if selected_kind == Post.RSVP:
+                rsvp_val = form.cleaned_data.get("rsvp_value", "")
+                if rsvp_val:
+                    mf2_payload["rsvp"] = rsvp_val
+            else:
+                mf2_payload.pop("rsvp", None)
+
+            # Check-in mf2 data
+            if selected_kind == Post.CHECKIN:
+                checkin_data = {}
+                checkin_name = form.cleaned_data.get("checkin_name", "")
+                if checkin_name:
+                    checkin_data["name"] = checkin_name
+                lat = form.cleaned_data.get("checkin_latitude")
+                lng = form.cleaned_data.get("checkin_longitude")
+                if lat is not None:
+                    checkin_data["latitude"] = lat
+                if lng is not None:
+                    checkin_data["longitude"] = lng
+                mf2_payload["checkin"] = checkin_data
+            else:
+                mf2_payload.pop("checkin", None)
 
             saved_post.mf2 = mf2_payload
             saved_post.save(update_fields=["mf2"])

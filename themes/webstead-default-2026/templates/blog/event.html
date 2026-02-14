@@ -1,0 +1,59 @@
+{# h-event: https://microformats.org/wiki/h-event #}
+{% load author %}
+
+<article class="h-event entry-article">
+  <header class="entry-header">
+    <a class="u-url u-uid" href="{% url 'post' slug=post.slug %}">
+      <h1 class="p-name">{{ post.title }}</h1>
+    </a>
+
+    <div class="entry-meta">
+      <span class="p-author h-card">{% author_hcard_name post.author %}</span>
+      {% if post.published_on %}
+      <time class="dt-published" datetime="{{ post.published_on|date:"c" }}">
+        {{ post.published_on|date:"Y-m-d" }}
+      </time>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if event_data %}
+  <dl class="event-details">
+    {% if event_data.start %}
+    <div>
+      <dt>Start</dt>
+      <dd>
+        <time class="dt-start js-local-datetime" datetime="{{ event_data.start }}">{{ event_data.start }}</time>
+      </dd>
+    </div>
+    {% endif %}
+    {% if event_data.end %}
+    <div>
+      <dt>End</dt>
+      <dd>
+        <time class="dt-end js-local-datetime" datetime="{{ event_data.end }}">{{ event_data.end }}</time>
+      </dd>
+    </div>
+    {% endif %}
+    {% if event_data.location %}
+    <div>
+      <dt>Location</dt>
+      <dd class="p-location">{{ event_data.location }}</dd>
+    </div>
+    {% endif %}
+    {% if event_data.url %}
+    <div>
+      <dt>Link</dt>
+      <dd><a class="event-details__url" href="{{ event_data.url }}">{{ event_data.url }}</a></dd>
+    </div>
+    {% endif %}
+  </dl>
+  {% endif %}
+
+  <div class="e-content p-description">
+    {{ post.html }}
+  </div>
+
+  {% include 'blog/tags.html' %}
+  {% include 'blog/bridgy_publish_links.html' %}
+</article>

@@ -13,6 +13,7 @@ urlpatterns = [
     path("tag/<slug:tag>", views.posts_by_tag, name="posts_by_tag"),
     path("tags/suggest/", views.tag_suggestions, name="tag_suggestions"),
     path("tags/suggest", views.tag_suggestions),
+    path("tags/suggest-for-content/", views.suggest_tags_for_content, name="suggest_tags_for_content"),
     path("feed/", PostsFeed(), name="posts_feed"),
     path("feed", PostsFeed()),
 ]

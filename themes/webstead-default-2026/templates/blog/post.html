@@ -3,7 +3,7 @@
 <!-- Content -->
 {% block head %}
   {{ block.super }}
-  {% if post.kind == 'activity' %}
+  {% if post.kind == 'activity' or post.kind == 'checkin' %}
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -16,12 +16,14 @@
       crossorigin=""
       defer
     ></script>
+  {% endif %}
+  {% if post.kind == 'activity' %}
     <script src="{% static 'js/activity_map.js' %}" defer></script>
   {% endif %}
 {% endblock %}
 
 {% block content %}
-  {# Post kind switcher: note, photo, activity, like, reply, repost, or article. #}
+  {# Post kind switcher #}
   {% if post.kind == 'note' %}
     {% include 'blog/note.html' %}
   {% elif post.kind == 'photo' %}
@@ -34,6 +36,12 @@
     {% include 'blog/reply.html' %}
   {% elif post.kind == 'repost' %}
     {% include 'blog/repost.html' %}
+  {% elif post.kind == 'event' %}
+    {% include 'blog/event.html' %}
+  {% elif post.kind == 'rsvp' %}
+    {% include 'blog/rsvp.html' %}
+  {% elif post.kind == 'checkin' %}
+    {% include 'blog/checkin.html' %}
   {% else %}
     {% include 'blog/article.html' %}
   {% endif %}

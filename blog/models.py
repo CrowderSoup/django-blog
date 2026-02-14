@@ -23,7 +23,7 @@ class Tag(models.Model):
         ordering = ['tag']
 
 class Post(models.Model):
-    ARTICLE = "article"; NOTE = "note"; PHOTO = "photo"; ACTIVITY = "activity"; LIKE = "like"; REPOST = "repost"; REPLY = "reply"
+    ARTICLE = "article"; NOTE = "note"; PHOTO = "photo"; ACTIVITY = "activity"; LIKE = "like"; REPOST = "repost"; REPLY = "reply"; EVENT = "event"; RSVP = "rsvp"; CHECKIN = "checkin"
     KIND_CHOICES = [
         (ARTICLE, "Article"),
         (NOTE, "Note"),
@@ -32,6 +32,9 @@ class Post(models.Model):
         (LIKE, "Like"),
         (REPOST, "Repost"),
         (REPLY, "Reply"),
+        (EVENT, "Event"),
+        (RSVP, "RSVP"),
+        (CHECKIN, "Check-in"),
     ]
 
     title = models.CharField(max_length=512)
@@ -65,6 +68,9 @@ class Post(models.Model):
                 Post.LIKE: "Like",
                 Post.REPOST: "Repost",
                 Post.REPLY: "Reply",
+                Post.EVENT: "Event",
+                Post.RSVP: "RSVP",
+                Post.CHECKIN: "Check-in",
             }
             self.title = f"{base_titles.get(self.kind, 'Article')}: {timestamp}"
 
