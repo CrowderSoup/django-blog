@@ -129,6 +129,15 @@ class RobotsTxtTests(TestCase):
         self.assertEqual(response.content.decode(), settings.robots_txt)
 
 
+class HealthzTests(TestCase):
+    def test_returns_ok(self):
+        response = self.client.get("/healthz")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response["Content-Type"].startswith("text/plain"))
+        self.assertEqual(response.content.decode(), "ok")
+
+
 class SitemapTests(TestCase):
     def test_includes_public_routes_and_excludes_admin(self):
         page = Page.objects.create(

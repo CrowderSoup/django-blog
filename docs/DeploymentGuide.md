@@ -150,6 +150,11 @@ From your deployment directory:
 docker compose up -d
 ```
 
+Health checks:
+
+- The container now binds to `PORT` (falling back to `8000`), which is required by many PaaS providers.
+- Use `/healthz` as the HTTP health check path for a lightweight readiness probe.
+
 ---
 
 ## 5) Automatic bucket creation + collectstatic

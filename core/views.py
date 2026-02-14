@@ -120,5 +120,9 @@ def sitemap(request):
     return HttpResponse("\n".join(xml_lines), content_type="application/xml")
 
 
+def healthz(request):
+    return HttpResponse("ok", content_type="text/plain")
+
+
 def server_error(request):
     return render(request, "500.html", status=500)

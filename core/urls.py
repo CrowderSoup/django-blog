@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("", views.index, name="index"),
+    path("healthz", views.healthz, name="healthz"),
     path("favicon.ico", views.favicon, name="favicon"),
     path("page/<slug:slug>/", views.page, name="page"),
     path("robots.txt", views.robots_txt, name="robots_txt"),
