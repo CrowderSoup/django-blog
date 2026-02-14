@@ -14,7 +14,7 @@
     <p class="interaction-kicker">{{ interaction.label }}</p>
   </header>
 
-  {% include 'blog/interaction-target.html' with target=interaction.target %}
+  {% include 'blog/interaction-target.html' with target=interaction.target target_url=interaction.target_url %}
 
   {% if interaction.show_content %}
     <div class="e-content">

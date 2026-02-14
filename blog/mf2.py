@@ -102,7 +102,7 @@ def _find_entry(items):
         if not isinstance(item, dict):
             continue
         item_type = item.get("type") or []
-        if any(entry_type in item_type for entry_type in ("h-entry", "h-cite")):
+        if any(entry_type in item_type for entry_type in ("h-entry", "h-cite", "h-event")):
             return item
     for item in items or []:
         if not isinstance(item, dict):

@@ -113,6 +113,9 @@ def _interaction_payload(post, request=None, fetch_remote=True):
     elif post.kind == Post.REPLY:
         target_url = post.in_reply_to
         label = "Replying to"
+    elif post.kind == Post.RSVP:
+        target_url = post.in_reply_to
+        label = "RSVP to"
     else:
         return None
 

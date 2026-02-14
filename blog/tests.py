@@ -249,6 +249,21 @@ class Mf2ParsingTests(TestCase):
 
         self.assertIsNone(target)
 
+    def test_parse_target_from_html_supports_h_event(self):
+        html = """
+        <article class="h-event">
+          <a class="u-url" href="https://events.example.com/meetup">Event link</a>
+          <p class="p-name">Website Club</p>
+          <p class="p-description">Bring your laptop.</p>
+        </article>
+        """
+
+        target = parse_target_from_html(html, "https://events.example.com/meetup")
+
+        self.assertEqual(target["original_url"], "https://events.example.com/meetup")
+        self.assertIsNone(target["title"])
+        self.assertIn("Website Club", target["summary_text"])
+
 
 class Mf2NormalizationTests(TestCase):
     def test_normalize_sample_one(self):
@@ -471,6 +486,43 @@ class InteractionPayloadTests(TestCase):
 
         self.assertEqual(payload["target"]["original_url"], f"/blog/post/{target.slug}")
         self.assertEqual(payload["target"]["title"], target.title)
+
+    def test_rsvp_builds_interaction_payload(self):
+        rsvp = Post.objects.create(
+            title="RSVP Post",
+            slug="rsvp-post",
+            content="RSVP yes",
+            kind=Post.RSVP,
+            published_on=timezone.now(),
+            in_reply_to="https://events.example.com/meetup",
+        )
+        request = self.factory.get("/blog/")
+
+        with patch("blog.views.fetch_target_from_url", return_value=None):
+            payload = _interaction_payload(rsvp, request=request)
+
+        self.assertEqual(payload["kind"], Post.RSVP)
+        self.assertEqual(payload["label"], "RSVP to")
+        self.assertEqual(payload["target_url"], "https://events.example.com/meetup")
+
+
+class InteractionRenderingTests(TestCase):
+    def test_fallback_renders_target_url_when_preview_missing(self):
+        post = Post.objects.create(
+            title="Reply Post",
+            slug="reply-post",
+            content="My reply body",
+            kind=Post.REPLY,
+            in_reply_to="https://example.com/original",
+            published_on=timezone.now(),
+        )
+
+        with patch("blog.views.fetch_target_from_url", return_value=None):
+            response = self.client.get(reverse("post", kwargs={"slug": post.slug}))
+
+        self.assertContains(response, "Preview unavailable.")
+        self.assertContains(response, "https://example.com/original")
+        self.assertContains(response, "My reply body")
 
 
 class PostFilterTests(TestCase):
