@@ -227,12 +227,14 @@ def _post_context(request, post, *, comment_form=None):
     if post.kind in (Post.LIKE, Post.REPLY, Post.REPOST, Post.RSVP):
         post.interaction = _interaction_payload(post, request=request)
     activity_photos = list(post.photo_attachments) if post.kind == Post.ACTIVITY else []
+    checkin_photos = list(post.photo_attachments) if post.kind == Post.CHECKIN else []
     webmention_replies, webmention_likes, webmention_reposts = _webmentions_for_post(post, request=request)
     og_image = ""
     og_image_alt = ""
-    if activity_photos:
-        og_image = activity_photos[0].asset.file.url
-        og_image_alt = activity_photos[0].asset.alt_text or ""
+    if activity_photos or checkin_photos:
+        first_photo = (activity_photos or checkin_photos)[0]
+        og_image = first_photo.asset.file.url
+        og_image_alt = first_photo.asset.alt_text or ""
     else:
         og_image, og_image_alt = first_attachment_image_url(post.attachments.all())
 
@@ -245,6 +247,7 @@ def _post_context(request, post, *, comment_form=None):
         "post": post,
         "activity": activity,
         "activity_photos": activity_photos,
+        "checkin_photos": checkin_photos,
         "event_data": event_data,
         "rsvp_value": rsvp_value,
         "checkin_data": checkin_data,

@@ -3566,6 +3566,7 @@ def _build_post_form_context(
         "existing_photos_json": json.dumps(photo_items),
         "photo_upload_url": reverse("site_admin:post_upload_photo"),
         "photo_delete_url": reverse("site_admin:post_delete_photo"),
+        "nearby_places_url": reverse("site_admin:nearby_checkin_places"),
         "activity_gpx": activity_gpx,
         "gpx_trim_enabled": gpx_defaults["gpx_trim_enabled"],
         "gpx_trim_distance": gpx_defaults["gpx_trim_distance"],
@@ -3610,3 +3611,63 @@ def delete_post_photo(request):
 
     asset.delete()
     return JsonResponse({"status": "deleted"})
+
+
+@require_GET
+def nearby_checkin_places(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    try:
+        lat = float(request.GET.get("lat", ""))
+        lng = float(request.GET.get("lng", ""))
+    except (TypeError, ValueError):
+        return JsonResponse({"places": []})
+
+    import math
+
+    radius_km = 5
+    places = []
+    seen_names = set()
+
+    checkins = Post.objects.filter(kind=Post.CHECKIN, deleted=False).exclude(mf2={})
+    for post in checkins:
+        mf2 = post.mf2 if isinstance(post.mf2, dict) else {}
+        checkin = mf2.get("checkin")
+        if not isinstance(checkin, dict):
+            continue
+        p_lat = checkin.get("latitude")
+        p_lng = checkin.get("longitude")
+        if p_lat is None or p_lng is None:
+            continue
+
+        d_lat = math.radians(p_lat - lat)
+        d_lng = math.radians(p_lng - lng)
+        a = (
+            math.sin(d_lat / 2) ** 2
+            + math.cos(math.radians(lat))
+            * math.cos(math.radians(p_lat))
+            * math.sin(d_lng / 2) ** 2
+        )
+        dist = 6371 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+        if dist > radius_km:
+            continue
+
+        name = checkin.get("name") or post.title
+        if not name:
+            continue
+        key = name.lower().strip()
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        places.append({
+            "name": name,
+            "latitude": p_lat,
+            "longitude": p_lng,
+            "distance_km": round(dist, 2),
+        })
+
+    places.sort(key=lambda p: p["distance_km"])
+    return JsonResponse({"places": places[:10]})

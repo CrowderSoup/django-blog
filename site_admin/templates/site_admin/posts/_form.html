@@ -8,6 +8,7 @@
   hx-swap="outerHTML"
   data-photo-upload-url="{{ photo_upload_url }}"
   data-photo-delete-url="{{ photo_delete_url }}"
+  data-nearby-places-url="{{ nearby_places_url }}"
 >
   {% csrf_token %}
   {% include "site_admin/posts/_form_messages.html" %}
@@ -233,6 +234,10 @@
           </div>
         </div>
         <div id="checkin-map" class="mt-4 h-64 rounded-2xl border border-[color:var(--admin-border)]" data-checkin-map></div>
+        <div id="checkin-suggestions" class="mt-3 hidden">
+          <p class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)] mb-2">Nearby places</p>
+          <div id="checkin-suggestions-list" class="flex flex-wrap gap-2"></div>
+        </div>
         <p class="mt-2 text-xs text-[color:var(--admin-muted)]">Enter coordinates, click the map, or use your device location.</p>
       </div>
 
@@ -470,6 +475,7 @@
         kind === "photo" ||
         kind === "article" ||
         kind === "activity" ||
+        kind === "checkin" ||
         photoData.length > 0
       );
     }
@@ -782,6 +788,54 @@
   const checkinMap = form.querySelector("[data-checkin-map]");
   const latInput = form.querySelector("input[name='checkin_latitude']");
   const lngInput = form.querySelector("input[name='checkin_longitude']");
+  const nameInput = form.querySelector("input[name='checkin_name']");
+  const nearbyPlacesUrl = form.dataset.nearbyPlacesUrl;
+  const suggestionsContainer = document.getElementById("checkin-suggestions");
+  const suggestionsList = document.getElementById("checkin-suggestions-list");
+
+  let nearbyFetchController = null;
+
+  function fetchNearbyPlaces(lat, lng) {
+    if (!nearbyPlacesUrl || !suggestionsContainer || !suggestionsList) return;
+    if (nearbyFetchController) nearbyFetchController.abort();
+    nearbyFetchController = new AbortController();
+
+    fetch(`${nearbyPlacesUrl}?lat=${lat}&lng=${lng}`, {
+      signal: nearbyFetchController.signal,
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        suggestionsList.innerHTML = "";
+        const places = data.places || [];
+        if (!places.length) {
+          suggestionsContainer.classList.add("hidden");
+          return;
+        }
+        places.forEach((place) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className =
+            "rounded-full border border-[color:var(--admin-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-ink)] shadow-sm transition hover:border-[color:var(--admin-accent)] hover:text-[color:var(--admin-accent)]";
+          const dist = place.distance_km < 1
+            ? `${Math.round(place.distance_km * 1000)} m`
+            : `${place.distance_km} km`;
+          btn.textContent = `${place.name} (${dist})`;
+          btn.addEventListener("click", () => {
+            if (nameInput) nameInput.value = place.name;
+            latInput.value = place.latitude;
+            lngInput.value = place.longitude;
+            latInput.dispatchEvent(new Event("change", { bubbles: true }));
+          });
+          suggestionsList.appendChild(btn);
+        });
+        suggestionsContainer.classList.remove("hidden");
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          suggestionsContainer.classList.add("hidden");
+        }
+      });
+  }
 
   if (checkinMap && latInput && lngInput) {
     let leafletLoaded = false;
@@ -806,6 +860,7 @@
 
       if (hasCoords) {
         marker = L.marker(center).addTo(map);
+        fetchNearbyPlaces(lat, lng);
       }
 
       map.on("click", function (e) {
@@ -817,6 +872,7 @@
         } else {
           marker = L.marker(e.latlng).addTo(map);
         }
+        fetchNearbyPlaces(lat, lng);
       });
 
       function updateFromInputs() {
@@ -830,6 +886,7 @@
             marker = L.marker(latlng).addTo(map);
           }
           map.setView(latlng, Math.max(map.getZoom(), 14));
+          fetchNearbyPlaces(lat, lng);
         }
       }
 
@@ -885,6 +942,7 @@
               marker = L.marker([lat, lng]).addTo(map);
               map.setView([lat, lng], 15);
             }
+            fetchNearbyPlaces(lat, lng);
             geoBtn.disabled = false;
             geoBtn.textContent = "Use my location";
           },

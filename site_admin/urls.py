@@ -124,6 +124,7 @@ urlpatterns = [
     path("pages/<slug:slug>/", views.page_edit, name="page_edit"),
     path("posts/upload-photo/", views.upload_post_photo, name="post_upload_photo"),
     path("posts/delete-photo/", views.delete_post_photo, name="post_delete_photo"),
+    path("posts/nearby-places/", views.nearby_checkin_places, name="nearby_checkin_places"),
     path("posts/", views.post_list, name="post_list"),
     path("posts/new/", views.post_edit, name="post_create"),
     path("posts/<slug:slug>/delete/", views.post_delete, name="post_delete"),

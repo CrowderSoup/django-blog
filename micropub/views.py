@@ -2,6 +2,7 @@ import json
 import logging
 import mimetypes
 import os
+import re
 from datetime import datetime
 from html.parser import HTMLParser
 from typing import Optional
@@ -44,6 +45,26 @@ def _first_value(data: dict, key: str, default=None):
     if isinstance(value, list):
         return value[0] if value else default
     return value or default
+
+
+_GEO_URI_RE = re.compile(
+    r"^geo:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:,(-?\d+(?:\.\d+)?))?(?:;.*)?$"
+)
+
+
+def _parse_geo_uri(uri: str) -> dict | None:
+    if not uri:
+        return None
+    match = _GEO_URI_RE.match(uri.strip())
+    if not match:
+        return None
+    result = {
+        "latitude": float(match.group(1)),
+        "longitude": float(match.group(2)),
+    }
+    if match.group(3) is not None:
+        result["altitude"] = float(match.group(3))
+    return result
 
 
 class _IndieAuthEndpointParser(HTMLParser):
@@ -507,6 +528,11 @@ def _build_properties_response(post, requested_props=None):
     if post.in_reply_to:
         props["in-reply-to"] = [post.in_reply_to]
 
+    mf2 = post.mf2 if isinstance(post.mf2, dict) else {}
+    checkin = mf2.get("checkin")
+    if isinstance(checkin, dict) and "latitude" in checkin and "longitude" in checkin:
+        props["location"] = [f"geo:{checkin['latitude']},{checkin['longitude']}"]
+
     photos = []
     for attachment in post.attachments.filter(asset__kind=File.IMAGE):
         url = attachment.asset.file.url
@@ -650,6 +676,9 @@ def _determine_kind(request, data, name, like_of, repost_of, in_reply_to):
         return Post.REPOST
     if in_reply_to:
         return Post.REPLY
+    location = _first_value(data, "location")
+    if location and _parse_geo_uri(location):
+        return Post.CHECKIN
     if request.FILES.getlist("photo") or request.FILES.getlist("photo[]") or data.get("photo"):
         return Post.PHOTO
     if name:
@@ -695,11 +724,20 @@ def _handle_create_action(request, data):
     like_of = _first_value(data, "like-of")
     repost_of = _first_value(data, "repost-of")
     in_reply_to = _first_value(data, "in-reply-to")
+    location = _first_value(data, "location")
     categories = data.get("category", [])
     published = _first_value(data, "published")
     mf2_objects = _extract_mf2_objects(data)
 
     kind = _determine_kind(request, data, name, like_of, repost_of, in_reply_to)
+
+    if kind == Post.CHECKIN and location:
+        geo = _parse_geo_uri(location)
+        if geo:
+            checkin = {"latitude": geo["latitude"], "longitude": geo["longitude"]}
+            if name:
+                checkin["name"] = name
+            mf2_objects["checkin"] = checkin
 
     if not content:
         if kind == Post.LIKE:
@@ -708,6 +746,8 @@ def _handle_create_action(request, data):
             content = f"Reposted {repost_of}"
         elif kind == Post.REPLY:
             content = f"Reply to {in_reply_to}"
+        elif kind == Post.CHECKIN:
+            content = "Checked in"
 
     published_on = _parse_published_date(published)
 

@@ -47,6 +47,8 @@
   {% endif %}
   {% endif %}
 
+  {% include 'blog/_photo_gallery.html' with photos=checkin_photos %}
+
   <div class="e-content">
     {{ post.html }}
   </div>

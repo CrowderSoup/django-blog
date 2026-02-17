@@ -65,46 +65,7 @@
     <p class="activity-track activity-track--missing">GPX track coming soon.</p>
   {% endif %}
 
-  {% if activity_photos %}
-    <section class="photo-slider" aria-labelledby="gallery-title" role="region">
-      <h2 id="gallery-title" class="sr-only">Photo gallery</h2>
-      <ol class="slides" tabindex="0">
-        {% for photo in activity_photos %}
-        <li class="slide">
-          <figure id="photo-{{ photo.asset.id }}">
-            <div class="photo-container" style="--photo-image: url('{{ photo.asset.file.url }}')">
-              <img
-                class="u-photo"
-                src="{{ photo.asset.file.url }}"
-                alt="{{ photo.asset.alt_text }}"
-                loading="lazy"
-              />
-            </div>
-            {% if photo.asset.caption %}
-            <figcaption>{{ photo.asset.caption }}</figcaption>
-            {% endif %}
-          </figure>
-        </li>
-        {% endfor %}
-      </ol>
-      {% if activity_photos|length > 1 %}
-      <nav class="slider-nav" aria-label="Slide navigation">
-        <ol>
-          {% for photo in activity_photos %}
-          <li>
-            <a
-              href="#photo-{{ photo.asset.id }}"
-              aria-label="Go to photo {{ photo.asset.file.name }}"
-            >
-              ●
-            </a>
-          </li>
-          {% endfor %}
-        </ol>
-      </nav>
-      {% endif %}
-    </section>
-  {% endif %}
+  {% include 'blog/_photo_gallery.html' with photos=activity_photos %}
 
   <div class="e-content">{{ post.html }}</div>
   {% include 'blog/tags.html' %}
