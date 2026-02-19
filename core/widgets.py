@@ -48,6 +48,11 @@ class EasyMDETextarea(forms.Textarea):
         attrs["data-easymde"] = "true"
         super().__init__(*args, **kwargs)
 
+    def use_required_attribute(self, initial):
+        # EasyMDE hides the underlying textarea; native browser validation cannot
+        # focus hidden required controls and blocks submit.
+        return False
+
     @property
     def media(self):
         return forms.Media(

@@ -30,15 +30,22 @@
       ],
     });
 
+    const syncTextarea = () => {
+      textarea.value = editor.value();
+    };
+
+    syncTextarea();
+    editor.codemirror.on("change", syncTextarea);
+
     instances.set(textarea, editor);
 
     const form = textarea.closest("form");
     if (form) {
       form.addEventListener("submit", () => {
-        textarea.value = editor.value();
+        syncTextarea();
       });
       form.addEventListener("htmx:beforeRequest", () => {
-        textarea.value = editor.value();
+        syncTextarea();
       });
     }
   };
