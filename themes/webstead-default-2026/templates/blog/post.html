@@ -42,6 +42,8 @@
     {% include 'blog/rsvp.html' %}
   {% elif post.kind == 'checkin' %}
     {% include 'blog/checkin.html' %}
+  {% elif post.kind == 'bookmark' %}
+    {% include 'blog/bookmark.html' %}
   {% else %}
     {% include 'blog/article.html' %}
   {% endif %}

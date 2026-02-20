@@ -350,6 +350,17 @@
         <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Required for replies and RSVPs.</p>
         {{ form.in_reply_to.errors }}
       </div>
+      <div data-kind-section="bookmark">
+        <label
+          for="{{ form.bookmark_of.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Bookmark URL
+        </label>
+        {{ form.bookmark_of }}
+        <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Required for bookmarks.</p>
+        {{ form.bookmark_of.errors }}
+      </div>
       <div>
         <label
           for="{{ form.published_on.id_for_label }}"
@@ -433,6 +444,7 @@
     event: "An event with a name, time, and location.",
     rsvp: "Respond to an event invitation.",
     checkin: "Check in at a place with coordinates.",
+    bookmark: "Save a URL for later reference.",
   };
 
   const contentHints = {
@@ -446,6 +458,7 @@
     event: "Describe the event here.",
     rsvp: "Optional commentary for your RSVP.",
     checkin: "Notes about this check-in.",
+    bookmark: "Optional notes about why you're saving this.",
   };
 
   let photoData = [];

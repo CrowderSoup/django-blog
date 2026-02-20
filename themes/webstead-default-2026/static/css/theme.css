@@ -257,6 +257,7 @@ a:focus {
 .entry-summary,
 .entry-photo,
 .entry-like,
+.entry-bookmark,
 .entry-reply,
 .entry-repost {
   background: var(--panel);
@@ -882,7 +883,8 @@ html[data-motion="full"] .photo-slider.is-enhanced .slides {
 .entry-activity .entry-header,
 .entry-repost .entry-header,
 .entry-reply .entry-header,
-.entry-like .entry-header {
+.entry-like .entry-header,
+.entry-bookmark .entry-header {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;

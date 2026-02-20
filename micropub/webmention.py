@@ -143,7 +143,7 @@ def verify_webmention_source(source_url: str, target_url: str) -> tuple[bool, st
 
 def _extract_targets(post: Post) -> Iterable[str]:
     links = set()
-    for field in [post.like_of, post.repost_of, post.in_reply_to]:
+    for field in [post.like_of, post.repost_of, post.in_reply_to, post.bookmark_of]:
         if field:
             links.add(field)
 

@@ -669,7 +669,9 @@ def _parse_published_date(published):
         return timezone.now()
 
 
-def _determine_kind(request, data, name, like_of, repost_of, in_reply_to):
+def _determine_kind(request, data, name, like_of, repost_of, in_reply_to, bookmark_of):
+    if bookmark_of:
+        return Post.BOOKMARK
     if like_of:
         return Post.LIKE
     if repost_of:
@@ -724,12 +726,13 @@ def _handle_create_action(request, data):
     like_of = _first_value(data, "like-of")
     repost_of = _first_value(data, "repost-of")
     in_reply_to = _first_value(data, "in-reply-to")
+    bookmark_of = _first_value(data, "bookmark-of")
     location = _first_value(data, "location")
     categories = data.get("category", [])
     published = _first_value(data, "published")
     mf2_objects = _extract_mf2_objects(data)
 
-    kind = _determine_kind(request, data, name, like_of, repost_of, in_reply_to)
+    kind = _determine_kind(request, data, name, like_of, repost_of, in_reply_to, bookmark_of)
 
     if kind == Post.CHECKIN and location:
         geo = _parse_geo_uri(location)
@@ -746,6 +749,8 @@ def _handle_create_action(request, data):
             content = f"Reposted {repost_of}"
         elif kind == Post.REPLY:
             content = f"Reply to {in_reply_to}"
+        elif kind == Post.BOOKMARK:
+            content = f"Bookmarked {bookmark_of}"
         elif kind == Post.CHECKIN:
             content = "Checked in"
 
@@ -759,6 +764,7 @@ def _handle_create_action(request, data):
         like_of=like_of or "",
         repost_of=repost_of or "",
         in_reply_to=in_reply_to or "",
+        bookmark_of=bookmark_of or "",
         mf2=mf2_objects,
     )
     post.save()
@@ -938,6 +944,7 @@ class MicropubView(View):
                         {"type": Post.LIKE, "name": "Like"},
                         {"type": Post.REPOST, "name": "Repost"},
                         {"type": Post.REPLY, "name": "Reply"},
+                        {"type": Post.BOOKMARK, "name": "Bookmark"},
                     ],
                     "syndicate-to": _syndication_targets(settings_obj),
                 }

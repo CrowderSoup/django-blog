@@ -2434,6 +2434,7 @@ def post_edit(request, slug=None):
             like_of_value = form.cleaned_data.get("like_of") or ""
             repost_of_value = form.cleaned_data.get("repost_of") or ""
             in_reply_to_value = form.cleaned_data.get("in_reply_to") or ""
+            bookmark_of_value = form.cleaned_data.get("bookmark_of") or ""
             activity_type = (form.cleaned_data.get("activity_type") or "").strip()
 
             errors = []
@@ -2447,6 +2448,8 @@ def post_edit(request, slug=None):
                 errors.append("Provide a URL for the repost.")
             if selected_kind == Post.REPLY and not in_reply_to_value:
                 errors.append("Provide a URL for the reply.")
+            if selected_kind == Post.BOOKMARK and not bookmark_of_value:
+                errors.append("Provide a URL to bookmark.")
             if selected_kind in (Post.ARTICLE, Post.NOTE) and not content_value:
                 errors.append("Content is required for this post type.")
             if selected_kind == Post.EVENT:
@@ -2519,6 +2522,8 @@ def post_edit(request, slug=None):
                     content_value = f"Reposted {repost_of_value}"
                 elif selected_kind == Post.REPLY:
                     content_value = f"Reply to {in_reply_to_value}"
+                elif selected_kind == Post.BOOKMARK:
+                    content_value = f"Bookmarked {bookmark_of_value}"
                 elif selected_kind == Post.RSVP:
                     rsvp_val = form.cleaned_data.get("rsvp_value", "yes")
                     content_value = f"RSVP {rsvp_val} to {in_reply_to_value}"

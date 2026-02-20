@@ -114,6 +114,7 @@ class PostForm(forms.ModelForm):
         "like_of",
         "repost_of",
         "in_reply_to",
+        "bookmark_of",
     ]
     published_on = forms.DateTimeField(
         required=False,
@@ -134,12 +135,14 @@ class PostForm(forms.ModelForm):
             "like_of",
             "repost_of",
             "in_reply_to",
+            "bookmark_of",
         ]
         widgets = {
             "content": EasyMDETextarea(),
             "like_of": forms.URLInput(attrs={"placeholder": "https://"}),
             "repost_of": forms.URLInput(attrs={"placeholder": "https://"}),
             "in_reply_to": forms.URLInput(attrs={"placeholder": "https://"}),
+            "bookmark_of": forms.URLInput(attrs={"placeholder": "https://"}),
         }
 
     def __init__(self, *args, **kwargs):

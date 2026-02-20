@@ -218,6 +218,8 @@
         {% include 'blog/event.html' with event_data=post.event_data %}
       {% elif post.kind == 'checkin' %}
         {% include 'blog/checkin.html' with checkin_data=post.checkin_data %}
+      {% elif post.kind == 'bookmark' %}
+        {% include 'blog/bookmark.html' %}
       {% else %}
         {% include 'blog/article-summary.html' %}
       {% endif %}

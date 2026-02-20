@@ -61,6 +61,8 @@ def _is_default_interaction_content(post, target_url):
         return content == f"Reposted {target_url}"
     if post.kind == Post.REPLY:
         return content == f"Reply to {target_url}"
+    if post.kind == Post.BOOKMARK:
+        return content == f"Bookmarked {target_url}"
     return False
 
 
@@ -116,6 +118,9 @@ def _interaction_payload(post, request=None, fetch_remote=True):
     elif post.kind == Post.RSVP:
         target_url = post.in_reply_to
         label = "RSVP to"
+    elif post.kind == Post.BOOKMARK:
+        target_url = post.bookmark_of
+        label = "Bookmarked"
     else:
         return None
 
@@ -224,7 +229,7 @@ def _comment_context(request, post, *, comment_form=None):
 
 def _post_context(request, post, *, comment_form=None):
     activity = _activity_from_mf2(post) if post.kind == Post.ACTIVITY else None
-    if post.kind in (Post.LIKE, Post.REPLY, Post.REPOST, Post.RSVP):
+    if post.kind in (Post.LIKE, Post.REPLY, Post.REPOST, Post.RSVP, Post.BOOKMARK):
         post.interaction = _interaction_payload(post, request=request)
     activity_photos = list(post.photo_attachments) if post.kind == Post.ACTIVITY else []
     checkin_photos = list(post.photo_attachments) if post.kind == Post.CHECKIN else []
@@ -349,7 +354,7 @@ def build_posts_listing_context(request, *, include_og=True):
         elif post.kind == Post.CHECKIN:
             mf2_data = post.mf2 if isinstance(post.mf2, dict) else {}
             post.checkin_data = mf2_data.get("checkin")
-        elif post.kind in (Post.LIKE, Post.REPLY, Post.REPOST):
+        elif post.kind in (Post.LIKE, Post.REPLY, Post.REPOST, Post.BOOKMARK):
             post.interaction = _interaction_payload(post, request=request)
 
     context = {
