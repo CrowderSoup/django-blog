@@ -33,7 +33,7 @@ from .models import (
     HCardUrl,
     ThemeInstall,
 )
-from .apps import CoreConfig, _reset_startup_state, _run_startup_reconcile
+from .apps import CoreConfig, _reset_startup_state
 from .theme_sync import reconcile_installed_themes
 from .themes import (
     ThemeUploadError,
@@ -224,6 +224,17 @@ class HCardTests(TestCase):
         self.assertIsNone(hcard.user)
 
 
+class _SyncThread:
+    """Runs the thread target synchronously so tests don't have timing issues."""
+
+    def __init__(self, target=None, daemon=None, name=None):
+        self._target = target
+
+    def start(self):
+        if self._target:
+            self._target()
+
+
 class ThemeStartupReconcileTests(TestCase):
     def setUp(self):
         super().setUp()
@@ -240,10 +251,10 @@ class ThemeStartupReconcileTests(TestCase):
                 THEMES_ROOT=themes_root,
                 THEME_STORAGE_PREFIX="themes",
                 THEMES_STARTUP_RECONCILE=True,
-            ), mock.patch("core.themes.get_theme_storage", return_value=storage):
+            ), mock.patch("core.themes.get_theme_storage", return_value=storage), \
+                    mock.patch("core.apps.threading.Thread", _SyncThread):
                 with self.assertLogs("core.apps", level="INFO") as logs:
                     CoreConfig("core", importlib.import_module("core")).ready()
-                    _run_startup_reconcile()
 
             local_theme_dir = Path(themes_root) / slug
             self.assertTrue((local_theme_dir / "theme.json").exists())
@@ -254,10 +265,10 @@ class ThemeStartupReconcileTests(TestCase):
 
     def test_ready_logs_warning_when_reconcile_unavailable(self):
         with override_settings(THEMES_STARTUP_RECONCILE=True):
-            with mock.patch("core.apps.reconcile_installed_themes", side_effect=Exception("boom")):
+            with mock.patch("core.apps.reconcile_installed_themes", side_effect=Exception("boom")), \
+                    mock.patch("core.apps.threading.Thread", _SyncThread):
                 with self.assertLogs("core.apps", level="WARNING") as logs:
                     CoreConfig("core", importlib.import_module("core")).ready()
-                    _run_startup_reconcile()
 
         self.assertIn("Skipping theme reconciliation on startup", "\n".join(logs.output))
 
