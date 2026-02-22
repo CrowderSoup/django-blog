@@ -520,7 +520,7 @@ class InteractionRenderingTests(TestCase):
         with patch("blog.views.fetch_target_from_url", return_value=None):
             response = self.client.get(reverse("post", kwargs={"slug": post.slug}))
 
-        self.assertContains(response, "Preview unavailable.")
+        self.assertContains(response, "interaction-missing")
         self.assertContains(response, "https://example.com/original")
         self.assertContains(response, "My reply body")
 
