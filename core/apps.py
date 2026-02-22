@@ -1,8 +1,8 @@
 import logging
+import threading
 
 from django.apps import AppConfig
 from django.conf import settings
-from django.core.signals import request_started
 from django.db.models.signals import post_migrate
 
 from core.theme_sync import reconcile_installed_themes
@@ -12,6 +12,12 @@ from core.themes import get_theme_static_dirs, sync_themes_from_storage
 logger = logging.getLogger(__name__)
 _startup_reconcile_ran = False
 _startup_sync_ran = False
+
+
+def _in_management_cmd() -> bool:
+    """True when invoked via manage.py (not a long-lived server process)."""
+    import sys
+    return bool(sys.argv) and "manage.py" in sys.argv[0]
 
 
 def _reset_startup_state() -> None:
@@ -63,12 +69,19 @@ class CoreConfig(AppConfig):
         reconcile_enabled = getattr(settings, "THEMES_STARTUP_RECONCILE", True)
         startup_sync_enabled = getattr(settings, "THEME_STARTUP_SYNC_ENABLED", True)
 
+        # Don't start background threads during management commands — the thread
+        # starts importing modules (boto3 via django-storages) concurrently with
+        # the main thread loading command modules, which causes import deadlocks
+        # on Python 3.14+.  Server processes (gunicorn, uvicorn) don't go through
+        # manage.py so they're safe to thread.
         if reconcile_enabled:
-            request_started.connect(_run_startup_reconcile, dispatch_uid="core.startup_reconcile_request")
             post_migrate.connect(_run_startup_reconcile, dispatch_uid="core.startup_reconcile_migrate")
+            if not _in_management_cmd():
+                threading.Thread(target=_run_startup_reconcile, daemon=True, name="theme-startup-reconcile").start()
         elif startup_sync_enabled:
-            request_started.connect(_run_startup_sync, dispatch_uid="core.startup_sync_request")
             post_migrate.connect(_run_startup_sync, dispatch_uid="core.startup_sync_migrate")
+            if not _in_management_cmd():
+                threading.Thread(target=_run_startup_sync, daemon=True, name="theme-startup-sync").start()
         else:  # pragma: no cover - defensive
             logger.info("Theme startup sync disabled via THEME_STARTUP_SYNC_ENABLED.")
 

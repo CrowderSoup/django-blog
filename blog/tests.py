@@ -114,6 +114,18 @@ class PostViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_post_view_accepts_no_trailing_slash(self):
+        post = Post.objects.create(
+            title="Published",
+            slug="published-post",
+            content="text",
+            published_on=timezone.now(),
+        )
+
+        response = self.client.get(f"/blog/post/{post.slug}")
+
+        self.assertEqual(response.status_code, 200)
+
 
 class WebmentionFormDisplayTests(TestCase):
     def setUp(self):
@@ -236,6 +248,21 @@ class Mf2ParsingTests(TestCase):
         target = parse_target_from_html(html, "https://example.com/post/2")
 
         self.assertIsNone(target)
+
+    def test_parse_target_from_html_supports_h_event(self):
+        html = """
+        <article class="h-event">
+          <a class="u-url" href="https://events.example.com/meetup">Event link</a>
+          <p class="p-name">Website Club</p>
+          <p class="p-description">Bring your laptop.</p>
+        </article>
+        """
+
+        target = parse_target_from_html(html, "https://events.example.com/meetup")
+
+        self.assertEqual(target["original_url"], "https://events.example.com/meetup")
+        self.assertIsNone(target["title"])
+        self.assertIn("Website Club", target["summary_text"])
 
 
 class Mf2NormalizationTests(TestCase):
@@ -425,7 +452,7 @@ class Mf2NormalizationTests(TestCase):
 
     def test_fetch_target_from_url_failure_returns_none(self):
         fetch_target_from_url.cache_clear()
-        with self.assertLogs("blog.mf2", level="ERROR"):
+        with self.assertLogs("blog.mf2", level="WARNING"):
             with patch("blog.mf2.requests.get", side_effect=requests.RequestException):
                 target = fetch_target_from_url("https://example.com/post/404")
 
@@ -459,6 +486,43 @@ class InteractionPayloadTests(TestCase):
 
         self.assertEqual(payload["target"]["original_url"], f"/blog/post/{target.slug}")
         self.assertEqual(payload["target"]["title"], target.title)
+
+    def test_rsvp_builds_interaction_payload(self):
+        rsvp = Post.objects.create(
+            title="RSVP Post",
+            slug="rsvp-post",
+            content="RSVP yes",
+            kind=Post.RSVP,
+            published_on=timezone.now(),
+            in_reply_to="https://events.example.com/meetup",
+        )
+        request = self.factory.get("/blog/")
+
+        with patch("blog.views.fetch_target_from_url", return_value=None):
+            payload = _interaction_payload(rsvp, request=request)
+
+        self.assertEqual(payload["kind"], Post.RSVP)
+        self.assertEqual(payload["label"], "RSVP to")
+        self.assertEqual(payload["target_url"], "https://events.example.com/meetup")
+
+
+class InteractionRenderingTests(TestCase):
+    def test_fallback_renders_target_url_when_preview_missing(self):
+        post = Post.objects.create(
+            title="Reply Post",
+            slug="reply-post",
+            content="My reply body",
+            kind=Post.REPLY,
+            in_reply_to="https://example.com/original",
+            published_on=timezone.now(),
+        )
+
+        with patch("blog.views.fetch_target_from_url", return_value=None):
+            response = self.client.get(reverse("post", kwargs={"slug": post.slug}))
+
+        self.assertContains(response, "interaction-missing")
+        self.assertContains(response, "https://example.com/original")
+        self.assertContains(response, "My reply body")
 
 
 class PostFilterTests(TestCase):
@@ -516,13 +580,13 @@ class PostFilterTests(TestCase):
         response = self.client.get(reverse("posts"))
 
         self.assertContains(response, 'data-tag="arcane"')
-        self.assertContains(response, "/blog?tag=arcane")
+        self.assertContains(response, "/?tag=arcane")
 
     def test_tag_page_redirects_to_filter(self):
         response = self.client.get(reverse("posts_by_tag", kwargs={"tag": "arcane"}))
 
         self.assertEqual(response.status_code, 301)
-        self.assertEqual(response["Location"], "/blog?tag=arcane")
+        self.assertEqual(response["Location"], "/?tag=arcane")
 
 
 class CommentSubmissionTests(TestCase):

@@ -6,6 +6,7 @@ from django.template.loader import render_to_string
 
 from core.models import SiteConfiguration
 from core.og import absolute_url
+from core.themes import get_posts_index_url
 from .models import Post
 from .views import _interaction_payload
 
@@ -18,7 +19,7 @@ class PostsFeed(Feed):
         return f"{settings.title} posts"
 
     def link(self):
-        return reverse("posts")
+        return get_posts_index_url()
 
     def description(self):
         settings = SiteConfiguration.get_solo()
@@ -76,7 +77,7 @@ class PostsFeed(Feed):
     def item_description(self, item):
         request = getattr(self, "request", None)
         interaction = (
-            _interaction_payload(item, request=request)
+            _interaction_payload(item, request=request, fetch_remote=False)
             if item.kind in (Post.LIKE, Post.REPOST, Post.REPLY)
             else None
         )

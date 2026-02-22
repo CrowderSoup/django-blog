@@ -2,10 +2,13 @@ import markdown
 
 from django.urls import NoReverseMatch, reverse
 from django.utils.safestring import mark_safe
+from django.db.models import Q
 
-from .models import SiteConfiguration
+from .models import HCard, SiteConfiguration
 from .og import default_image_url
-from .themes import get_active_theme, resolve_theme_settings
+from .themes import get_active_theme, resolve_theme_settings, get_active_theme_settings, get_posts_index_url
+from blog.models import Comment
+from micropub.models import Webmention
 
 def site_configuration(request):
     settings = SiteConfiguration.get_solo()
@@ -43,6 +46,10 @@ def site_configuration(request):
     except NoReverseMatch:
         feed_url = None
 
+    theme_settings = get_active_theme_settings()
+    home_feed_mode = theme_settings.get("home_feed_mode", "blog")
+    posts_index_url = get_posts_index_url()
+
     og_default_image = default_image_url(request, settings=settings, site_author_hcard=site_author_hcard)
 
     return {
@@ -50,6 +57,8 @@ def site_configuration(request):
         "menu_items": menu_items,
         "footer_menu_items": footer_menu_items,
         "feed_url": feed_url,
+        "home_feed_mode": home_feed_mode,
+        "posts_index_url": posts_index_url,
         "site_author_hcard": site_author_hcard,
         "site_author_display_name": site_author_display_name,
         "og_default_image": og_default_image,
@@ -80,4 +89,60 @@ def theme(request):
             "template_prefix": active_theme.template_prefix if active_theme else "",
             "static_prefix": active_theme.static_prefix if active_theme else "",
         },
+    }
+
+
+def interactions_counts(request):
+    if not request.path.startswith("/admin/"):
+        return {}
+
+    user = getattr(request, "user", None)
+    if not user or not user.is_authenticated or not user.is_staff:
+        return {
+            "interactions_pending_count": 0,
+            "admin_profile_photo_url": "",
+            "admin_profile_display_name": "",
+            "admin_profile_initials": "",
+        }
+
+    host = request.get_host()
+    if not host:
+        return {
+            "interactions_pending_count": 0,
+            "admin_profile_photo_url": "",
+            "admin_profile_display_name": user.get_username(),
+            "admin_profile_initials": (user.get_username() or "U")[:1].upper(),
+        }
+    prefixes = [f"http://{host}", f"https://{host}"]
+    target_query = Q()
+    for prefix in prefixes:
+        target_query |= Q(target__startswith=prefix)
+
+    hcard = HCard.objects.filter(user=user).order_by("pk").first()
+    display_name = ""
+    if hcard and hcard.name:
+        display_name = hcard.name
+    elif user.get_full_name():
+        display_name = user.get_full_name()
+    else:
+        display_name = user.get_username()
+
+    initials_source = display_name.strip() or "U"
+    parts = initials_source.split()
+    if len(parts) >= 2:
+        initials = f"{parts[0][0]}{parts[1][0]}".upper()
+    else:
+        initials = initials_source[:1].upper()
+
+    pending_comments = Comment.objects.filter(status=Comment.PENDING).count()
+    pending_webmentions = (
+        Webmention.objects.filter(status=Webmention.PENDING)
+        .filter(target_query)
+        .count()
+    )
+    return {
+        "interactions_pending_count": pending_comments + pending_webmentions,
+        "admin_profile_photo_url": hcard.primary_photo_url if hcard else "",
+        "admin_profile_display_name": display_name,
+        "admin_profile_initials": initials,
     }

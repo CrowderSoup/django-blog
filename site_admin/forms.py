@@ -1,10 +1,14 @@
 from django import forms
+import re
 from django.core.exceptions import ValidationError
 from django.core.validators import EmailValidator, URLValidator
 from django.utils import timezone
 from django.utils.text import slugify
 
+from analytics.bot_detection import validate_bot_pattern
+from analytics.models import UserAgentBotRule
 from blog.models import Comment, Post, Tag
+from indieauth.models import IndieAuthClient
 from core.models import (
     HCard,
     HCardEmail,
@@ -18,7 +22,7 @@ from core.models import (
 from files.models import File
 from micropub.models import Webmention
 from core.themes import discover_themes
-from core.widgets import CodeMirrorTextarea
+from core.widgets import EasyMDETextarea
 
 
 class PostFilterForm(forms.Form):
@@ -64,12 +68,45 @@ class PostForm(forms.ModelForm):
         label="Save as draft",
         help_text="Leaves publish time empty.",
     )
+    # Event fields
+    event_start = forms.DateTimeField(
+        required=False,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
+        input_formats=["%Y-%m-%dT%H:%M"],
+        label="Start",
+    )
+    event_end = forms.DateTimeField(
+        required=False,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
+        input_formats=["%Y-%m-%dT%H:%M"],
+        label="End",
+    )
+    event_location = forms.CharField(required=False, label="Location")
+    event_url = forms.URLField(required=False, label="Event URL")
+    # RSVP fields
+    rsvp_value = forms.ChoiceField(
+        required=False,
+        choices=[("", "---"), ("yes", "Yes"), ("no", "No"), ("maybe", "Maybe"), ("interested", "Interested")],
+        label="RSVP",
+    )
+    # Check-in fields
+    checkin_name = forms.CharField(required=False, label="Place name")
+    checkin_latitude = forms.FloatField(required=False, label="Latitude")
+    checkin_longitude = forms.FloatField(required=False, label="Longitude")
     field_order = [
         "title",
         "slug",
         "kind",
         "content",
         "activity_type",
+        "event_start",
+        "event_end",
+        "event_location",
+        "event_url",
+        "rsvp_value",
+        "checkin_name",
+        "checkin_latitude",
+        "checkin_longitude",
         "tags_text",
         "save_as_draft",
         "published_on",
@@ -77,6 +114,7 @@ class PostForm(forms.ModelForm):
         "like_of",
         "repost_of",
         "in_reply_to",
+        "bookmark_of",
     ]
     published_on = forms.DateTimeField(
         required=False,
@@ -97,12 +135,14 @@ class PostForm(forms.ModelForm):
             "like_of",
             "repost_of",
             "in_reply_to",
+            "bookmark_of",
         ]
         widgets = {
-            "content": CodeMirrorTextarea(),
+            "content": EasyMDETextarea(),
             "like_of": forms.URLInput(attrs={"placeholder": "https://"}),
             "repost_of": forms.URLInput(attrs={"placeholder": "https://"}),
             "in_reply_to": forms.URLInput(attrs={"placeholder": "https://"}),
+            "bookmark_of": forms.URLInput(attrs={"placeholder": "https://"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -141,9 +181,30 @@ class PostForm(forms.ModelForm):
             activity_type = _activity_type_from_mf2(self.instance.mf2)
             if activity_type:
                 self.fields["activity_type"].initial = activity_type
+            mf2 = self.instance.mf2 if isinstance(self.instance.mf2, dict) else {}
+            # Event
+            event_data = mf2.get("event") or {}
+            if isinstance(event_data, dict):
+                self.fields["event_start"].initial = event_data.get("start", "")
+                self.fields["event_end"].initial = event_data.get("end", "")
+                self.fields["event_location"].initial = event_data.get("location", "")
+                self.fields["event_url"].initial = event_data.get("url", "")
+            # RSVP
+            self.fields["rsvp_value"].initial = mf2.get("rsvp", "")
+            # Check-in
+            checkin_data = mf2.get("checkin") or {}
+            if isinstance(checkin_data, dict):
+                self.fields["checkin_name"].initial = checkin_data.get("name", "")
+                self.fields["checkin_latitude"].initial = checkin_data.get("latitude")
+                self.fields["checkin_longitude"].initial = checkin_data.get("longitude")
         if self.instance.pk and self.instance.published_on:
             local_time = timezone.localtime(self.instance.published_on)
             self.fields["published_on"].initial = local_time.strftime("%Y-%m-%dT%H:%M")
+        elif not self.instance.pk:
+            # New posts: mark the field so client-side JS fills in the
+            # browser's local time (server TIME_ZONE is UTC which is
+            # unlikely to match the author).
+            self.fields["published_on"].widget.attrs["data-default-now"] = "true"
 
     def clean_published_on(self):
         value = self.cleaned_data.get("published_on")
@@ -206,6 +267,15 @@ class WebmentionFilterForm(forms.Form):
         choices=[("", "Any status"), *Webmention.STATUS_CHOICES],
         label="Status",
     )
+    direction = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("", "Any direction"),
+            ("incoming", "Incoming"),
+            ("outgoing", "Outgoing"),
+        ],
+        label="Direction",
+    )
     mention_type = forms.ChoiceField(
         required=False,
         choices=[("", "Any type"), *Webmention.MENTION_CHOICES],
@@ -221,8 +291,17 @@ class WebmentionFilterForm(forms.Form):
             )
 
 
-class MicropubErrorFilterForm(forms.Form):
+class ErrorLogFilterForm(forms.Form):
     q = forms.CharField(required=False, label="Search")
+    source = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("", "Any type"),
+            ("micropub", "Micropub"),
+            ("indieauth", "IndieAuth"),
+        ],
+        label="Type",
+    )
     status_code = forms.ChoiceField(
         required=False,
         choices=[
@@ -231,7 +310,33 @@ class MicropubErrorFilterForm(forms.Form):
             ("401", "401"),
             ("403", "403"),
             ("404", "404"),
+            ("405", "405"),
             ("415", "415"),
+        ],
+        label="Status",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault(
+                "class",
+                "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+            )
+
+
+class IndieAuthFilterForm(forms.Form):
+    q = forms.CharField(required=False, label="Search")
+    client_id = forms.CharField(required=False, label="Client")
+    me = forms.CharField(required=False, label="Me")
+    user = forms.CharField(required=False, label="User")
+    scope = forms.CharField(required=False, label="Scope")
+    status = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("", "Any status"),
+            ("active", "Active"),
+            ("revoked", "Revoked"),
         ],
         label="Status",
     )
@@ -298,7 +403,7 @@ class WebmentionCreateForm(forms.Form):
 
 
 class PageForm(forms.ModelForm):
-    field_order = ["title", "slug", "content", "published_on"]
+    field_order = ["title", "slug", "content", "published_on", "is_gallery"]
     published_on = forms.DateTimeField(
         required=True,
         widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
@@ -308,9 +413,9 @@ class PageForm(forms.ModelForm):
 
     class Meta:
         model = Page
-        fields = ["title", "slug", "content", "published_on"]
+        fields = ["title", "slug", "content", "published_on", "is_gallery"]
         widgets = {
-            "content": CodeMirrorTextarea(),
+            "content": EasyMDETextarea(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -336,10 +441,7 @@ class PageForm(forms.ModelForm):
                 "%Y-%m-%dT%H:%M"
             )
         elif not self.instance.pk and not self.initial.get("published_on"):
-            local_time = timezone.localtime(timezone.now())
-            self.fields["published_on"].initial = local_time.strftime(
-                "%Y-%m-%dT%H:%M"
-            )
+            self.fields["published_on"].widget.attrs["data-default-now"] = "true"
 
     def clean_published_on(self):
         value = self.cleaned_data.get("published_on")
@@ -392,6 +494,7 @@ class SiteConfigurationForm(forms.ModelForm):
             "main_menu",
             "footer_menu",
             "comments_enabled",
+            "developer_tools_enabled",
             "bridgy_publish_bluesky",
             "bridgy_publish_flickr",
             "bridgy_publish_github",
@@ -399,7 +502,7 @@ class SiteConfigurationForm(forms.ModelForm):
             "robots_txt",
         ]
         widgets = {
-            "robots_txt": CodeMirrorTextarea(mode="text/plain"),
+            "robots_txt": EasyMDETextarea(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -507,6 +610,23 @@ class ThemeFileForm(forms.Form):
 class ThemeSettingsForm(forms.Form):
     def __init__(self, schema: dict, *args, **kwargs):
         self.schema = schema or {}
+        initial = kwargs.get("initial")
+        if isinstance(initial, dict):
+            initial = dict(initial)
+            fields = self.schema.get("fields")
+            if isinstance(fields, dict):
+                for name, definition in fields.items():
+                    if not isinstance(definition, dict):
+                        continue
+                    if definition.get("type") != "color_alpha":
+                        continue
+                    value = initial.get(name)
+                    if isinstance(value, str):
+                        hex_value, alpha = _rgba_to_hex_alpha(value)
+                        initial[name] = [hex_value, alpha]
+                    elif value is None:
+                        initial[name] = ["#000000", 1.0]
+            kwargs["initial"] = initial
         super().__init__(*args, **kwargs)
         fields = self.schema.get("fields")
         if not isinstance(fields, dict):
@@ -557,6 +677,12 @@ def _theme_settings_field(field_type, *, label, required, help_text, definition)
             help_text=help_text,
             widget=forms.TextInput(attrs={"type": "color"}),
         )
+    elif field_type == "color_alpha":
+        field = ColorAlphaField(
+            required=required,
+            label=label,
+            help_text=help_text,
+        )
     elif field_type == "select":
         choices = _theme_settings_choices(definition.get("choices"))
         if not choices:
@@ -579,12 +705,137 @@ def _theme_settings_field(field_type, *, label, required, help_text, definition)
             "class",
             "h-4 w-4 rounded border-[color:var(--admin-border)] text-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
         )
+    elif isinstance(field.widget, forms.MultiWidget):
+        for subwidget in field.widget.widgets:
+            subwidget.attrs.setdefault(
+                "class",
+                "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+            )
     else:
         field.widget.attrs.setdefault(
             "class",
             "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
         )
     return field
+
+
+_RGBA_RE = re.compile(
+    r"rgba?\(\s*(?P<r>\d{1,3})\s*,\s*(?P<g>\d{1,3})\s*,\s*(?P<b>\d{1,3})(?:\s*,\s*(?P<a>[\d.]+))?\s*\)"
+)
+
+
+def _clamp(value, min_value, max_value):
+    return max(min_value, min(max_value, value))
+
+
+def _rgba_to_hex_alpha(value):
+    if not isinstance(value, str):
+        return "#000000", 1.0
+    match = _RGBA_RE.fullmatch(value.strip())
+    if not match:
+        return value.strip(), 1.0
+    r = _clamp(int(match.group("r")), 0, 255)
+    g = _clamp(int(match.group("g")), 0, 255)
+    b = _clamp(int(match.group("b")), 0, 255)
+    alpha = match.group("a")
+    a = float(alpha) if alpha is not None else 1.0
+    a = _clamp(a, 0.0, 1.0)
+    return f"#{r:02x}{g:02x}{b:02x}", a
+
+
+def _hex_to_rgb(value):
+    if not isinstance(value, str):
+        return 0, 0, 0
+    raw = value.strip().lstrip("#")
+    if len(raw) == 3:
+        raw = "".join(ch * 2 for ch in raw)
+    if len(raw) != 6:
+        return 0, 0, 0
+    try:
+        return int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16)
+    except ValueError:
+        return 0, 0, 0
+
+
+class ColorHexInput(forms.TextInput):
+    input_type = "color"
+
+    def format_value(self, value):
+        if value is None:
+            return None
+        hex_value, _alpha = _rgba_to_hex_alpha(value)
+        return hex_value
+
+
+class ColorAlphaWidget(forms.MultiWidget):
+    def __init__(self, attrs=None):
+        widgets = [
+            ColorHexInput(),
+            forms.NumberInput(attrs={"min": "0", "max": "1", "step": "0.01"}),
+        ]
+        super().__init__(widgets, attrs)
+
+    def decompress(self, value):
+        if value is None:
+            return ["#000000", 1.0]
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            hex_value, alpha = _rgba_to_hex_alpha(value[0])
+            try:
+                alpha = float(value[1])
+            except (TypeError, ValueError):
+                alpha = alpha
+            return [hex_value, _clamp(alpha, 0.0, 1.0)]
+        hex_value, alpha = _rgba_to_hex_alpha(value)
+        return [hex_value, alpha]
+
+    def format_value(self, value):
+        if value is None:
+            return [None, None]
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            return list(value)
+        return self.decompress(value)
+
+    def get_context(self, name, value, attrs):
+        decompressed = self.decompress(value)
+        context = super().get_context(name, decompressed, attrs)
+        subwidgets = context.get("widget", {}).get("subwidgets", [])
+        if len(subwidgets) >= 2:
+            subwidgets[0]["value"] = decompressed[0]
+            subwidgets[1]["value"] = f"{float(decompressed[1]):.2f}" if decompressed[1] is not None else "1.00"
+        return context
+
+
+class ColorAlphaField(forms.Field):
+    widget = ColorAlphaWidget
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.widget = ColorAlphaWidget()
+
+    def prepare_value(self, value):
+        if isinstance(value, (list, tuple)) and len(value) >= 2:
+            hex_value, alpha = _rgba_to_hex_alpha(value[0])
+            try:
+                alpha = float(value[1])
+            except (TypeError, ValueError):
+                pass
+            return [hex_value, f"{_clamp(alpha, 0.0, 1.0):.2f}"]
+        hex_value, alpha = _rgba_to_hex_alpha(value)
+        return [hex_value, f"{_clamp(alpha, 0.0, 1.0):.2f}"]
+
+    def to_python(self, value):
+        if isinstance(value, (list, tuple)) and len(value) >= 2:
+            hex_value = value[0] or "#000000"
+            alpha = value[1]
+        else:
+            hex_value, alpha = _rgba_to_hex_alpha(value)
+        try:
+            alpha = float(alpha)
+        except (TypeError, ValueError):
+            alpha = 1.0
+        alpha = _clamp(alpha, 0.0, 1.0)
+        r, g, b = _hex_to_rgb(hex_value)
+        return f"rgba({r}, {g}, {b}, {alpha:.2f})"
 
 
 def _theme_settings_choices(raw_choices):
@@ -676,6 +927,42 @@ class RedirectForm(forms.ModelForm):
         )
 
 
+class UserAgentBotRuleForm(forms.ModelForm):
+    class Meta:
+        model = UserAgentBotRule
+        fields = ["enabled", "pattern"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["enabled"].widget.attrs.setdefault(
+            "class",
+            "h-4 w-4 rounded border-[color:var(--admin-border)] text-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+        )
+        self.fields["pattern"].widget.attrs.setdefault(
+            "class",
+            "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm font-mono focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+        )
+        self.fields["pattern"].widget.attrs.setdefault("rows", 4)
+        self.fields["pattern"].widget.attrs.setdefault(
+            "placeholder",
+            r"(?i)(bot|crawler|spider|headless)",
+        )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        enabled = cleaned_data.get("enabled")
+        pattern = cleaned_data.get("pattern", "")
+        if enabled and not pattern.strip():
+            self.add_error("pattern", "Regex pattern is required when bot detection is enabled.")
+            return cleaned_data
+        if pattern:
+            try:
+                validate_bot_pattern(pattern)
+            except ValueError as exc:
+                self.add_error("pattern", f"Invalid regex: {exc}")
+        return cleaned_data
+
+
 class HCardForm(forms.ModelForm):
     class Meta:
         model = HCard
@@ -694,7 +981,7 @@ class HCardForm(forms.ModelForm):
             "anniversary",
         ]
         widgets = {
-            "note": CodeMirrorTextarea(),
+            "note": EasyMDETextarea(),
             "bday": forms.DateInput(attrs={"type": "date"}),
             "anniversary": forms.DateInput(attrs={"type": "date"}),
             "uid": forms.URLInput(attrs={"placeholder": "https://"}),
@@ -761,3 +1048,46 @@ class HCardEmailForm(forms.ModelForm):
                 "class",
                 "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
             )
+
+
+class IndieAuthClientForm(forms.ModelForm):
+    redirect_uris_text = forms.CharField(
+        required=False,
+        label="Redirect URIs",
+        help_text="One URI per line. Each must be http or https with no fragment.",
+        widget=forms.Textarea(attrs={"rows": 4, "placeholder": "https://example.com/callback"}),
+    )
+
+    class Meta:
+        model = IndieAuthClient
+        fields = ["client_id", "name", "logo_url"]
+        widgets = {
+            "client_id": forms.URLInput(attrs={"placeholder": "https://"}),
+            "logo_url": forms.URLInput(attrs={"placeholder": "https://"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk and self.instance.redirect_uris:
+            self.fields["redirect_uris_text"].initial = "\n".join(
+                self.instance.redirect_uris
+            )
+        for field in self.fields.values():
+            field.widget.attrs.setdefault(
+                "class",
+                "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+            )
+
+    def clean_redirect_uris_text(self):
+        raw = self.cleaned_data.get("redirect_uris_text", "")
+        uris = [line.strip() for line in raw.splitlines() if line.strip()]
+        url_validator = URLValidator(schemes=["http", "https"])
+        for uri in uris:
+            if "#" in uri:
+                raise ValidationError(f"Redirect URI must not contain a fragment: {uri}")
+            url_validator(uri)
+        return uris
+
+    def save(self, commit=True):
+        self.instance.redirect_uris = self.cleaned_data.get("redirect_uris_text", [])
+        return super().save(commit=commit)

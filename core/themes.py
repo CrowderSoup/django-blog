@@ -20,11 +20,13 @@ from django.utils.text import slugify
 
 from .observability import duration_ms, log_theme_operation, truncate_error
 from .theme_validation import load_theme_metadata, validate_theme_dir
+from django.urls import reverse
 
 THEME_META_FILENAME = "theme.json"
 THEMES_DIRNAME = "themes"
 _DEFAULT_BASE_DIR = Path(__file__).resolve().parent.parent
 logger = logging.getLogger(__name__)
+DEFAULT_THEME_SLUG = "webstead-default-2026"
 
 
 class ThemeUploadError(Exception):
@@ -97,6 +99,34 @@ def get_theme_storage_prefix() -> str:
 def get_theme_storage() -> Storage:
     """Return the storage used for theme assets (defaults to the default storage)."""
     return default_storage
+
+
+def get_active_theme_settings() -> dict:
+    """Return resolved settings for the active theme."""
+    active_theme = get_active_theme()
+    if not active_theme:
+        return {}
+    from .models import SiteConfiguration
+
+    settings_obj = SiteConfiguration.get_solo()
+    stored_settings = (
+        settings_obj.theme_settings.get(active_theme.slug, {})
+        if isinstance(settings_obj.theme_settings, dict)
+        else {}
+    )
+    return resolve_theme_settings(active_theme.settings_schema, stored_settings)
+
+
+def get_posts_index_url() -> str:
+    settings = get_active_theme_settings()
+    if settings.get("home_feed_mode") == "home":
+        return reverse("index")
+    return reverse("posts")
+
+
+def should_redirect_posts_index() -> bool:
+    settings = get_active_theme_settings()
+    return settings.get("home_feed_mode") == "home" and settings.get("home_feed_redirect")
 
 
 def _validate_safe_path(root: Path, target: Path) -> Path:
@@ -1064,10 +1094,10 @@ def get_active_theme_slug() -> str:
     try:
         from core.models import SiteConfiguration
 
-        return SiteConfiguration.get_solo().active_theme or ""
+        return SiteConfiguration.get_solo().active_theme or DEFAULT_THEME_SLUG
     except Exception:
         # Database might not be ready (migrations, checks), so return a safe default.
-        return ""
+        return DEFAULT_THEME_SLUG
 
 
 def get_active_theme() -> Optional[ThemeDefinition]:

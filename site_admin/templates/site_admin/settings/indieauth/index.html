@@ -1,0 +1,390 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}IndieAuth{% endblock %}
+
+{% block content %}
+  <div class="site-settings-layout grid gap-6 lg:grid-cols-[220px_1fr]">
+    {% include "site_admin/settings/_sidebar.html" %}
+    <div class="flex flex-col gap-6">
+      <section class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div class="text-sm uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Site settings</div>
+          <h1 class="text-2xl font-semibold">IndieAuth</h1>
+          <p class="mt-1 text-sm text-[color:var(--admin-muted)]">
+            Review IndieAuth clients, tokens, and remembered consents.
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <a
+            href="{% url 'site_admin:indieauth_client_create' %}"
+            class="rounded-full bg-[color:var(--admin-accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+          >
+            Register client
+          </a>
+          <a
+            href="{% url 'site_admin:site_settings' %}"
+            class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+          >
+            Back to general
+          </a>
+        </div>
+      </section>
+
+      {% include "site_admin/_messages.html" with wrapper_class="space-y-2" %}
+
+      <section class="grid gap-4 md:grid-cols-3">
+        <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm">
+          <div class="text-xs uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Clients</div>
+          <div class="mt-2 text-2xl font-semibold">{{ clients_count }}</div>
+        </div>
+        <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm">
+          <div class="text-xs uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Active tokens</div>
+          <div class="mt-2 text-2xl font-semibold">{{ active_tokens_count }}</div>
+        </div>
+        <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm">
+          <div class="text-xs uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Revoked tokens</div>
+          <div class="mt-2 text-2xl font-semibold">{{ revoked_tokens_count }}</div>
+        </div>
+      </section>
+
+      <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+        <h2 class="text-lg font-semibold">Filters</h2>
+        <form method="get" class="mt-4 grid gap-4 md:grid-cols-3">
+          <div>
+            <label
+              for="{{ filter_form.q.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Search
+            </label>
+            {{ filter_form.q }}
+          </div>
+          <div>
+            <label
+              for="{{ filter_form.client_id.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Client
+            </label>
+            {{ filter_form.client_id }}
+          </div>
+          <div>
+            <label
+              for="{{ filter_form.me.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Me
+            </label>
+            {{ filter_form.me }}
+          </div>
+          <div>
+            <label
+              for="{{ filter_form.user.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              User
+            </label>
+            {{ filter_form.user }}
+          </div>
+          <div>
+            <label
+              for="{{ filter_form.scope.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Scope
+            </label>
+            {{ filter_form.scope }}
+          </div>
+          <div>
+            <label
+              for="{{ filter_form.status.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Status
+            </label>
+            {{ filter_form.status }}
+          </div>
+          <div class="md:col-span-3">
+            <button
+              type="submit"
+              class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+            >
+              Apply filters
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold">Clients</h2>
+            <p class="mt-1 text-sm text-[color:var(--admin-muted)]">
+              Trusted IndieAuth clients and their metadata.
+            </p>
+          </div>
+        </div>
+
+        {% if clients_page_obj.object_list %}
+          <div class="mt-4 hidden md:block">
+            <div class="overflow-hidden rounded-2xl border border-[color:var(--admin-border)]">
+              <table class="w-full table-fixed text-left text-sm">
+                <thead class="bg-[color:var(--admin-bg)] text-xs uppercase tracking-widest text-[color:var(--admin-muted)]">
+                  <tr>
+                    <th class="px-4 py-3">Name</th>
+                    <th class="px-4 py-3">Client ID</th>
+                    <th class="px-4 py-3 w-24">Redirects</th>
+                    <th class="px-4 py-3 w-40">Last fetched</th>
+                    <th class="px-4 py-3">Fetch error</th>
+                    <th class="px-4 py-3 w-40"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for client in clients_page_obj.object_list %}
+                    <tr class="border-t border-[color:var(--admin-border)]">
+                      <td class="px-4 py-3 font-semibold">
+                        {{ client.name|default:client.client_id|truncatechars:40 }}
+                      </td>
+                      <td class="px-4 py-3 text-[color:var(--admin-muted)]">
+                        <span class="block max-w-[240px] truncate">{{ client.client_id }}</span>
+                      </td>
+                      <td class="px-4 py-3 text-[color:var(--admin-muted)]">
+                        {{ client.redirect_uris|length }}
+                      </td>
+                      <td class="px-4 py-3 text-[color:var(--admin-muted)]">
+                        {{ client.last_fetched_at|date:"M j, Y"|default:"-" }}
+                      </td>
+                      <td class="px-4 py-3 text-[color:var(--admin-muted)]">
+                        <span class="block max-w-[200px] truncate">
+                          {{ client.fetch_error|default:"-" }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-3 text-right">
+                        <div class="flex items-center justify-end gap-3">
+                          <a
+                            href="{% url 'site_admin:indieauth_client_detail' client_pk=client.id %}"
+                            class="text-sm font-semibold text-[color:var(--admin-accent)]"
+                          >
+                            View
+                          </a>
+                          <form method="post" class="inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_client" />
+                            <input type="hidden" name="client_pk" value="{{ client.id }}" />
+                            <button
+                              type="submit"
+                              class="text-sm font-semibold text-rose-600"
+                              onclick="return confirm('Remove this client and revoke its tokens?');"
+                            >
+                              Remove
+                            </button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="mt-4 flex flex-col gap-3 md:hidden">
+            {% for client in clients_page_obj.object_list %}
+              <div class="rounded-2xl border border-[color:var(--admin-border)] p-4">
+                <div class="text-base font-semibold">{{ client.name|default:client.client_id }}</div>
+                <div class="mt-1 text-sm text-[color:var(--admin-muted)]">
+                  <div class="truncate">{{ client.client_id }}</div>
+                  <div>Redirects: {{ client.redirect_uris|length }}</div>
+                  <div>Last fetched: {{ client.last_fetched_at|date:"M j, Y"|default:"-" }}</div>
+                </div>
+                <div class="mt-3 flex items-center gap-3">
+                  <a
+                    href="{% url 'site_admin:indieauth_client_detail' client_pk=client.id %}"
+                    class="text-sm font-semibold text-[color:var(--admin-accent)]"
+                  >
+                    View
+                  </a>
+                  <form method="post" class="inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="delete_client" />
+                    <input type="hidden" name="client_pk" value="{{ client.id }}" />
+                    <button
+                      type="submit"
+                      class="text-sm font-semibold text-rose-600"
+                      onclick="return confirm('Remove this client and revoke its tokens?');"
+                    >
+                      Remove
+                    </button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+
+          <div class="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm">
+            <div class="text-[color:var(--admin-muted)]">
+              Page {{ clients_page_obj.number }} of {{ clients_paginator.num_pages }}
+            </div>
+            <div class="flex items-center gap-2">
+              {% if clients_page_obj.has_previous %}
+                <a
+                  href="?clients_page={{ clients_page_obj.previous_page_number }}{% if clients_base_query %}&{{ clients_base_query }}{% endif %}"
+                  class="rounded-full border border-[color:var(--admin-border)] px-3 py-1.5 font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+                >
+                  Previous
+                </a>
+              {% endif %}
+              {% if clients_page_obj.has_next %}
+                <a
+                  href="?clients_page={{ clients_page_obj.next_page_number }}{% if clients_base_query %}&{{ clients_base_query }}{% endif %}"
+                  class="rounded-full border border-[color:var(--admin-border)] px-3 py-1.5 font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+                >
+                  Next
+                </a>
+              {% endif %}
+            </div>
+          </div>
+        {% else %}
+          <div class="mt-4 rounded-2xl border border-dashed border-[color:var(--admin-border)] p-6 text-sm text-[color:var(--admin-muted)]">
+            No clients match these filters.
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold">Access tokens</h2>
+            <p class="mt-1 text-sm text-[color:var(--admin-muted)]">
+              Active and revoked tokens, with hashes redacted.
+            </p>
+          </div>
+        </div>
+
+        {% if tokens_page_obj.object_list %}
+          <div class="mt-4 hidden md:block">
+            <div class="overflow-hidden rounded-2xl border border-[color:var(--admin-border)]">
+              <table class="w-full table-fixed text-left text-sm">
+                <thead class="bg-[color:var(--admin-bg)] text-xs uppercase tracking-widest text-[color:var(--admin-muted)]">
+                  <tr>
+                    <th class="px-4 py-3">Client</th>
+                    <th class="px-4 py-3">Me</th>
+                    <th class="px-4 py-3">User</th>
+                    <th class="px-4 py-3">Scope</th>
+                    <th class="px-4 py-3 w-32">Created</th>
+                    <th class="px-4 py-3 w-32">Expires</th>
+                    <th class="px-4 py-3 w-32">Revoked</th>
+                    <th class="px-4 py-3 w-32">Token</th>
+                    <th class="px-4 py-3 w-28"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for token in tokens_page_obj.object_list %}
+                    <tr class="border-t border-[color:var(--admin-border)]">
+                      <td class="px-4 py-3">
+                        <span class="block max-w-[180px] truncate text-[color:var(--admin-ink)]">
+                          {{ token.client_id }}
+                        </span>
+                      </td>
+                      <td class="px-4 py-3 text-[color:var(--admin-muted)]">
+                        <span class="block max-w-[160px] truncate">{{ token.me }}</span>
+                      </td>
+                      <td class="px-4 py-3 text-[color:var(--admin-muted)]">
+                        {{ token.user.get_username }}
+                      </td>
+                      <td class="px-4 py-3 text-[color:var(--admin-muted)]">
+                        <span class="block max-w-[160px] truncate">{{ token.scope|default:"-" }}</span>
+                      </td>
+                      <td class="px-4 py-3 text-[color:var(--admin-muted)]">{{ token.created_at|date:"M j, Y" }}</td>
+                      <td class="px-4 py-3 text-[color:var(--admin-muted)]">{{ token.expires_at|date:"M j, Y"|default:"-" }}</td>
+                      <td class="px-4 py-3 text-[color:var(--admin-muted)]">{{ token.revoked_at|date:"M j, Y"|default:"-" }}</td>
+                      <td class="px-4 py-3 font-mono text-xs text-[color:var(--admin-muted)]">{{ token.redacted_hash }}</td>
+                      <td class="px-4 py-3 text-right">
+                        {% if token.revoked_at %}
+                          <span class="text-xs font-semibold text-[color:var(--admin-muted)]">Revoked</span>
+                        {% else %}
+                          <form method="post" class="inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="revoke_token" />
+                            <input type="hidden" name="token_id" value="{{ token.id }}" />
+                            <button
+                              type="submit"
+                              class="text-sm font-semibold text-rose-600"
+                              onclick="return confirm('Revoke this access token?');"
+                            >
+                              Revoke
+                            </button>
+                          </form>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="mt-4 flex flex-col gap-3 md:hidden">
+            {% for token in tokens_page_obj.object_list %}
+              <div class="rounded-2xl border border-[color:var(--admin-border)] p-4">
+                <div class="text-base font-semibold">{{ token.user.get_username }}</div>
+                <div class="mt-1 text-sm text-[color:var(--admin-muted)]">
+                  <div class="truncate">Client: {{ token.client_id }}</div>
+                  <div class="truncate">Me: {{ token.me }}</div>
+                  <div>Scope: {{ token.scope|default:"-" }}</div>
+                  <div>Token: {{ token.redacted_hash }}</div>
+                </div>
+                <div class="mt-3 flex items-center gap-3">
+                  {% if token.revoked_at %}
+                    <span class="text-xs font-semibold text-[color:var(--admin-muted)]">Revoked</span>
+                  {% else %}
+                    <form method="post" class="inline">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="revoke_token" />
+                      <input type="hidden" name="token_id" value="{{ token.id }}" />
+                      <button
+                        type="submit"
+                        class="text-sm font-semibold text-rose-600"
+                        onclick="return confirm('Revoke this access token?');"
+                      >
+                        Revoke
+                      </button>
+                    </form>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+
+          <div class="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm">
+            <div class="text-[color:var(--admin-muted)]">
+              Page {{ tokens_page_obj.number }} of {{ tokens_paginator.num_pages }}
+            </div>
+            <div class="flex items-center gap-2">
+              {% if tokens_page_obj.has_previous %}
+                <a
+                  href="?tokens_page={{ tokens_page_obj.previous_page_number }}{% if tokens_base_query %}&{{ tokens_base_query }}{% endif %}"
+                  class="rounded-full border border-[color:var(--admin-border)] px-3 py-1.5 font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+                >
+                  Previous
+                </a>
+              {% endif %}
+              {% if tokens_page_obj.has_next %}
+                <a
+                  href="?tokens_page={{ tokens_page_obj.next_page_number }}{% if tokens_base_query %}&{{ tokens_base_query }}{% endif %}"
+                  class="rounded-full border border-[color:var(--admin-border)] px-3 py-1.5 font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+                >
+                  Next
+                </a>
+              {% endif %}
+            </div>
+          </div>
+        {% else %}
+          <div class="mt-4 rounded-2xl border border-dashed border-[color:var(--admin-border)] p-6 text-sm text-[color:var(--admin-muted)]">
+            No access tokens match these filters.
+          </div>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+{% endblock %}

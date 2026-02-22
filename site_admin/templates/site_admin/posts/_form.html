@@ -8,6 +8,7 @@
   hx-swap="outerHTML"
   data-photo-upload-url="{{ photo_upload_url }}"
   data-photo-delete-url="{{ photo_delete_url }}"
+  data-nearby-places-url="{{ nearby_places_url }}"
 >
   {% csrf_token %}
   {% include "site_admin/posts/_form_messages.html" %}
@@ -165,6 +166,81 @@
         </div>
       </div>
 
+      <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm" data-kind-section="event">
+        <div class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)] mb-3">Event details</div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="{{ form.event_start.id_for_label }}" class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Start</label>
+            {{ form.event_start }}
+            {{ form.event_start.errors }}
+          </div>
+          <div>
+            <label for="{{ form.event_end.id_for_label }}" class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">End (optional)</label>
+            {{ form.event_end }}
+            {{ form.event_end.errors }}
+          </div>
+          <div>
+            <label for="{{ form.event_location.id_for_label }}" class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Location</label>
+            {{ form.event_location }}
+            {{ form.event_location.errors }}
+          </div>
+          <div>
+            <label for="{{ form.event_url.id_for_label }}" class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Event URL (optional)</label>
+            {{ form.event_url }}
+            {{ form.event_url.errors }}
+          </div>
+        </div>
+        <p class="mt-3 text-xs text-[color:var(--admin-muted)]">Use the content field above for the event description.</p>
+      </div>
+
+      <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm" data-kind-section="rsvp">
+        <div class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)] mb-3">RSVP</div>
+        <div class="grid gap-4">
+          <div>
+            <label for="{{ form.rsvp_value.id_for_label }}" class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Response</label>
+            {{ form.rsvp_value }}
+            {{ form.rsvp_value.errors }}
+          </div>
+        </div>
+        <p class="mt-3 text-xs text-[color:var(--admin-muted)]">Set the event URL in the target URL field in the right column.</p>
+      </div>
+
+      <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm" data-kind-section="checkin">
+        <div class="flex items-center justify-between gap-2 mb-3">
+          <div class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Check-in</div>
+          <button
+            type="button"
+            class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-accent)] transition hover:bg-[color:var(--admin-bg)]"
+            data-geolocate-btn
+          >
+            Use my location
+          </button>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="sm:col-span-2">
+            <label for="{{ form.checkin_name.id_for_label }}" class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Place name</label>
+            {{ form.checkin_name }}
+            {{ form.checkin_name.errors }}
+          </div>
+          <div>
+            <label for="{{ form.checkin_latitude.id_for_label }}" class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Latitude</label>
+            {{ form.checkin_latitude }}
+            {{ form.checkin_latitude.errors }}
+          </div>
+          <div>
+            <label for="{{ form.checkin_longitude.id_for_label }}" class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">Longitude</label>
+            {{ form.checkin_longitude }}
+            {{ form.checkin_longitude.errors }}
+          </div>
+        </div>
+        <div id="checkin-map" class="mt-4 h-64 rounded-2xl border border-[color:var(--admin-border)]" data-checkin-map></div>
+        <div id="checkin-suggestions" class="mt-3 hidden">
+          <p class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)] mb-2">Nearby places</p>
+          <div id="checkin-suggestions-list" class="flex flex-wrap gap-2"></div>
+        </div>
+        <p class="mt-2 text-xs text-[color:var(--admin-muted)]">Enter coordinates, click the map, or use your device location.</p>
+      </div>
+
       <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm" data-kind-section="photo">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -211,16 +287,26 @@
       </div>
 
       <div>
-        <label
-          for="{{ form.tags_text.id_for_label }}"
-          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
-        >
-          Tags
-        </label>
+        <div class="flex items-center justify-between gap-2">
+          <label
+            for="{{ form.tags_text.id_for_label }}"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            Tags
+          </label>
+          <button
+            type="button"
+            class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-xs font-semibold text-[color:var(--admin-accent)] transition hover:bg-[color:var(--admin-bg)]"
+            data-suggest-tags-btn
+          >
+            Suggest tags
+          </button>
+        </div>
         <div
           class="tag-input mt-1"
           data-tag-input
           data-suggest-url="{% url 'tag_suggestions' %}"
+          data-suggest-content-url="{% url 'suggest_tags_for_content' %}"
         >
           <div class="tag-chips" data-tag-chips></div>
           {{ form.tags_text }}
@@ -253,16 +339,27 @@
         <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Required for reposts.</p>
         {{ form.repost_of.errors }}
       </div>
-      <div data-kind-section="reply">
+      <div data-kind-section="reply rsvp">
         <label
           for="{{ form.in_reply_to.id_for_label }}"
           class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
         >
-          Reply URL
+          Target URL
         </label>
         {{ form.in_reply_to }}
-        <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Required for replies.</p>
+        <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Required for replies and RSVPs.</p>
         {{ form.in_reply_to.errors }}
+      </div>
+      <div data-kind-section="bookmark">
+        <label
+          for="{{ form.bookmark_of.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Bookmark URL
+        </label>
+        {{ form.bookmark_of }}
+        <p class="mt-1 text-xs text-[color:var(--admin-muted)]">Required for bookmarks.</p>
+        {{ form.bookmark_of.errors }}
       </div>
       <div>
         <label
@@ -344,6 +441,10 @@
     like: "Link to something you enjoyed.",
     repost: "Share someone else's post with credit.",
     reply: "Respond directly with a target URL.",
+    event: "An event with a name, time, and location.",
+    rsvp: "Respond to an event invitation.",
+    checkin: "Check in at a place with coordinates.",
+    bookmark: "Save a URL for later reference.",
   };
 
   const contentHints = {
@@ -354,6 +455,10 @@
     like: "Optional commentary for the like.",
     repost: "Optional commentary for the repost.",
     reply: "Write your reply here.",
+    event: "Describe the event here.",
+    rsvp: "Optional commentary for your RSVP.",
+    checkin: "Notes about this check-in.",
+    bookmark: "Optional notes about why you're saving this.",
   };
 
   let photoData = [];
@@ -383,6 +488,7 @@
         kind === "photo" ||
         kind === "article" ||
         kind === "activity" ||
+        kind === "checkin" ||
         photoData.length > 0
       );
     }
@@ -690,5 +796,180 @@
   form.addEventListener("htmx:beforeRequest", syncMetadataFields);
 
   renderPhotos();
+
+  // Check-in map
+  const checkinMap = form.querySelector("[data-checkin-map]");
+  const latInput = form.querySelector("input[name='checkin_latitude']");
+  const lngInput = form.querySelector("input[name='checkin_longitude']");
+  const nameInput = form.querySelector("input[name='checkin_name']");
+  const nearbyPlacesUrl = form.dataset.nearbyPlacesUrl;
+  const suggestionsContainer = document.getElementById("checkin-suggestions");
+  const suggestionsList = document.getElementById("checkin-suggestions-list");
+
+  let nearbyFetchController = null;
+
+  function fetchNearbyPlaces(lat, lng) {
+    if (!nearbyPlacesUrl || !suggestionsContainer || !suggestionsList) return;
+    if (nearbyFetchController) nearbyFetchController.abort();
+    nearbyFetchController = new AbortController();
+
+    fetch(`${nearbyPlacesUrl}?lat=${lat}&lng=${lng}`, {
+      signal: nearbyFetchController.signal,
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        suggestionsList.innerHTML = "";
+        const places = data.places || [];
+        if (!places.length) {
+          suggestionsContainer.classList.add("hidden");
+          return;
+        }
+        places.forEach((place) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className =
+            "rounded-full border border-[color:var(--admin-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[color:var(--admin-ink)] shadow-sm transition hover:border-[color:var(--admin-accent)] hover:text-[color:var(--admin-accent)]";
+          const dist = place.distance_km < 1
+            ? `${Math.round(place.distance_km * 1000)} m`
+            : `${place.distance_km} km`;
+          btn.textContent = `${place.name} (${dist})`;
+          btn.addEventListener("click", () => {
+            if (nameInput) nameInput.value = place.name;
+            latInput.value = place.latitude;
+            lngInput.value = place.longitude;
+            latInput.dispatchEvent(new Event("change", { bubbles: true }));
+          });
+          suggestionsList.appendChild(btn);
+        });
+        suggestionsContainer.classList.remove("hidden");
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          suggestionsContainer.classList.add("hidden");
+        }
+      });
+  }
+
+  if (checkinMap && latInput && lngInput) {
+    let leafletLoaded = false;
+    let map = null;
+    let marker = null;
+
+    function initCheckinMap() {
+      if (!window.L || leafletLoaded) return;
+      leafletLoaded = true;
+
+      const lat = parseFloat(latInput.value) || 0;
+      const lng = parseFloat(lngInput.value) || 0;
+      const hasCoords = latInput.value && lngInput.value;
+      const center = hasCoords ? [lat, lng] : [40, -100];
+      const zoom = hasCoords ? 14 : 3;
+
+      map = L.map(checkinMap).setView(center, zoom);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 19,
+      }).addTo(map);
+
+      if (hasCoords) {
+        marker = L.marker(center).addTo(map);
+        fetchNearbyPlaces(lat, lng);
+      }
+
+      map.on("click", function (e) {
+        const { lat, lng } = e.latlng;
+        latInput.value = lat.toFixed(6);
+        lngInput.value = lng.toFixed(6);
+        if (marker) {
+          marker.setLatLng(e.latlng);
+        } else {
+          marker = L.marker(e.latlng).addTo(map);
+        }
+        fetchNearbyPlaces(lat, lng);
+      });
+
+      function updateFromInputs() {
+        const lat = parseFloat(latInput.value);
+        const lng = parseFloat(lngInput.value);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          const latlng = [lat, lng];
+          if (marker) {
+            marker.setLatLng(latlng);
+          } else {
+            marker = L.marker(latlng).addTo(map);
+          }
+          map.setView(latlng, Math.max(map.getZoom(), 14));
+          fetchNearbyPlaces(lat, lng);
+        }
+      }
+
+      latInput.addEventListener("change", updateFromInputs);
+      lngInput.addEventListener("change", updateFromInputs);
+    }
+
+    // Load Leaflet dynamically when checkin kind is selected
+    const observer = new MutationObserver(() => {
+      if (!checkinMap.closest("[data-kind-section]").classList.contains("hidden")) {
+        if (!document.querySelector('link[href*="leaflet"]')) {
+          const css = document.createElement("link");
+          css.rel = "stylesheet";
+          css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+          document.head.appendChild(css);
+          const js = document.createElement("script");
+          js.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+          js.onload = () => {
+            initCheckinMap();
+            setTimeout(() => map && map.invalidateSize(), 100);
+          };
+          document.head.appendChild(js);
+        } else if (window.L && !leafletLoaded) {
+          initCheckinMap();
+        }
+        if (map) {
+          setTimeout(() => map.invalidateSize(), 100);
+        }
+      }
+    });
+    const checkinSection = checkinMap.closest("[data-kind-section]");
+    if (checkinSection) {
+      observer.observe(checkinSection, { attributes: true, attributeFilter: ["class"] });
+    }
+
+    // Geolocation
+    const geoBtn = form.querySelector("[data-geolocate-btn]");
+    if (geoBtn && navigator.geolocation) {
+      geoBtn.addEventListener("click", () => {
+        geoBtn.disabled = true;
+        geoBtn.textContent = "Locating\u2026";
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            latInput.value = lat.toFixed(6);
+            lngInput.value = lng.toFixed(6);
+            latInput.dispatchEvent(new Event("change", { bubbles: true }));
+            if (map && marker) {
+              marker.setLatLng([lat, lng]);
+              map.setView([lat, lng], 15);
+            } else if (map) {
+              marker = L.marker([lat, lng]).addTo(map);
+              map.setView([lat, lng], 15);
+            }
+            fetchNearbyPlaces(lat, lng);
+            geoBtn.disabled = false;
+            geoBtn.textContent = "Use my location";
+          },
+          (error) => {
+            geoBtn.disabled = false;
+            geoBtn.textContent = "Use my location";
+            alert("Could not get your location: " + error.message);
+          },
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      });
+    } else if (geoBtn) {
+      geoBtn.hidden = true;
+    }
+  }
 })();
 </script>

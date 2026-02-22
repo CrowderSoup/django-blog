@@ -1,0 +1,21 @@
+{% load author %}
+
+<article class="h-entry entry-note">
+  <a class="u-uid" href="{% url 'post' slug=post.slug %}" hidden></a>
+
+  <div class="e-content">
+    {{ post.html }}
+  </div>
+
+  {% include 'blog/tags.html' %}
+
+  <div class="entry-meta">
+    <a class="u-url" href="{% url 'post' slug=post.slug %}">
+      <time class="dt-published" datetime="{{ post.published_on|date:"c" }}">
+        {{ post.published_on|date:"Y-m-d" }}
+      </time>
+    </a>
+    <span class="p-author h-card">{% author_hcard_name post.author %}</span>
+  </div>
+  {% include 'blog/bridgy_publish_links.html' %}
+</article>

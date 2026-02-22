@@ -13,7 +13,9 @@ from django.core.files.base import ContentFile
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.utils import timezone
-from django.db.models import Avg, Count, Q
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.db import transaction
+from django.db.models import Avg, Count, Max, Q
 from django.db.models.functions import TruncDate
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -21,7 +23,13 @@ from django.forms import inlineformset_factory
 from django.views.decorators.http import require_http_methods, require_GET, require_POST
 
 from blog.models import Comment, Post
-from analytics.models import Visit
+from analytics.bot_detection import evaluate_user_agent_against_pattern, validate_bot_pattern
+from analytics.models import (
+    UserAgentBotRule,
+    UserAgentFalsePositive,
+    UserAgentIgnore,
+    Visit,
+)
 
 from files.models import Attachment, File
 from files.gpx import GpxAnonymizeError, GpxAnonymizeOptions, anonymize_gpx
@@ -35,6 +43,7 @@ from core.models import (
     MenuItem,
     Page,
     Redirect,
+    RequestErrorLog,
     SiteConfiguration,
     ThemeInstall,
 )
@@ -58,12 +67,18 @@ from core.themes import (
     theme_storage_healthcheck,
 )
 from micropub.models import MicropubRequestLog, Webmention
+from indieauth.models import (
+    IndieAuthAccessToken,
+    IndieAuthAuthorizationCode,
+    IndieAuthClient,
+    IndieAuthConsent,
+    IndieAuthRequestLog,
+)
 from blog.comments import AkismetError, submit_ham, submit_spam
 from micropub.webmention import (
+    queue_webmentions_for_post,
     resend_webmention,
-    send_bridgy_publish_webmentions,
     send_webmention,
-    send_webmentions_for_post,
 )
 
 from .forms import (
@@ -84,9 +99,12 @@ from .forms import (
     ThemeFileForm,
     ThemeSettingsForm,
     ThemeUploadForm,
+    UserAgentBotRuleForm,
     WebmentionCreateForm,
     WebmentionFilterForm,
-    MicropubErrorFilterForm,
+    ErrorLogFilterForm,
+    IndieAuthFilterForm,
+    IndieAuthClientForm,
 )
 
 logger = logging.getLogger(__name__)
@@ -380,6 +398,12 @@ def _strip_page_query(request):
     return query_params.urlencode()
 
 
+def _strip_query_param(request, param):
+    query_params = request.GET.copy()
+    query_params.pop(param, None)
+    return query_params.urlencode()
+
+
 def _is_local_url(url, request):
     if not url:
         return False
@@ -387,6 +411,38 @@ def _is_local_url(url, request):
     if not parsed.netloc:
         return False
     return parsed.netloc == request.get_host()
+
+
+def _webmention_host_prefixes(request):
+    host = request.get_host()
+    if not host:
+        return []
+    return [f"http://{host}", f"https://{host}"]
+
+
+def _filter_webmentions_by_direction(webmentions, direction, request):
+    if direction not in ("incoming", "outgoing"):
+        return webmentions
+    prefixes = _webmention_host_prefixes(request)
+    if not prefixes:
+        return webmentions
+    if direction == "incoming":
+        query = Q()
+        for prefix in prefixes:
+            query |= Q(target__startswith=prefix)
+        return webmentions.filter(query)
+    query = Q()
+    for prefix in prefixes:
+        query |= Q(source__startswith=prefix)
+    return webmentions.filter(query)
+
+
+def _redact_token_hash(token_hash):
+    if not token_hash:
+        return ""
+    prefix = token_hash[:6]
+    suffix = token_hash[-4:] if len(token_hash) > 10 else token_hash[-2:]
+    return f"{prefix}...{suffix}"
 
 
 def _build_daily_counts(qs, start_date, end_date):
@@ -481,15 +537,41 @@ def dashboard(request):
     )
 
 
-def analytics_dashboard(request):
+def interactions(request):
     guard = _staff_guard(request)
     if guard:
         return guard
 
+    pending_comments = (
+        Comment.objects.select_related("post")
+        .filter(status=Comment.PENDING)
+        .order_by("-created_at", "-id")
+    )
+    pending_webmentions = _filter_webmentions_by_direction(
+        Webmention.objects.select_related("target_post")
+        .filter(status=Webmention.PENDING)
+        .order_by("-created_at", "-id"),
+        "incoming",
+        request,
+    )
+
+    return render(
+        request,
+        "site_admin/interactions/index.html",
+        {
+            "pending_comment_count": pending_comments.count(),
+            "pending_webmention_count": pending_webmentions.count(),
+            "pending_comments": pending_comments[:5],
+            "pending_webmentions": pending_webmentions[:5],
+        },
+    )
+
+
+def _parse_analytics_date_range(request, default_days=30):
     end_date = timezone.localdate()
-    start_date = end_date - timedelta(days=29)
-    start_param = request.GET.get("start")
-    end_param = request.GET.get("end")
+    start_date = end_date - timedelta(days=default_days - 1)
+    start_param = request.GET.get("start") or request.POST.get("start")
+    end_param = request.GET.get("end") or request.POST.get("end")
     if start_param:
         try:
             start_date = date.fromisoformat(start_param)
@@ -527,6 +609,15 @@ def analytics_dashboard(request):
             "end": today.isoformat(),
         },
     }
+    return start_date, end_date, window_days, presets
+
+
+def analytics_dashboard(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    start_date, end_date, window_days, presets = _parse_analytics_date_range(request)
     qs = (
         Visit.objects.filter(
             started_at__date__gte=start_date, started_at__date__lte=end_date
@@ -555,6 +646,17 @@ def analytics_dashboard(request):
         .annotate(count=Count("id"))
         .order_by("-count")[:8]
     )
+    top_user_agents = list(
+        qs.exclude(user_agent="")
+        .values("user_agent")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:10]
+    )
+    ignored_user_agents = set(
+        UserAgentIgnore.objects.filter(
+            user_agent__in=[row["user_agent"] for row in top_user_agents]
+        ).values_list("user_agent", flat=True)
+    )
     countries = list(
         qs.exclude(country="")
         .values("country")
@@ -578,6 +680,8 @@ def analytics_dashboard(request):
             "daily_sessions": daily_sessions,
             "top_paths": top_paths,
             "top_referrers": top_referrers,
+            "top_user_agents": top_user_agents,
+            "ignored_user_agents": ignored_user_agents,
             "countries": countries,
             "error_visits": error_visits,
             "window_days": window_days,
@@ -586,6 +690,461 @@ def analytics_dashboard(request):
             "presets": presets,
         },
     )
+
+
+def analytics_user_agents(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    start_date, end_date, window_days, presets = _parse_analytics_date_range(request)
+    query = (request.GET.get("q") or "").strip()
+    qs = (
+        Visit.objects.filter(
+            started_at__date__gte=start_date, started_at__date__lte=end_date
+        )
+        .exclude(path__startswith="/admin")
+        .exclude(path__startswith="/analytics")
+        .exclude(user_agent="")
+    )
+    if query:
+        qs = qs.filter(user_agent__icontains=query)
+
+    user_agents = list(
+        qs.values("user_agent")
+        .annotate(count=Count("id"), last_seen=Max("started_at"))
+        .order_by("-count", "-last_seen")[:100]
+    )
+    ignored_user_agents = set(
+        UserAgentIgnore.objects.filter(
+            user_agent__in=[row["user_agent"] for row in user_agents]
+        ).values_list("user_agent", flat=True)
+    )
+
+    return render(
+        request,
+        "site_admin/analytics/user_agents.html",
+        {
+            "user_agents": user_agents,
+            "ignored_user_agents": ignored_user_agents,
+            "query": query,
+            "window_days": window_days,
+            "start_date": start_date,
+            "end_date": end_date,
+            "presets": presets,
+        },
+    )
+
+
+def analytics_ignored_user_agents(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    ignored_user_agents = UserAgentIgnore.objects.order_by("user_agent", "id")
+    return render(
+        request,
+        "site_admin/analytics/ignored_user_agents.html",
+        {
+            "ignored_user_agents": ignored_user_agents,
+        },
+    )
+
+
+@require_GET
+def analytics_ignored_user_agents_export(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    rows = UserAgentIgnore.objects.order_by("user_agent", "id").values_list(
+        "user_agent", flat=True
+    )
+    content = "\n".join(rows)
+    response = HttpResponse(content, content_type="text/plain; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="ignored-user-agents.txt"'
+    return response
+
+
+@require_http_methods(["GET", "POST"])
+def analytics_bot_detection(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    start_date, end_date, window_days, presets = _parse_analytics_date_range(request)
+    rule = UserAgentBotRule.get_current()
+    test_user_agent = ""
+    test_result = None
+
+    if request.method == "POST":
+        action = (request.POST.get("action") or "").strip()
+        if action == "save_rule":
+            form = UserAgentBotRuleForm(request.POST, instance=rule)
+            if form.is_valid():
+                form.save()
+                messages.success(request, "Bot detection rule saved.")
+                return redirect("site_admin:analytics_bot_detection")
+        elif action == "test_rule":
+            form = UserAgentBotRuleForm(request.POST, instance=rule)
+            test_user_agent = (request.POST.get("test_user_agent") or "").strip()
+            pattern = (request.POST.get("pattern") or "")
+            if not pattern.strip():
+                messages.error(request, "Provide a regex pattern to test.")
+            elif not test_user_agent:
+                messages.error(request, "Provide a user agent string to test.")
+            else:
+                try:
+                    validate_bot_pattern(pattern)
+                    test_result = evaluate_user_agent_against_pattern(
+                        pattern, test_user_agent
+                    )
+                except ValueError as exc:
+                    messages.error(request, f"Invalid regex: {exc}")
+        else:
+            form = UserAgentBotRuleForm(instance=rule)
+    else:
+        form = UserAgentBotRuleForm(instance=rule)
+
+    flagged_user_agents = list(
+        Visit.objects.filter(
+            started_at__date__gte=start_date,
+            started_at__date__lte=end_date,
+            is_suspected_bot=True,
+        )
+        .exclude(path__startswith="/admin")
+        .exclude(path__startswith="/analytics")
+        .exclude(user_agent="")
+        .values("user_agent")
+        .annotate(count=Count("id"), last_seen=Max("started_at"))
+        .order_by("-count", "-last_seen")[:100]
+    )
+    flagged_values = [row["user_agent"] for row in flagged_user_agents]
+    ignored_user_agents = set(
+        UserAgentIgnore.objects.filter(user_agent__in=flagged_values).values_list(
+            "user_agent", flat=True
+        )
+    )
+    false_positive_user_agents = set(
+        UserAgentFalsePositive.objects.filter(user_agent__in=flagged_values).values_list(
+            "user_agent", flat=True
+        )
+    )
+    false_positive_rows = UserAgentFalsePositive.objects.order_by("user_agent", "id")
+
+    return render(
+        request,
+        "site_admin/analytics/bot_detection.html",
+        {
+            "form": form,
+            "rule": rule,
+            "test_user_agent": test_user_agent,
+            "test_result": test_result,
+            "flagged_user_agents": flagged_user_agents,
+            "ignored_user_agents": ignored_user_agents,
+            "false_positive_user_agents": false_positive_user_agents,
+            "false_positive_rows": false_positive_rows,
+            "window_days": window_days,
+            "start_date": start_date,
+            "end_date": end_date,
+            "presets": presets,
+        },
+    )
+
+
+@require_POST
+def analytics_mark_false_positive_user_agent(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    user_agent = (request.POST.get("user_agent") or "").strip()
+    if not user_agent:
+        messages.error(request, "Provide a user agent to mark as false positive.")
+    else:
+        _, created = UserAgentFalsePositive.objects.get_or_create(user_agent=user_agent)
+        Visit.objects.filter(user_agent=user_agent).update(
+            is_suspected_bot=False,
+            suspected_bot_pattern_version=None,
+        )
+        if created:
+            messages.success(request, "User agent marked as false positive.")
+        else:
+            messages.info(request, "User agent is already marked as false positive.")
+
+    return redirect("site_admin:analytics_bot_detection")
+
+
+@require_POST
+def analytics_unmark_false_positive_user_agent(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    user_agent = (request.POST.get("user_agent") or "").strip()
+    if not user_agent:
+        messages.error(request, "Provide a user agent to remove from false positives.")
+        return redirect("site_admin:analytics_bot_detection")
+
+    deleted, _ = UserAgentFalsePositive.objects.filter(user_agent=user_agent).delete()
+    if not deleted:
+        messages.info(request, "User agent was not marked as false positive.")
+        return redirect("site_admin:analytics_bot_detection")
+
+    rule = UserAgentBotRule.get_current()
+    if (
+        rule.enabled
+        and rule.pattern
+        and not UserAgentIgnore.objects.filter(user_agent=user_agent).exists()
+    ):
+        try:
+            if evaluate_user_agent_against_pattern(rule.pattern, user_agent):
+                Visit.objects.filter(user_agent=user_agent).update(
+                    is_suspected_bot=True,
+                    suspected_bot_pattern_version=rule.version,
+                )
+        except Exception:
+            pass
+    messages.success(request, "User agent removed from false positives.")
+    return redirect("site_admin:analytics_bot_detection")
+
+
+def analytics_errors_by_user_agent(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    start_date, end_date, window_days, presets = _parse_analytics_date_range(request)
+    status_class = (request.GET.get("class") or "all").strip().lower()
+    if status_class not in {"all", "4xx", "5xx"}:
+        status_class = "all"
+    qs = (
+        Visit.objects.filter(
+            started_at__date__gte=start_date, started_at__date__lte=end_date
+        )
+        .exclude(path__startswith="/admin")
+        .exclude(path__startswith="/analytics")
+        .exclude(user_agent="")
+        .filter(response_status_code__gte=400)
+    )
+    if status_class == "4xx":
+        qs = qs.filter(response_status_code__gte=400, response_status_code__lt=500)
+    elif status_class == "5xx":
+        qs = qs.filter(response_status_code__gte=500, response_status_code__lt=600)
+
+    user_agent_counts = list(
+        qs.values("user_agent")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:100]
+    )
+    status_rows = qs.values("user_agent", "response_status_code").annotate(
+        count=Count("id")
+    )
+    status_map = {}
+    for row in status_rows:
+        ua = row["user_agent"]
+        status_map.setdefault(ua, []).append(
+            {"status": row["response_status_code"], "count": row["count"]}
+        )
+    for ua, rows in status_map.items():
+        rows.sort(key=lambda item: item["count"], reverse=True)
+
+    ignored_user_agents = set(
+        UserAgentIgnore.objects.filter(
+            user_agent__in=[row["user_agent"] for row in user_agent_counts]
+        ).values_list("user_agent", flat=True)
+    )
+
+    for row in user_agent_counts:
+        row["status_list"] = status_map.get(row["user_agent"], [])
+
+    return render(
+        request,
+        "site_admin/analytics/errors_by_user_agent.html",
+        {
+            "user_agent_counts": user_agent_counts,
+            "ignored_user_agents": ignored_user_agents,
+            "status_class": status_class,
+            "window_days": window_days,
+            "start_date": start_date,
+            "end_date": end_date,
+            "presets": presets,
+        },
+    )
+
+
+@require_POST
+def analytics_ignore_user_agent(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    user_agent = (request.POST.get("user_agent") or "").strip()
+    if not user_agent:
+        messages.error(request, "Provide a user agent to ignore.")
+    else:
+        _, created = UserAgentIgnore.objects.get_or_create(user_agent=user_agent)
+        UserAgentFalsePositive.objects.filter(user_agent=user_agent).delete()
+        if created:
+            messages.success(request, "User agent added to ignore list.")
+        else:
+            messages.info(request, "User agent is already ignored.")
+        deleted, _ = Visit.objects.filter(user_agent=user_agent).delete()
+        if deleted:
+            messages.success(
+                request,
+                f"Removed {deleted} visit{'s' if deleted != 1 else ''} for that user agent.",
+            )
+        else:
+            messages.info(request, "No visits matched that user agent.")
+
+    redirect_target = (request.POST.get("next") or "").strip()
+    if redirect_target and url_has_allowed_host_and_scheme(
+        redirect_target,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return redirect(redirect_target)
+
+    params = {}
+    start = request.POST.get("start")
+    end = request.POST.get("end")
+    if start:
+        params["start"] = start
+    if end:
+        params["end"] = end
+    url = reverse("site_admin:analytics_dashboard")
+    if params:
+        url = f"{url}?{urlencode(params)}"
+    return redirect(url)
+
+
+@require_POST
+def analytics_ignore_user_agents_bulk(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    start_date, end_date, _, _ = _parse_analytics_date_range(request)
+    query = (request.POST.get("q") or "").strip()
+    ignore_all = request.POST.get("ignore_all") == "1"
+    selected = [value for value in request.POST.getlist("user_agents") if value]
+
+    user_agents = selected
+    if ignore_all:
+        qs = (
+            Visit.objects.filter(
+                started_at__date__gte=start_date, started_at__date__lte=end_date
+            )
+            .exclude(path__startswith="/admin")
+            .exclude(path__startswith="/analytics")
+            .exclude(user_agent="")
+        )
+        if query:
+            qs = qs.filter(user_agent__icontains=query)
+        user_agents = list(
+            qs.values_list("user_agent", flat=True).distinct()
+        )
+
+    if not user_agents:
+        messages.error(request, "Select at least one user agent to ignore.")
+    else:
+        created_count = 0
+        deleted_total = 0
+        for user_agent in user_agents:
+            _, created = UserAgentIgnore.objects.get_or_create(user_agent=user_agent)
+            UserAgentFalsePositive.objects.filter(user_agent=user_agent).delete()
+            if created:
+                created_count += 1
+            deleted, _ = Visit.objects.filter(user_agent=user_agent).delete()
+            deleted_total += deleted
+
+        if created_count:
+            messages.success(
+                request,
+                f"Ignored {created_count} user agent{'s' if created_count != 1 else ''}.",
+            )
+        else:
+            messages.info(request, "All selected user agents were already ignored.")
+
+        if deleted_total:
+            messages.success(
+                request,
+                f"Removed {deleted_total} visit{'s' if deleted_total != 1 else ''}.",
+            )
+
+    redirect_target = (request.POST.get("next") or "").strip()
+    if redirect_target and url_has_allowed_host_and_scheme(
+        redirect_target,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return redirect(redirect_target)
+
+    return redirect("site_admin:analytics_user_agents")
+
+
+@require_POST
+def analytics_unignore_user_agent(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    user_agent = (request.POST.get("user_agent") or "").strip()
+    if not user_agent:
+        messages.error(request, "Provide a user agent to unignore.")
+    else:
+        deleted, _ = UserAgentIgnore.objects.filter(user_agent=user_agent).delete()
+        if deleted:
+            messages.success(request, "User agent removed from ignore list.")
+        else:
+            messages.info(request, "User agent was not ignored.")
+
+    return redirect("site_admin:analytics_ignored_user_agents")
+
+
+@require_POST
+def analytics_delete_error(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    path = (request.POST.get("path") or "").strip()
+    status_value = (request.POST.get("status") or "").strip()
+    status_code = None
+    if status_value:
+        try:
+            status_code = int(status_value)
+        except (TypeError, ValueError):
+            status_code = None
+
+    if not path:
+        messages.error(request, "Provide a path to delete errors for.")
+    elif status_code is None:
+        messages.error(request, "Provide a status code to delete.")
+    else:
+        deleted, _ = Visit.objects.filter(
+            path=path, response_status_code=status_code
+        ).delete()
+        if deleted:
+            messages.success(
+                request,
+                f"Removed {deleted} visit{'s' if deleted != 1 else ''} for {path}.",
+            )
+        else:
+            messages.info(request, "No visits matched that error.")
+
+    params = {}
+    start = request.POST.get("start")
+    end = request.POST.get("end")
+    if start:
+        params["start"] = start
+    if end:
+        params["end"] = end
+    url = reverse("site_admin:analytics_dashboard")
+    if params:
+        url = f"{url}?{urlencode(params)}"
+    return redirect(url)
 
 
 @require_http_methods(["GET"])
@@ -773,11 +1332,94 @@ def page_edit(request, slug=None):
 
     if request.method == "POST":
         form = PageForm(request.POST, instance=page)
+
+        existing_ids = request.POST.getlist("existing_ids")
+        existing_alts = request.POST.getlist("existing_alts")
+        existing_captions = request.POST.getlist("existing_captions")
+        existing_positions = request.POST.getlist("existing_positions")
+        existing_remove_ids = set()
+        for raw_id in request.POST.getlist("existing_remove_ids"):
+            try:
+                existing_remove_ids.add(int(raw_id))
+            except (TypeError, ValueError):
+                continue
+        existing_meta = {}
+        for i in range(min(len(existing_ids), len(existing_positions))):
+            try:
+                asset_id = int(existing_ids[i])
+                position = int(existing_positions[i])
+            except (TypeError, ValueError):
+                continue
+            alt_text = existing_alts[i] if i < len(existing_alts) else ""
+            caption = existing_captions[i] if i < len(existing_captions) else ""
+            existing_meta[asset_id] = {
+                "position": position,
+                "alt": alt_text,
+                "caption": caption,
+            }
+
+        uploaded_ids = request.POST.getlist("uploaded_ids")
+        uploaded_alts = request.POST.getlist("uploaded_alts")
+        uploaded_captions = request.POST.getlist("uploaded_captions")
+        uploaded_positions = request.POST.getlist("uploaded_positions")
+        uploaded_meta = {}
+        for i in range(min(len(uploaded_ids), len(uploaded_positions))):
+            try:
+                asset_id = int(uploaded_ids[i])
+                position = int(uploaded_positions[i])
+            except (TypeError, ValueError):
+                continue
+            alt_text = uploaded_alts[i] if i < len(uploaded_alts) else ""
+            caption = uploaded_captions[i] if i < len(uploaded_captions) else ""
+            uploaded_meta[asset_id] = {
+                "position": position,
+                "alt": alt_text,
+                "caption": caption,
+            }
+
         if form.is_valid():
             saved_page = form.save(commit=False)
             if not saved_page.author_id:
                 saved_page.author = request.user
             saved_page.save()
+
+            # Sync photo attachments
+            if page:
+                for attachment in list(
+                    saved_page.attachments.filter(role="photo").select_related("asset")
+                ):
+                    asset = attachment.asset
+                    asset_id = asset.id
+                    if asset_id in existing_remove_ids:
+                        attachment.delete()
+                        if not asset.is_in_use():
+                            asset.delete()
+                        continue
+                    meta = existing_meta.get(asset_id)
+                    if not meta:
+                        continue
+                    asset.alt_text = meta.get("alt", "")
+                    asset.caption = meta.get("caption", "")
+                    asset.save(update_fields=["alt_text", "caption"])
+                    attachment.sort_order = meta.get("position", attachment.sort_order)
+                    attachment.save(update_fields=["sort_order"])
+
+            if uploaded_meta:
+                uploaded_assets = File.objects.filter(
+                    id__in=uploaded_meta.keys(), owner=request.user
+                )
+                for asset in uploaded_assets:
+                    meta = uploaded_meta.get(asset.id, {})
+                    asset.alt_text = meta.get("alt", "")
+                    asset.caption = meta.get("caption", "")
+                    asset.save(update_fields=["alt_text", "caption"])
+                    Attachment.objects.create(
+                        content_object=saved_page,
+                        asset=asset,
+                        role="photo",
+                        sort_order=meta.get("position", 0),
+                    )
+
             if request.headers.get("HX-Request"):
                 if is_new:
                     response = HttpResponse(status=204)
@@ -786,34 +1428,39 @@ def page_edit(request, slug=None):
                     )
                     return response
                 refreshed_form = PageForm(instance=saved_page)
-                return render(
-                    request,
-                    "site_admin/pages/_form_messages.html",
-                    {"form": refreshed_form, "page": saved_page, "saved": True},
+                ctx = _build_page_form_context(
+                    request=request,
+                    form=refreshed_form,
+                    page=saved_page,
+                    saved=True,
                 )
+                return render(request, "site_admin/pages/_form_messages.html", ctx)
             return redirect("site_admin:page_edit", slug=saved_page.slug)
+
+        ctx = _build_page_form_context(
+            request=request,
+            form=form,
+            page=page,
+            saved=False,
+            existing_meta=existing_meta,
+            existing_remove_ids=existing_remove_ids,
+            uploaded_meta=uploaded_meta,
+        )
         template_name = (
             "site_admin/pages/_form_messages.html"
             if request.headers.get("HX-Request")
             else "site_admin/pages/edit.html"
         )
-        return render(
-            request,
-            template_name,
-            {"form": form, "page": page, "saved": False},
-        )
+        return render(request, template_name, ctx)
 
     form = PageForm(instance=page)
+    ctx = _build_page_form_context(request=request, form=form, page=page, saved=False)
     template_name = (
         "site_admin/pages/_form.html"
         if request.headers.get("HX-Request")
         else "site_admin/pages/edit.html"
     )
-    return render(
-        request,
-        template_name,
-        {"form": form, "page": page, "saved": False},
-    )
+    return render(request, template_name, ctx)
 
 
 @require_POST
@@ -876,12 +1523,13 @@ def post_list(request):
     return render(request, "site_admin/posts/index.html", context)
 
 
-def _filtered_webmentions(request):
-    form = WebmentionFilterForm(request.GET or None)
+def _filtered_webmentions(request, data=None):
+    form = WebmentionFilterForm(data or request.GET or None)
     webmentions = Webmention.objects.select_related("target_post").order_by("-created_at", "-id")
     if form.is_valid():
         query = form.cleaned_data.get("q")
         status = form.cleaned_data.get("status")
+        direction = form.cleaned_data.get("direction")
         mention_type = form.cleaned_data.get("mention_type")
         if query:
             webmentions = webmentions.filter(
@@ -889,25 +1537,34 @@ def _filtered_webmentions(request):
             )
         if status:
             webmentions = webmentions.filter(status=status)
+        if direction:
+            webmentions = _filter_webmentions_by_direction(webmentions, direction, request)
         if mention_type:
             webmentions = webmentions.filter(mention_type=mention_type)
     return form, webmentions
 
 
-def _filtered_micropub_errors(request):
-    form = MicropubErrorFilterForm(request.GET or None)
-    logs = MicropubRequestLog.objects.order_by("-created_at", "-id")
+def _filtered_error_logs(request):
+    data = request.GET.copy() if request.GET else None
+    if data is not None and data.get("type") and not data.get("source"):
+        data["source"] = data.get("type")
+    form = ErrorLogFilterForm(data or None)
+    logs = RequestErrorLog.objects.order_by("-created_at", "-id")
     if form.is_valid():
         query = form.cleaned_data.get("q")
         status_code = form.cleaned_data.get("status_code")
+        source = form.cleaned_data.get("source")
         if query:
             logs = logs.filter(
                 Q(path__icontains=query)
                 | Q(error__icontains=query)
                 | Q(request_body__icontains=query)
+                | Q(response_body__icontains=query)
             )
         if status_code:
             logs = logs.filter(status_code=int(status_code))
+        if source:
+            logs = logs.filter(source=source)
     return form, logs
 
 
@@ -960,7 +1617,13 @@ def webmention_list(request):
     if guard:
         return guard
 
-    filter_form, webmentions = _filtered_webmentions(request)
+    data = request.GET.copy()
+    direction = data.get("direction") or "incoming"
+    if "direction" not in data:
+        data["direction"] = direction
+    filter_form, webmentions = _filtered_webmentions(request, data)
+    if filter_form.is_valid():
+        direction = filter_form.cleaned_data.get("direction") or direction
     paginator = Paginator(webmentions, 20)
     page_number = request.GET.get("page")
     try:
@@ -974,8 +1637,9 @@ def webmention_list(request):
         "filter_form": filter_form,
         "page_obj": page_obj,
         "paginator": paginator,
-        "base_query": _strip_page_query(request),
+        "base_query": urlencode({key: value for key, value in data.items() if key != "page"}),
         "endpoint_url": request.build_absolute_uri(reverse("webmention-endpoint")),
+        "direction": direction,
     }
 
     if request.headers.get("HX-Request"):
@@ -985,12 +1649,17 @@ def webmention_list(request):
 
 
 @require_http_methods(["GET"])
-def micropub_error_list(request):
+def error_log_list(request):
     guard = _staff_guard(request)
     if guard:
         return guard
 
-    filter_form, logs = _filtered_micropub_errors(request)
+    settings_obj = SiteConfiguration.get_solo()
+    if not settings_obj.developer_tools_enabled:
+        messages.warning(request, "Enable developer tools to access error logs.")
+        return redirect("site_admin:site_settings")
+
+    filter_form, logs = _filtered_error_logs(request)
     paginator = Paginator(logs, 20)
     page_number = request.GET.get("page")
     try:
@@ -1005,13 +1674,82 @@ def micropub_error_list(request):
         "page_obj": page_obj,
         "paginator": paginator,
         "base_query": _strip_page_query(request),
-        "endpoint_url": request.build_absolute_uri(reverse("micropub-endpoint")),
+        "endpoint_urls": [
+            ("Micropub", request.build_absolute_uri(reverse("micropub-endpoint"))),
+            ("IndieAuth Authorization", request.build_absolute_uri(reverse("indieauth-authorize"))),
+            ("IndieAuth Token", request.build_absolute_uri(reverse("indieauth-token"))),
+            ("IndieAuth Introspection", request.build_absolute_uri(reverse("indieauth-introspect"))),
+            ("IndieAuth Userinfo", request.build_absolute_uri(reverse("indieauth-userinfo"))),
+        ],
     }
 
     if request.headers.get("HX-Request"):
-        return render(request, "site_admin/micropub_errors/_list.html", context)
+        return render(request, "site_admin/settings/errors/_list.html", context)
 
-    return render(request, "site_admin/micropub_errors/index.html", context)
+    return render(request, "site_admin/settings/errors/index.html", context)
+
+
+@require_http_methods(["GET"])
+def error_log_detail(request, log_id):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    settings_obj = SiteConfiguration.get_solo()
+    if not settings_obj.developer_tools_enabled:
+        messages.warning(request, "Enable developer tools to access error logs.")
+        return redirect("site_admin:site_settings")
+
+    log_entry = get_object_or_404(RequestErrorLog, pk=log_id)
+    headers_text = json.dumps(log_entry.request_headers or {}, indent=2, sort_keys=True)
+    query_text = json.dumps(log_entry.request_query or {}, indent=2, sort_keys=True)
+    return render(
+        request,
+        "site_admin/settings/errors/detail.html",
+        {
+            "log": log_entry,
+            "headers_text": headers_text,
+            "query_text": query_text,
+        },
+    )
+
+
+@require_http_methods(["GET"])
+def micropub_error_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    settings_obj = SiteConfiguration.get_solo()
+    if not settings_obj.developer_tools_enabled:
+        messages.warning(request, "Enable developer tools to access error logs.")
+        return redirect("site_admin:site_settings")
+
+    query = request.GET.copy()
+    query["type"] = RequestErrorLog.SOURCE_MICROPUB
+    target = reverse("site_admin:error_log_list")
+    if query:
+        target = f"{target}?{query.urlencode()}"
+    return redirect(target)
+
+
+@require_http_methods(["GET"])
+def indieauth_error_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    settings_obj = SiteConfiguration.get_solo()
+    if not settings_obj.developer_tools_enabled:
+        messages.warning(request, "Enable developer tools to access error logs.")
+        return redirect("site_admin:site_settings")
+
+    query = request.GET.copy()
+    query["type"] = RequestErrorLog.SOURCE_INDIEAUTH
+    target = reverse("site_admin:error_log_list")
+    if query:
+        target = f"{target}?{query.urlencode()}"
+    return redirect(target)
 
 
 @require_http_methods(["GET"])
@@ -1031,6 +1769,278 @@ def micropub_error_detail(request, log_id):
             "headers_text": headers_text,
             "query_text": query_text,
         },
+    )
+
+
+@require_http_methods(["GET"])
+def indieauth_error_detail(request, log_id):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    log_entry = get_object_or_404(IndieAuthRequestLog, pk=log_id)
+    headers_text = json.dumps(log_entry.request_headers or {}, indent=2, sort_keys=True)
+    query_text = json.dumps(log_entry.request_query or {}, indent=2, sort_keys=True)
+    return render(
+        request,
+        "site_admin/indieauth_errors/detail.html",
+        {
+            "log": log_entry,
+            "headers_text": headers_text,
+            "query_text": query_text,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def indieauth_settings(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "revoke_token":
+            token_id = request.POST.get("token_id")
+            token = get_object_or_404(IndieAuthAccessToken, pk=token_id)
+            if token.revoked_at:
+                messages.info(request, "Access token is already revoked.")
+            else:
+                token.revoked_at = timezone.now()
+                token.save(update_fields=["revoked_at"])
+                messages.success(request, "Access token revoked.")
+            return redirect("site_admin:indieauth_settings")
+        if action == "delete_client":
+            client_pk = request.POST.get("client_pk")
+            client = get_object_or_404(IndieAuthClient, pk=client_pk)
+            now = timezone.now()
+            token_updates = IndieAuthAccessToken.objects.filter(
+                client_id=client.client_id, revoked_at__isnull=True
+            ).update(revoked_at=now)
+            consent_deletes, _ = IndieAuthConsent.objects.filter(
+                client_id=client.client_id
+            ).delete()
+            code_deletes, _ = IndieAuthAuthorizationCode.objects.filter(
+                client_id=client.client_id
+            ).delete()
+            client.delete()
+            messages.success(
+                request,
+                (
+                    "Client removed. "
+                    f"Revoked {token_updates} token(s), "
+                    f"deleted {consent_deletes} consent(s), "
+                    f"deleted {code_deletes} authorization code(s)."
+                ),
+            )
+            return redirect("site_admin:indieauth_settings")
+
+    data = request.GET.copy() if request.GET else None
+    if data is not None and not data.get("status"):
+        if data.get("revoked"):
+            data["status"] = "revoked"
+        elif data.get("active"):
+            data["status"] = "active"
+    filter_form = IndieAuthFilterForm(data or None)
+
+    clients = IndieAuthClient.objects.all().order_by("name", "client_id")
+    tokens = IndieAuthAccessToken.objects.select_related("user").order_by(
+        "-created_at", "-id"
+    )
+    if filter_form.is_valid():
+        query = filter_form.cleaned_data.get("q")
+        client_id = filter_form.cleaned_data.get("client_id")
+        me = filter_form.cleaned_data.get("me")
+        user = filter_form.cleaned_data.get("user")
+        scope = filter_form.cleaned_data.get("scope")
+        status = filter_form.cleaned_data.get("status")
+
+        if query:
+            clients = clients.filter(
+                Q(client_id__icontains=query) | Q(name__icontains=query)
+            )
+            tokens = tokens.filter(
+                Q(client_id__icontains=query)
+                | Q(me__icontains=query)
+                | Q(scope__icontains=query)
+                | Q(user__username__icontains=query)
+                | Q(user__email__icontains=query)
+            )
+        if client_id:
+            clients = clients.filter(client_id__icontains=client_id)
+            tokens = tokens.filter(client_id__icontains=client_id)
+        if me:
+            tokens = tokens.filter(me__icontains=me)
+        if user:
+            tokens = tokens.filter(
+                Q(user__username__icontains=user)
+                | Q(user__email__icontains=user)
+                | Q(user__first_name__icontains=user)
+                | Q(user__last_name__icontains=user)
+            )
+        if scope:
+            tokens = tokens.filter(scope__icontains=scope)
+        if status == "active":
+            tokens = tokens.filter(revoked_at__isnull=True)
+        elif status == "revoked":
+            tokens = tokens.filter(revoked_at__isnull=False)
+
+    clients_paginator = Paginator(clients, 20)
+    tokens_paginator = Paginator(tokens, 20)
+
+    clients_page_number = request.GET.get("clients_page")
+    tokens_page_number = request.GET.get("tokens_page")
+    try:
+        clients_page_obj = clients_paginator.page(clients_page_number)
+    except PageNotAnInteger:
+        clients_page_obj = clients_paginator.page(1)
+    except EmptyPage:
+        clients_page_obj = clients_paginator.page(clients_paginator.num_pages)
+
+    try:
+        tokens_page_obj = tokens_paginator.page(tokens_page_number)
+    except PageNotAnInteger:
+        tokens_page_obj = tokens_paginator.page(1)
+    except EmptyPage:
+        tokens_page_obj = tokens_paginator.page(tokens_paginator.num_pages)
+
+    for token in tokens_page_obj.object_list:
+        token.redacted_hash = _redact_token_hash(token.token_hash)
+
+    context = {
+        "filter_form": filter_form,
+        "clients_page_obj": clients_page_obj,
+        "clients_paginator": clients_paginator,
+        "tokens_page_obj": tokens_page_obj,
+        "tokens_paginator": tokens_paginator,
+        "clients_base_query": _strip_query_param(request, "clients_page"),
+        "tokens_base_query": _strip_query_param(request, "tokens_page"),
+        "clients_count": IndieAuthClient.objects.count(),
+        "active_tokens_count": IndieAuthAccessToken.objects.filter(
+            revoked_at__isnull=True
+        ).count(),
+        "revoked_tokens_count": IndieAuthAccessToken.objects.filter(
+            revoked_at__isnull=False
+        ).count(),
+    }
+
+    return render(request, "site_admin/settings/indieauth/index.html", context)
+
+
+@require_http_methods(["GET", "POST"])
+def indieauth_client_detail(request, client_pk):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    client = get_object_or_404(IndieAuthClient, pk=client_pk)
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "revoke_token":
+            token_id = request.POST.get("token_id")
+            token = get_object_or_404(IndieAuthAccessToken, pk=token_id)
+            if token.revoked_at:
+                messages.info(request, "Access token is already revoked.")
+            else:
+                token.revoked_at = timezone.now()
+                token.save(update_fields=["revoked_at"])
+                messages.success(request, "Access token revoked.")
+            return redirect("site_admin:indieauth_client_detail", client_pk=client_pk)
+        if action == "delete_client":
+            now = timezone.now()
+            token_updates = IndieAuthAccessToken.objects.filter(
+                client_id=client.client_id, revoked_at__isnull=True
+            ).update(revoked_at=now)
+            consent_deletes, _ = IndieAuthConsent.objects.filter(
+                client_id=client.client_id
+            ).delete()
+            code_deletes, _ = IndieAuthAuthorizationCode.objects.filter(
+                client_id=client.client_id
+            ).delete()
+            client.delete()
+            messages.success(
+                request,
+                (
+                    "Client removed. "
+                    f"Revoked {token_updates} token(s), "
+                    f"deleted {consent_deletes} consent(s), "
+                    f"deleted {code_deletes} authorization code(s)."
+                ),
+            )
+            return redirect("site_admin:indieauth_settings")
+
+    tokens = (
+        IndieAuthAccessToken.objects.filter(client_id=client.client_id)
+        .select_related("user")
+        .order_by("-created_at", "-id")
+    )
+    consents = (
+        IndieAuthConsent.objects.filter(client_id=client.client_id)
+        .select_related("user")
+        .order_by("-last_used_at", "-created_at", "-id")
+    )
+    for token in tokens:
+        token.redacted_hash = _redact_token_hash(token.token_hash)
+
+    return render(
+        request,
+        "site_admin/settings/indieauth/client_detail.html",
+        {
+            "client": client,
+            "tokens": tokens,
+            "consents": consents,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def indieauth_client_create(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    if request.method == "POST":
+        form = IndieAuthClientForm(request.POST)
+        if form.is_valid():
+            client = form.save()
+            messages.success(request, f"Client \"{client}\" registered.")
+            return redirect(
+                "site_admin:indieauth_client_detail", client_pk=client.pk
+            )
+    else:
+        form = IndieAuthClientForm()
+
+    return render(
+        request,
+        "site_admin/settings/indieauth/client_form.html",
+        {"form": form, "is_edit": False},
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def indieauth_client_edit(request, client_pk):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    client = get_object_or_404(IndieAuthClient, pk=client_pk)
+
+    if request.method == "POST":
+        form = IndieAuthClientForm(request.POST, instance=client)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Client \"{client}\" updated.")
+            return redirect(
+                "site_admin:indieauth_client_detail", client_pk=client.pk
+            )
+    else:
+        form = IndieAuthClientForm(instance=client)
+
+    return render(
+        request,
+        "site_admin/settings/indieauth/client_form.html",
+        {"form": form, "client": client, "is_edit": True},
     )
 
 
@@ -1512,6 +2522,7 @@ def post_edit(request, slug=None):
             like_of_value = form.cleaned_data.get("like_of") or ""
             repost_of_value = form.cleaned_data.get("repost_of") or ""
             in_reply_to_value = form.cleaned_data.get("in_reply_to") or ""
+            bookmark_of_value = form.cleaned_data.get("bookmark_of") or ""
             activity_type = (form.cleaned_data.get("activity_type") or "").strip()
 
             errors = []
@@ -1525,8 +2536,21 @@ def post_edit(request, slug=None):
                 errors.append("Provide a URL for the repost.")
             if selected_kind == Post.REPLY and not in_reply_to_value:
                 errors.append("Provide a URL for the reply.")
+            if selected_kind == Post.BOOKMARK and not bookmark_of_value:
+                errors.append("Provide a URL to bookmark.")
             if selected_kind in (Post.ARTICLE, Post.NOTE) and not content_value:
                 errors.append("Content is required for this post type.")
+            if selected_kind == Post.EVENT:
+                if not form.cleaned_data.get("event_start"):
+                    errors.append("Event start time is required.")
+            if selected_kind == Post.RSVP:
+                if not form.cleaned_data.get("rsvp_value"):
+                    errors.append("Select an RSVP response.")
+                if not in_reply_to_value:
+                    errors.append("Provide the event URL you're responding to.")
+            if selected_kind == Post.CHECKIN:
+                if form.cleaned_data.get("checkin_latitude") is None or form.cleaned_data.get("checkin_longitude") is None:
+                    errors.append("Latitude and longitude are required for check-ins.")
             existing_gpx = (
                 post.attachments.filter(role="gpx").exists()
                 if post
@@ -1586,6 +2610,16 @@ def post_edit(request, slug=None):
                     content_value = f"Reposted {repost_of_value}"
                 elif selected_kind == Post.REPLY:
                     content_value = f"Reply to {in_reply_to_value}"
+                elif selected_kind == Post.BOOKMARK:
+                    content_value = f"Bookmarked {bookmark_of_value}"
+                elif selected_kind == Post.RSVP:
+                    rsvp_val = form.cleaned_data.get("rsvp_value", "yes")
+                    content_value = f"RSVP {rsvp_val} to {in_reply_to_value}"
+                elif selected_kind == Post.CHECKIN:
+                    place = form.cleaned_data.get("checkin_name", "")
+                    content_value = f"Checked in at {place}" if place else "Checked in"
+                elif selected_kind == Post.EVENT:
+                    content_value = saved_post.title or "Event"
             saved_post.content = content_value
             saved_post.save()
             form.save_tags(saved_post)
@@ -1705,16 +2739,57 @@ def post_edit(request, slug=None):
             else:
                 mf2_payload.pop("activity", None)
 
+            # Event mf2 data — event name comes from the post title
+            if selected_kind == Post.EVENT:
+                event_data = {"name": saved_post.title}
+                for key in ("event_start", "event_end", "event_location", "event_url"):
+                    val = form.cleaned_data.get(key)
+                    if val:
+                        field_key = key.replace("event_", "")
+                        if hasattr(val, "isoformat"):
+                            val = val.isoformat()
+                        event_data[field_key] = val
+                mf2_payload["event"] = event_data
+            else:
+                mf2_payload.pop("event", None)
+
+            # RSVP mf2 data
+            if selected_kind == Post.RSVP:
+                rsvp_val = form.cleaned_data.get("rsvp_value", "")
+                if rsvp_val:
+                    mf2_payload["rsvp"] = rsvp_val
+            else:
+                mf2_payload.pop("rsvp", None)
+
+            # Check-in mf2 data
+            if selected_kind == Post.CHECKIN:
+                checkin_data = {}
+                checkin_name = form.cleaned_data.get("checkin_name", "")
+                if checkin_name:
+                    checkin_data["name"] = checkin_name
+                lat = form.cleaned_data.get("checkin_latitude")
+                lng = form.cleaned_data.get("checkin_longitude")
+                if lat is not None:
+                    checkin_data["latitude"] = lat
+                if lng is not None:
+                    checkin_data["longitude"] = lng
+                mf2_payload["checkin"] = checkin_data
+            else:
+                mf2_payload.pop("checkin", None)
+
             saved_post.mf2 = mf2_payload
             saved_post.save(update_fields=["mf2"])
             source_url = request.build_absolute_uri(saved_post.get_absolute_url())
-            send_webmentions_for_post(saved_post, source_url)
-            if saved_post.published_on and (is_new or not was_published):
-                send_bridgy_publish_webmentions(
+            include_bridgy = saved_post.published_on and (is_new or not was_published)
+            settings_obj = SiteConfiguration.get_solo() if include_bridgy else None
+            transaction.on_commit(
+                lambda: queue_webmentions_for_post(
                     saved_post,
                     source_url,
-                    SiteConfiguration.get_solo(),
+                    include_bridgy=include_bridgy,
+                    settings_obj=settings_obj,
                 )
+            )
             if request.headers.get("HX-Request"):
                 if is_new:
                     response = HttpResponse(status=204)
@@ -2051,7 +3126,7 @@ def theme_settings(request):
 
     return render(
         request,
-            "site_admin/settings/themes/index.html",
+        "site_admin/settings/themes/index.html",
         {
             "upload_form": upload_form,
             "git_form": git_form,
@@ -2393,26 +3468,37 @@ def profile_edit(request):
             except (TypeError, ValueError):
                 continue
         if form.is_valid() and url_formset.is_valid() and email_formset.is_valid():
-            hcard = form.save(commit=False)
-            if not hcard.user_id:
-                hcard.user = request.user
-            hcard.save()
-            parent_instance = hcard
-            url_formset.instance = hcard
-            url_formset.save()
-            email_formset.instance = hcard
-            email_formset.save()
-            _sync_profile_photos(
-                request=request,
-                hcard=hcard,
-                existing_meta=existing_meta,
-                existing_remove_ids=existing_remove_ids,
-                uploaded_meta=uploaded_meta,
-            )
-            saved = True
-            existing_meta = None
-            uploaded_meta = None
-            existing_remove_ids = set()
+            try:
+                with transaction.atomic():
+                    hcard = form.save(commit=False)
+                    if not hcard.user_id:
+                        hcard.user = request.user
+                    hcard.save()
+                    parent_instance = hcard
+                    url_formset.instance = hcard
+                    url_formset.save()
+                    email_formset.instance = hcard
+                    email_formset.save()
+                    _sync_profile_photos(
+                        request=request,
+                        hcard=hcard,
+                        existing_meta=existing_meta,
+                        existing_remove_ids=existing_remove_ids,
+                        uploaded_meta=uploaded_meta,
+                    )
+            except Exception as exc:
+                logger.exception("Profile save failed for user %s", request.user.pk)
+                form.add_error(
+                    None,
+                    "Unable to save your profile right now. Please try again.",
+                )
+            else:
+                saved = True
+                existing_meta = None
+                uploaded_meta = None
+                existing_remove_ids = set()
+        elif not form.non_field_errors():
+            form.add_error(None, "Please correct the errors below and try again.")
     else:
         initial = {}
         if not parent_instance.uid:
@@ -2504,6 +3590,67 @@ def profile_delete_photo(request):
     return JsonResponse({"status": "deleted"})
 
 
+def _build_page_form_context(
+    *,
+    request,
+    form,
+    page,
+    saved,
+    existing_meta=None,
+    existing_remove_ids=None,
+    uploaded_meta=None,
+):
+    existing_meta = existing_meta or {}
+    existing_remove_ids = existing_remove_ids or set()
+    uploaded_meta = uploaded_meta or {}
+
+    photo_items = []
+    if page:
+        for attachment in page.attachments.filter(role="photo").select_related("asset"):
+            asset = attachment.asset
+            if asset.id in existing_remove_ids:
+                continue
+            meta = existing_meta.get(asset.id, {})
+            photo_items.append(
+                {
+                    "kind": "existing",
+                    "id": asset.id,
+                    "url": asset.file.url,
+                    "alt": meta.get("alt", asset.alt_text),
+                    "caption": meta.get("caption", asset.caption),
+                    "order": meta.get("position", attachment.sort_order),
+                }
+            )
+
+    if uploaded_meta:
+        uploaded_assets = File.objects.filter(
+            id__in=uploaded_meta.keys(), owner=request.user
+        )
+        for asset in uploaded_assets:
+            meta = uploaded_meta.get(asset.id, {})
+            photo_items.append(
+                {
+                    "kind": "uploaded",
+                    "id": asset.id,
+                    "url": asset.file.url,
+                    "alt": meta.get("alt", ""),
+                    "caption": meta.get("caption", ""),
+                    "order": meta.get("position", 0),
+                }
+            )
+
+    photo_items.sort(key=lambda item: item.get("order", 0))
+
+    return {
+        "form": form,
+        "page": page,
+        "saved": saved,
+        "existing_photos_json": json.dumps(photo_items),
+        "photo_upload_url": reverse("site_admin:post_upload_photo"),
+        "photo_delete_url": reverse("site_admin:post_delete_photo"),
+    }
+
+
 def _build_post_form_context(
     *,
     request,
@@ -2573,6 +3720,7 @@ def _build_post_form_context(
         "existing_photos_json": json.dumps(photo_items),
         "photo_upload_url": reverse("site_admin:post_upload_photo"),
         "photo_delete_url": reverse("site_admin:post_delete_photo"),
+        "nearby_places_url": reverse("site_admin:nearby_checkin_places"),
         "activity_gpx": activity_gpx,
         "gpx_trim_enabled": gpx_defaults["gpx_trim_enabled"],
         "gpx_trim_distance": gpx_defaults["gpx_trim_distance"],
@@ -2617,3 +3765,63 @@ def delete_post_photo(request):
 
     asset.delete()
     return JsonResponse({"status": "deleted"})
+
+
+@require_GET
+def nearby_checkin_places(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    try:
+        lat = float(request.GET.get("lat", ""))
+        lng = float(request.GET.get("lng", ""))
+    except (TypeError, ValueError):
+        return JsonResponse({"places": []})
+
+    import math
+
+    radius_km = 5
+    places = []
+    seen_names = set()
+
+    checkins = Post.objects.filter(kind=Post.CHECKIN, deleted=False).exclude(mf2={})
+    for post in checkins:
+        mf2 = post.mf2 if isinstance(post.mf2, dict) else {}
+        checkin = mf2.get("checkin")
+        if not isinstance(checkin, dict):
+            continue
+        p_lat = checkin.get("latitude")
+        p_lng = checkin.get("longitude")
+        if p_lat is None or p_lng is None:
+            continue
+
+        d_lat = math.radians(p_lat - lat)
+        d_lng = math.radians(p_lng - lng)
+        a = (
+            math.sin(d_lat / 2) ** 2
+            + math.cos(math.radians(lat))
+            * math.cos(math.radians(p_lat))
+            * math.sin(d_lng / 2) ** 2
+        )
+        dist = 6371 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+        if dist > radius_km:
+            continue
+
+        name = checkin.get("name") or post.title
+        if not name:
+            continue
+        key = name.lower().strip()
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        places.append({
+            "name": name,
+            "latitude": p_lat,
+            "longitude": p_lng,
+            "distance_km": round(dist, 2),
+        })
+
+    places.sort(key=lambda p: p["distance_km"])
+    return JsonResponse({"places": places[:10]})

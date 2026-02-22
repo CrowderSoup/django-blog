@@ -5,6 +5,7 @@ FROM python:3.14-alpine
 ENV PYTHONDONTWRITEBYTECODE=1 \
   PYTHONUNBUFFERED=1 \
   PATH="/app/.venv/bin:${PATH}" \
+  PYTHONPATH="/app" \
   UV_NO_DEV=1
 
 WORKDIR /app
@@ -33,5 +34,5 @@ USER app
 
 EXPOSE 8000
 
-# Run migrations on every start, then launch gunicorn
-CMD ["sh", "-c", "uv run manage.py migrate && gunicorn config.wsgi:application -b 0.0.0.0:8000"]
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
+CMD ["sh", "-c", "gunicorn config.wsgi:application -b 0.0.0.0:${PORT:-8000}"]

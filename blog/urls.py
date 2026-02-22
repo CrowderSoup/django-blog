@@ -1,14 +1,19 @@
 from django.urls import path
-
 from .feeds import PostsFeed
 from . import views
 
 urlpatterns = [
     path("post/<slug:slug>/delete/", views.delete_post, name="delete_post"),
-    path("", views.posts, name="posts"),
+    path("post/<slug:slug>/delete", views.delete_post),
+    path("", views.posts_index, name="posts"),
     path("post/<slug:slug>/", views.post, name="post"),
+    path("post/<slug:slug>", views.post),
     path("post/<slug:slug>/comment/", views.comment_create, name="comment_create"),
+    path("post/<slug:slug>/comment", views.comment_create),
     path("tag/<slug:tag>", views.posts_by_tag, name="posts_by_tag"),
     path("tags/suggest/", views.tag_suggestions, name="tag_suggestions"),
+    path("tags/suggest", views.tag_suggestions),
+    path("tags/suggest-for-content/", views.suggest_tags_for_content, name="suggest_tags_for_content"),
     path("feed/", PostsFeed(), name="posts_feed"),
+    path("feed", PostsFeed()),
 ]

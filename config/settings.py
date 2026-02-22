@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "blog.apps.BlogConfig",
     "files.apps.FilesConfig",
     "micropub.apps.MicropubConfig",
+    "indieauth.apps.IndieauthConfig",
     "analytics.apps.AnalyticsConfig",
     "site_admin.apps.SiteAdminConfig",
 
@@ -123,6 +124,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.site_configuration",
+                "core.context_processors.interactions_counts",
                 "core.context_processors.theme",
             ],
         },

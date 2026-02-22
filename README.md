@@ -8,6 +8,10 @@ Webstead is your digital homestead, a Django-powered blogging platform with them
 
 This project is in a very early alpha state. Expect breaking changes, data loss risks, and incomplete features. Use at your own risk.
 
+## Deployment
+
+For Docker + GHCR deployment instructions (including automatic DB wait, bucket bootstrap, collectstatic, and reverse proxy/TLS examples), see `docs/DeploymentGuide.md`.
+
 ## Themes
 
 The blog supports drop-in themes discovered from the `themes/` directory. Each theme must contain a `theme.json` metadata file plus `templates/` and `static/` folders:

@@ -2,6 +2,7 @@ import json
 import logging
 import mimetypes
 import os
+import re
 from datetime import datetime
 from html.parser import HTMLParser
 from typing import Optional
@@ -24,16 +25,18 @@ from django.urls import reverse, resolve
 from django.core.files.base import ContentFile
 from django.conf import settings
 from django.shortcuts import redirect, render
+from django.db import transaction
 
 from markdownify import markdownify as html_to_markdown
 
 from blog.models import Post, Tag
-from core.models import Page, SiteConfiguration
+from core.models import Page, SiteConfiguration, RequestErrorLog
+from core.request_logs import extract_response_error, log_request_error
 from files.models import Attachment, File
-from .models import MicropubRequestLog, Webmention
-from .webmention import send_bridgy_publish_webmentions, send_webmentions_for_post, verify_webmention_source
+from .models import Webmention
+from .webmention import BRIDGY_PUBLISH_TARGETS, queue_webmentions_for_post, verify_webmention_source
 
-TOKEN_ENDPOINT = "https://tokens.indieauth.com/token"
+DEFAULT_TOKEN_ENDPOINT = "https://tokens.indieauth.com/token"
 logger = logging.getLogger(__name__)
 
 
@@ -42,6 +45,26 @@ def _first_value(data: dict, key: str, default=None):
     if isinstance(value, list):
         return value[0] if value else default
     return value or default
+
+
+_GEO_URI_RE = re.compile(
+    r"^geo:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:,(-?\d+(?:\.\d+)?))?(?:;.*)?$"
+)
+
+
+def _parse_geo_uri(uri: str) -> dict | None:
+    if not uri:
+        return None
+    match = _GEO_URI_RE.match(uri.strip())
+    if not match:
+        return None
+    result = {
+        "latitude": float(match.group(1)),
+        "longitude": float(match.group(2)),
+    }
+    if match.group(3) is not None:
+        result["altitude"] = float(match.group(3))
+    return result
 
 
 class _IndieAuthEndpointParser(HTMLParser):
@@ -139,6 +162,30 @@ def _parse_scope(scope_value):
     return []
 
 
+def _token_from_post(request) -> str | None:
+    token = request.POST.get("access_token")
+    if not token:
+        token = request.POST.get("access_token[]")
+    if not token:
+        tokens = request.POST.getlist("access_token") or request.POST.getlist("access_token[]")
+        if tokens:
+            token = tokens[0]
+    if isinstance(token, str) and token:
+        return token
+    return None
+
+
+def _token_from_json(raw) -> str | None:
+    if not isinstance(raw, dict):
+        return None
+    token_value = raw.get("access_token")
+    if isinstance(token_value, list):
+        token_value = _first_value({"access_token": token_value}, "access_token")
+    if isinstance(token_value, str) and token_value:
+        return token_value
+    return None
+
+
 def _has_token_conflict(request):
     auth_header = request.META.get("HTTP_AUTHORIZATION", "")
     header_token = None
@@ -149,12 +196,11 @@ def _has_token_conflict(request):
     if request.content_type and "json" in request.content_type:
         try:
             raw = json.loads(request.body or "{}")
-            if isinstance(raw, dict) and raw.get("access_token"):
-                body_token = raw.get("access_token")
+            body_token = _token_from_json(raw)
         except json.JSONDecodeError:
             body_token = None
     else:
-        body_token = request.POST.get("access_token")
+        body_token = _token_from_post(request)
 
     query_token = request.GET.get("access_token")
 
@@ -162,128 +208,25 @@ def _has_token_conflict(request):
     return len(set(tokens)) > 1
 
 
-SENSITIVE_HEADER_NAMES = {"authorization", "cookie"}
-SENSITIVE_FIELD_NAMES = {"access_token", "refresh_token", "client_secret"}
-MAX_LOG_BODY_CHARS = 10000
-
-
-def _redact_secret(value: str) -> str:
-    if not value:
-        return value
-    if len(value) <= 12:
-        return "***"
-    return f"{value[:6]}...{value[-4:]}"
-
-
-def _redact_payload(value):
-    if isinstance(value, dict):
-        redacted = {}
-        for key, item in value.items():
-            if str(key).lower() in SENSITIVE_FIELD_NAMES and isinstance(item, str):
-                redacted[key] = _redact_secret(item)
-            else:
-                redacted[key] = _redact_payload(item)
-        return redacted
-    if isinstance(value, list):
-        return [_redact_payload(item) for item in value]
-    return value
-
-
-def _truncate_body(body: str) -> str:
-    if len(body) <= MAX_LOG_BODY_CHARS:
-        return body
-    return f"{body[:MAX_LOG_BODY_CHARS]}\n...(truncated)"
-
-
-def _capture_request_body(request) -> str:
-    content_type = request.content_type or ""
-    if content_type.startswith("multipart/"):
-        fields = {key: request.POST.getlist(key) for key in request.POST.keys()}
-        files = {}
-        for key, items in request.FILES.lists():
-            files[key] = [
-                {
-                    "name": item.name,
-                    "size": item.size,
-                    "content_type": item.content_type,
-                }
-                for item in items
-            ]
-        payload = {"fields": _redact_payload(fields), "files": files}
-        return json.dumps(payload, indent=2, sort_keys=True)
-
-    body_bytes = request.body or b""
-    if not body_bytes:
-        return ""
-    body_text = body_bytes.decode("utf-8", errors="replace")
-
-    if "application/json" in content_type:
-        try:
-            parsed = json.loads(body_text)
-        except json.JSONDecodeError:
-            return _truncate_body(body_text)
-        return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
-
-    if "application/x-www-form-urlencoded" in content_type:
-        parsed = parse_qs(body_text, keep_blank_values=True)
-        return _truncate_body(json.dumps(_redact_payload(parsed), indent=2, sort_keys=True))
-
-    return _truncate_body(body_text)
-
-
-def _capture_request_headers(request) -> dict:
-    headers = dict(request.headers)
-    redacted = {}
-    for key, value in headers.items():
-        if key.lower() in SENSITIVE_HEADER_NAMES and isinstance(value, str):
-            redacted[key] = _redact_secret(value)
-        else:
-            redacted[key] = value
-    return redacted
-
-
-def _extract_response_error(response) -> tuple[str, str]:
-    content_type = response.get("Content-Type", "")
-    body = ""
-    if hasattr(response, "content"):
-        body = response.content.decode("utf-8", errors="replace")
-    if "application/json" in content_type and body:
-        try:
-            payload = json.loads(body)
-        except json.JSONDecodeError:
-            return "", body
-        if isinstance(payload, dict):
-            error = payload.get("error") or payload.get("error_description") or ""
-            return str(error), body
-    if body and response.status_code >= 400:
-        return body.strip(), body
-    return "", body
-
-
-def _client_ip(request) -> Optional[str]:
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.META.get("REMOTE_ADDR")
+MICROPUB_REDACT_FIELDS = {"access_token", "refresh_token", "client_secret"}
 
 
 def _log_micropub_error(request, response):
     if response.status_code < 400:
         return
     try:
-        error, response_body = _extract_response_error(response)
-        MicropubRequestLog.objects.create(
-            method=request.method,
-            path=request.path,
-            status_code=response.status_code,
-            error=error or "",
-            request_headers=_capture_request_headers(request),
-            request_query={key: request.GET.getlist(key) for key in request.GET.keys()},
-            request_body=_capture_request_body(request),
-            response_body=response_body or "",
-            remote_addr=_client_ip(request),
-            user_agent=request.META.get("HTTP_USER_AGENT", ""),
-            content_type=request.content_type or "",
+        error, response_body = extract_response_error(response)
+        if response.status_code == 401 and error == "unauthorized":
+            auth_error = getattr(request, "micropub_auth_error", "")
+            if auth_error:
+                error = f"unauthorized:{auth_error}"
+        log_request_error(
+            RequestErrorLog.SOURCE_MICROPUB,
+            request,
+            response,
+            error=error,
+            response_body=response_body,
+            redact_fields=MICROPUB_REDACT_FIELDS,
         )
     except Exception:
         logger.exception(
@@ -401,7 +344,7 @@ def _start_indieauth_login(request, me_value: str, next_url: str):
     if token_endpoint:
         request.session["indieauth_token_endpoint"] = token_endpoint
     else:
-        request.session["indieauth_token_endpoint"] = TOKEN_ENDPOINT
+        request.session["indieauth_token_endpoint"] = DEFAULT_TOKEN_ENDPOINT
 
     params = {
         "me": normalized_me,
@@ -503,6 +446,22 @@ def _require_scope(request, needed):
     return None
 
 
+def _syndication_targets(settings_obj) -> list[dict]:
+    if not settings_obj:
+        return []
+    targets = []
+    for field_name, target_url in BRIDGY_PUBLISH_TARGETS:
+        if not getattr(settings_obj, field_name, False):
+            continue
+        name = field_name
+        try:
+            name = settings_obj._meta.get_field(field_name).verbose_name
+        except Exception:
+            pass
+        targets.append({"uid": target_url, "name": str(name)})
+    return targets
+
+
 def _slug_from_url(target_url, error_prefix):
     if not target_url:
         return None, HttpResponseBadRequest(f"Missing url for {error_prefix}")
@@ -568,6 +527,11 @@ def _build_properties_response(post, requested_props=None):
         props["repost-of"] = [post.repost_of]
     if post.in_reply_to:
         props["in-reply-to"] = [post.in_reply_to]
+
+    mf2 = post.mf2 if isinstance(post.mf2, dict) else {}
+    checkin = mf2.get("checkin")
+    if isinstance(checkin, dict) and "latitude" in checkin and "longitude" in checkin:
+        props["location"] = [f"geo:{checkin['latitude']},{checkin['longitude']}"]
 
     photos = []
     for attachment in post.attachments.filter(asset__kind=File.IMAGE):
@@ -666,7 +630,9 @@ def _handle_update_action(request, data):
 
     post.save()
     source_url = request.build_absolute_uri(post.get_absolute_url())
-    send_webmentions_for_post(post, source_url)
+    transaction.on_commit(
+        lambda: queue_webmentions_for_post(post, source_url)
+    )
     return HttpResponse(status=204)
 
 
@@ -703,13 +669,18 @@ def _parse_published_date(published):
         return timezone.now()
 
 
-def _determine_kind(request, data, name, like_of, repost_of, in_reply_to):
+def _determine_kind(request, data, name, like_of, repost_of, in_reply_to, bookmark_of):
+    if bookmark_of:
+        return Post.BOOKMARK
     if like_of:
         return Post.LIKE
     if repost_of:
         return Post.REPOST
     if in_reply_to:
         return Post.REPLY
+    location = _first_value(data, "location")
+    if location and _parse_geo_uri(location):
+        return Post.CHECKIN
     if request.FILES.getlist("photo") or request.FILES.getlist("photo[]") or data.get("photo"):
         return Post.PHOTO
     if name:
@@ -755,11 +726,21 @@ def _handle_create_action(request, data):
     like_of = _first_value(data, "like-of")
     repost_of = _first_value(data, "repost-of")
     in_reply_to = _first_value(data, "in-reply-to")
+    bookmark_of = _first_value(data, "bookmark-of")
+    location = _first_value(data, "location")
     categories = data.get("category", [])
     published = _first_value(data, "published")
     mf2_objects = _extract_mf2_objects(data)
 
-    kind = _determine_kind(request, data, name, like_of, repost_of, in_reply_to)
+    kind = _determine_kind(request, data, name, like_of, repost_of, in_reply_to, bookmark_of)
+
+    if kind == Post.CHECKIN and location:
+        geo = _parse_geo_uri(location)
+        if geo:
+            checkin = {"latitude": geo["latitude"], "longitude": geo["longitude"]}
+            if name:
+                checkin["name"] = name
+            mf2_objects["checkin"] = checkin
 
     if not content:
         if kind == Post.LIKE:
@@ -768,6 +749,10 @@ def _handle_create_action(request, data):
             content = f"Reposted {repost_of}"
         elif kind == Post.REPLY:
             content = f"Reply to {in_reply_to}"
+        elif kind == Post.BOOKMARK:
+            content = f"Bookmarked {bookmark_of}"
+        elif kind == Post.CHECKIN:
+            content = "Checked in"
 
     published_on = _parse_published_date(published)
 
@@ -779,6 +764,7 @@ def _handle_create_action(request, data):
         like_of=like_of or "",
         repost_of=repost_of or "",
         in_reply_to=in_reply_to or "",
+        bookmark_of=bookmark_of or "",
         mf2=mf2_objects,
     )
     post.save()
@@ -788,8 +774,15 @@ def _handle_create_action(request, data):
     _attach_remote_photos(data, post)
 
     location = request.build_absolute_uri(post.get_absolute_url())
-    send_webmentions_for_post(post, location)
-    send_bridgy_publish_webmentions(post, location, SiteConfiguration.get_solo())
+    settings_obj = SiteConfiguration.get_solo()
+    transaction.on_commit(
+        lambda: queue_webmentions_for_post(
+            post,
+            location,
+            include_bridgy=True,
+            settings_obj=settings_obj,
+        )
+    )
 
     response = HttpResponse(status=201)
     response["Location"] = location
@@ -819,23 +812,59 @@ def _download_and_attach_photo(post, url: str, alt_text: str = ""):
     return True
 
 
+def _introspect_local(token: str) -> tuple[bool, list[str]] | None:
+    try:
+        from indieauth.models import IndieAuthAccessToken
+    except Exception:
+        return None
+
+    try:
+        from django.utils import timezone
+        from indieauth.views import _hash_token
+    except Exception:
+        return None
+
+    token_hash = _hash_token(token)
+    token_obj = IndieAuthAccessToken.objects.filter(token_hash=token_hash).first()
+    if not token_obj:
+        return False, []
+    if token_obj.revoked_at:
+        return False, []
+    if token_obj.expires_at and token_obj.expires_at <= timezone.now():
+        return False, []
+    scopes = _parse_scope(token_obj.scope)
+    return True, scopes
+
+
 def _authorized(request):
+    request.micropub_auth_error = ""
     auth_header = request.META.get("HTTP_AUTHORIZATION", "")
     if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
+        token = auth_header[7:].strip()
     else:
-        token = request.POST.get("access_token") or request.GET.get("access_token")
+        token = _token_from_post(request) or request.GET.get("access_token")
 
     if not token:
+        request.micropub_auth_error = "missing_token"
         return False, []
 
+    local = _introspect_local(token)
+    if local is not None:
+        authorized, scopes = local
+        if not authorized:
+            request.micropub_auth_error = "introspect_inactive"
+        return authorized, scopes
+
+    introspect_url = request.build_absolute_uri(reverse("indieauth-introspect"))
+    body = urlencode({"token": token}).encode("utf-8")
     verification_request = Request(
-        TOKEN_ENDPOINT,
+        introspect_url,
+        data=body,
         headers={
-            "Authorization": f"Bearer {token}",
             "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
         },
-        method="GET",
+        method="POST",
     )
 
     try:
@@ -843,10 +872,12 @@ def _authorized(request):
             body = response.read().decode()
             status_code = response.status
             content_type = response.headers.get("Content-Type", "")
-    except (HTTPError, URLError, TimeoutError):
+    except (HTTPError, URLError, TimeoutError) as exc:
+        request.micropub_auth_error = f"introspect_request_failed:{exc.__class__.__name__}"
         return False, []
 
     if status_code != 200:
+        request.micropub_auth_error = f"introspect_status:{status_code}"
         return False, []
 
     scopes = []
@@ -854,18 +885,21 @@ def _authorized(request):
         try:
             token_data = json.loads(body) if "application/json" in content_type else parse_qs(body)
         except json.JSONDecodeError:
+            request.micropub_auth_error = "introspect_parse_error"
             return False, []
 
         active = token_data.get("active")
         if isinstance(active, list):
             active = _first_value({"active": active}, "active")
         if active is False or (isinstance(active, str) and active.lower() == "false"):
+            request.micropub_auth_error = "introspect_inactive"
             return False, []
 
         error = token_data.get("error")
         if isinstance(error, list):
             error = _first_value({"error": error}, "error")
         if error:
+            request.micropub_auth_error = f"introspect_error:{error}"
             return False, []
 
         scopes = _parse_scope(token_data.get("scope", []))
@@ -899,6 +933,7 @@ class MicropubView(View):
             if insufficient:
                 return insufficient
             media_endpoint = request.build_absolute_uri(reverse("micropub-media"))
+            settings_obj = SiteConfiguration.get_solo()
             return JsonResponse(
                 {
                     "media-endpoint": media_endpoint,
@@ -909,15 +944,17 @@ class MicropubView(View):
                         {"type": Post.LIKE, "name": "Like"},
                         {"type": Post.REPOST, "name": "Repost"},
                         {"type": Post.REPLY, "name": "Reply"},
+                        {"type": Post.BOOKMARK, "name": "Bookmark"},
                     ],
-                    "syndicate-to": [],
+                    "syndicate-to": _syndication_targets(settings_obj),
                 }
             )
         if query == "syndicate-to":
             insufficient = _require_scope(request, None)
             if insufficient:
                 return insufficient
-            return JsonResponse({"syndicate-to": []})
+            settings_obj = SiteConfiguration.get_solo()
+            return JsonResponse({"syndicate-to": _syndication_targets(settings_obj)})
         if query == "source":
             insufficient = _require_scope(request, "read")
             if insufficient:
@@ -1011,7 +1048,7 @@ class IndieAuthCallbackView(View):
         next_url = _safe_next_url(request, request.session.get("indieauth_next", "/"))
         expected_state = request.session.get("indieauth_state")
         pending_me = request.session.get("indieauth_pending_me")
-        token_endpoint = request.session.get("indieauth_token_endpoint", TOKEN_ENDPOINT)
+        token_endpoint = request.session.get("indieauth_token_endpoint", DEFAULT_TOKEN_ENDPOINT)
         code = request.GET.get("code")
         state = request.GET.get("state")
         returned_me = request.GET.get("me")

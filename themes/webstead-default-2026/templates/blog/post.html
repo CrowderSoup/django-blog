@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% load static %}
+<!-- Content -->
+{% block head %}
+  {{ block.super }}
+  {% if post.kind == 'activity' or post.kind == 'checkin' %}
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+      defer
+    ></script>
+  {% endif %}
+  {% if post.kind == 'activity' %}
+    <script src="{% static 'js/activity_map.js' %}" defer></script>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+  {# Post kind switcher #}
+  {% if post.kind == 'note' %}
+    {% include 'blog/note.html' %}
+  {% elif post.kind == 'photo' %}
+    {% include 'blog/photo.html' %}
+  {% elif post.kind == 'activity' %}
+    {% include 'blog/activity.html' %}
+  {% elif post.kind == 'like' %}
+    {% include 'blog/like.html' %}
+  {% elif post.kind == 'reply' %}
+    {% include 'blog/reply.html' %}
+  {% elif post.kind == 'repost' %}
+    {% include 'blog/repost.html' %}
+  {% elif post.kind == 'event' %}
+    {% include 'blog/event.html' %}
+  {% elif post.kind == 'rsvp' %}
+    {% include 'blog/rsvp.html' %}
+  {% elif post.kind == 'checkin' %}
+    {% include 'blog/checkin.html' %}
+  {% elif post.kind == 'bookmark' %}
+    {% include 'blog/bookmark.html' %}
+  {% else %}
+    {% include 'blog/article.html' %}
+  {% endif %}
+
+  {% include 'blog/interaction_forms.html' %}
+  {% include 'blog/webmentions.html' %}
+  {% include 'blog/comments_list.html' %}
+{% endblock %}

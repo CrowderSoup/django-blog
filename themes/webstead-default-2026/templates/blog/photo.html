@@ -1,0 +1,56 @@
+{% load author %}
+
+<article class="h-entry entry-photo">
+  <a class="u-uid" href="{% url 'post' slug=post.slug %}" hidden></a>
+
+  <section class="photo-slider" aria-labelledby="gallery-title" role="region">
+    <h2 id="gallery-title" class="sr-only">Photo gallery</h2>
+    <ol class="slides" tabindex="0">
+      {% for photo in post.attachments.all %}
+      <li class="slide">
+        <figure id="photo-{{ photo.asset.id }}">
+          <div class="photo-frame" style="--photo-image: url('{{ photo.asset.file.url }}')">
+            <img
+              class="u-photo"
+              src="{{ photo.asset.file.url }}"
+              alt="{{ photo.asset.alt_text }}"
+              loading="lazy"
+            />
+          </div>
+          {% if photo.asset.caption %}
+          <figcaption>{{ photo.asset.caption }}</figcaption>
+          {% endif %}
+        </figure>
+      </li>
+      {% endfor %}
+    </ol>
+
+    {% if post.attachments.count > 1 %}
+    <nav class="slider-nav" aria-label="Slide navigation">
+      <ol>
+        {% for photo in post.attachments.all %}
+        <li>
+          <a href="#photo-{{ photo.asset.id }}" aria-label="Go to photo {{ photo.asset.file.name }}">●</a>
+        </li>
+        {% endfor %}
+      </ol>
+    </nav>
+    {% endif %}
+  </section>
+
+  <div class="e-content">
+    {{ post.html }}
+  </div>
+
+  {% include 'blog/tags.html' %}
+
+  <div class="entry-meta">
+    <a class="u-url" href="{% url 'post' slug=post.slug %}">
+      <time class="dt-published" datetime="{{ post.published_on|date:"c" }}">
+        {{ post.published_on|date:"Y-m-d" }}
+      </time>
+    </a>
+    <span class="p-author h-card">{% author_hcard_name post.author %}</span>
+  </div>
+  {% include 'blog/bridgy_publish_links.html' %}
+</article>

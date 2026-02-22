@@ -19,6 +19,7 @@ from .forms import CommentForm
 from .mf2 import DEFAULT_AVATAR_URL, fetch_target_from_url
 from .comments import AkismetError, check_comment, comments_configured, verify_turnstile
 from core.models import SiteConfiguration
+from core.themes import get_posts_index_url, should_redirect_posts_index
 from core.og import absolute_url, first_attachment_image_url
 from micropub.models import Webmention
 
@@ -60,6 +61,8 @@ def _is_default_interaction_content(post, target_url):
         return content == f"Reposted {target_url}"
     if post.kind == Post.REPLY:
         return content == f"Reply to {target_url}"
+    if post.kind == Post.BOOKMARK:
+        return content == f"Bookmarked {target_url}"
     return False
 
 
@@ -102,7 +105,7 @@ def _local_target_from_url(target_url, request):
     }
 
 
-def _interaction_payload(post, request=None):
+def _interaction_payload(post, request=None, fetch_remote=True):
     if post.kind == Post.LIKE:
         target_url = post.like_of
         label = "Liked"
@@ -112,11 +115,17 @@ def _interaction_payload(post, request=None):
     elif post.kind == Post.REPLY:
         target_url = post.in_reply_to
         label = "Replying to"
+    elif post.kind == Post.RSVP:
+        target_url = post.in_reply_to
+        label = "RSVP to"
+    elif post.kind == Post.BOOKMARK:
+        target_url = post.bookmark_of
+        label = "Bookmarked"
     else:
         return None
 
     target_url = target_url or ""
-    target = fetch_target_from_url(target_url) if target_url else None
+    target = fetch_target_from_url(target_url) if (fetch_remote and target_url) else None
     if not target and target_url:
         target = _local_target_from_url(target_url, request)
 
@@ -220,22 +229,33 @@ def _comment_context(request, post, *, comment_form=None):
 
 def _post_context(request, post, *, comment_form=None):
     activity = _activity_from_mf2(post) if post.kind == Post.ACTIVITY else None
-    if post.kind in (Post.LIKE, Post.REPLY, Post.REPOST):
+    if post.kind in (Post.LIKE, Post.REPLY, Post.REPOST, Post.RSVP, Post.BOOKMARK):
         post.interaction = _interaction_payload(post, request=request)
     activity_photos = list(post.photo_attachments) if post.kind == Post.ACTIVITY else []
+    checkin_photos = list(post.photo_attachments) if post.kind == Post.CHECKIN else []
     webmention_replies, webmention_likes, webmention_reposts = _webmentions_for_post(post, request=request)
     og_image = ""
     og_image_alt = ""
-    if activity_photos:
-        og_image = activity_photos[0].asset.file.url
-        og_image_alt = activity_photos[0].asset.alt_text or ""
+    if activity_photos or checkin_photos:
+        first_photo = (activity_photos or checkin_photos)[0]
+        og_image = first_photo.asset.file.url
+        og_image_alt = first_photo.asset.alt_text or ""
     else:
         og_image, og_image_alt = first_attachment_image_url(post.attachments.all())
+
+    mf2 = post.mf2 if isinstance(post.mf2, dict) else {}
+    event_data = mf2.get("event") if post.kind == Post.EVENT else None
+    rsvp_value = mf2.get("rsvp") if post.kind == Post.RSVP else None
+    checkin_data = mf2.get("checkin") if post.kind == Post.CHECKIN else None
 
     context = {
         "post": post,
         "activity": activity,
         "activity_photos": activity_photos,
+        "checkin_photos": checkin_photos,
+        "event_data": event_data,
+        "rsvp_value": rsvp_value,
+        "checkin_data": checkin_data,
         "webmention_replies": webmention_replies,
         "webmention_likes": webmention_likes,
         "webmention_reposts": webmention_reposts,
@@ -280,13 +300,21 @@ def _build_filter_query(selected_kinds, selected_tags):
         params.append(("tag", ",".join(selected_tags)))
     return urlencode(params, safe=",")
 
-def posts(request):
+
+def build_posts_listing_context(request, *, include_og=True):
     settings = SiteConfiguration.get_solo()
     requested_kinds = _split_filter_values(request.GET.getlist("kind"))
     selected_tags = _split_filter_values(request.GET.getlist("tag"))
     valid_kinds = {kind for kind, _ in Post.KIND_CHOICES}
     selected_kinds = [kind for kind in requested_kinds if kind in valid_kinds]
-    default_kinds = [Post.ARTICLE, Post.NOTE, Post.PHOTO, Post.ACTIVITY]
+    default_kinds = [
+        Post.ARTICLE,
+        Post.NOTE,
+        Post.PHOTO,
+        Post.ACTIVITY,
+        Post.EVENT,
+        Post.CHECKIN,
+    ]
     if not selected_kinds and not selected_tags:
         selected_kinds = default_kinds[:]
     filter_query = _build_filter_query(selected_kinds, selected_tags)
@@ -320,31 +348,52 @@ def posts(request):
         if post.kind == Post.ACTIVITY:
             has_activity = True
             post.activity = _activity_from_mf2(post)
-        elif post.kind in (Post.LIKE, Post.REPLY, Post.REPOST):
+        elif post.kind == Post.EVENT:
+            mf2_data = post.mf2 if isinstance(post.mf2, dict) else {}
+            post.event_data = mf2_data.get("event")
+        elif post.kind == Post.CHECKIN:
+            mf2_data = post.mf2 if isinstance(post.mf2, dict) else {}
+            post.checkin_data = mf2_data.get("checkin")
+        elif post.kind in (Post.LIKE, Post.REPLY, Post.REPOST, Post.BOOKMARK):
             post.interaction = _interaction_payload(post, request=request)
 
-    return render(
-        request,
-        'blog/posts.html',
-        {
-            "posts": posts,
-            "post_kinds": Post.KIND_CHOICES,
-            "selected_kinds": selected_kinds,
-            "selected_tags": selected_tags,
-            "default_kinds": default_kinds,
-            "filter_query": filter_query,
-            "feed_filter_query": filter_query,
-            "has_active_filters": has_active_filters,
-            "has_activity": has_activity,
-            "og_title": f"{settings.title} posts" if settings.title else "Posts",
-            "og_description": settings.tagline,
-            "og_url": request.build_absolute_uri(),
-        },
-    )
+    context = {
+        "posts": posts,
+        "post_kinds": Post.KIND_CHOICES,
+        "selected_kinds": selected_kinds,
+        "selected_tags": selected_tags,
+        "default_kinds": default_kinds,
+        "filter_query": filter_query,
+        "feed_filter_query": filter_query,
+        "has_active_filters": has_active_filters,
+        "has_activity": has_activity,
+    }
+    if include_og:
+        context.update(
+            {
+                "og_title": f"{settings.title} posts" if settings.title else "Posts",
+                "og_description": settings.tagline,
+                "og_url": request.build_absolute_uri(),
+            }
+        )
+
+    return context
+
+def posts_index(request):
+    if should_redirect_posts_index():
+        target = reverse("index")
+        if request.META.get("QUERY_STRING"):
+            target = f"{target}?{request.META['QUERY_STRING']}"
+        return redirect(target, permanent=True)
+    return posts(request)
+
+def posts(request):
+    context = build_posts_listing_context(request, include_og=True)
+    return render(request, "blog/posts.html", context)
 
 def posts_by_tag(request, tag):
     tag = get_object_or_404(Tag, tag=tag)
-    posts_url = reverse("posts").rstrip("/")
+    posts_url = get_posts_index_url()
     target = f"{posts_url}?{urlencode({'tag': tag.tag})}"
     return redirect(target, permanent=True)
 
@@ -360,6 +409,39 @@ def tag_suggestions(request):
         .values_list("tag", flat=True)[:8]
     )
     return JsonResponse({"tags": list(suggestions)})
+
+
+@require_POST
+def suggest_tags_for_content(request):
+    import json
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        body = {}
+    content = (body.get("content") or "").strip().lower()
+    title = (body.get("title") or "").strip().lower()
+    text = f"{title} {content}"
+
+    if not text.strip():
+        return JsonResponse({"tags": []})
+
+    all_tags = list(
+        Tag.objects.annotate(post_count=Count("post"))
+        .order_by("-post_count", "tag")
+        .values_list("tag", "post_count")
+    )
+
+    exact_matches = []
+    for tag_name, count in all_tags:
+        if tag_name.lower() in text:
+            exact_matches.append(tag_name)
+
+    popular_tags = [t for t, _ in all_tags[:10] if t not in exact_matches]
+
+    results = exact_matches[:10] + popular_tags[: 10 - len(exact_matches)]
+    return JsonResponse({"tags": results[:10]})
+
 
 def post(request, slug):
     post = get_object_or_404(
@@ -476,4 +558,4 @@ def delete_post(request, slug):
     post = get_object_or_404(Post, slug=slug)
     post.deleted = True
     post.save(update_fields=["deleted"])
-    return redirect(reverse("posts"))
+    return redirect(get_posts_index_url())

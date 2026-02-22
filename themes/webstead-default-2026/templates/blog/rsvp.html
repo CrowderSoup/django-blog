@@ -1,0 +1,40 @@
+{# RSVP as h-entry with p-rsvp: https://microformats.org/wiki/h-entry #}
+{% load author %}
+
+{% with interaction=post.interaction %}
+<article class="h-entry entry-reply">
+  <a class="u-uid" href="{% url 'post' slug=post.slug %}" hidden></a>
+  <span class="p-name" hidden>{{ post.title }}</span>
+  {% if post.in_reply_to %}
+    <a class="u-in-reply-to" href="{{ post.in_reply_to }}" hidden></a>
+  {% elif interaction.target and interaction.target.original_url %}
+    <a class="u-in-reply-to" href="{{ interaction.target.original_url }}" hidden></a>
+  {% endif %}
+
+  <header class="entry-header">
+    <p class="interaction-kicker">
+      RSVP {% if rsvp_value %}<data class="p-rsvp" value="{{ rsvp_value }}">{{ rsvp_value }}</data>{% endif %}
+    </p>
+  </header>
+
+  {% include 'blog/interaction-target.html' with target=interaction.target target_url=interaction.target_url %}
+
+  {% if interaction.show_content %}
+    <div class="e-content">
+      {{ post.html }}
+    </div>
+  {% endif %}
+
+  {% include 'blog/tags.html' %}
+
+  <div class="entry-meta">
+    <a class="u-url" href="{% url 'post' slug=post.slug %}">
+      <time class="dt-published" datetime="{{ post.published_on|date:"c" }}">
+        {{ post.published_on|date:"Y-m-d" }}
+      </time>
+    </a>
+    <span class="p-author h-card">{% author_hcard_name post.author %}</span>
+  </div>
+  {% include 'blog/bridgy_publish_links.html' %}
+</article>
+{% endwith %}

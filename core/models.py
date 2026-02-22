@@ -17,6 +17,7 @@ class Page(models.Model):
     author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     content = models.TextField()
     published_on = models.DateTimeField("date published")
+    is_gallery = models.BooleanField(default=False)
     attachments = GenericRelation(Attachment, related_query_name="pages")
 
 
@@ -70,6 +71,35 @@ class Redirect(models.Model):
 
     def __str__(self):
         return f"{self.from_path} ➡️ {self.to_path}"
+
+
+class RequestErrorLog(models.Model):
+    SOURCE_MICROPUB = "micropub"
+    SOURCE_INDIEAUTH = "indieauth"
+    SOURCE_CHOICES = [
+        (SOURCE_MICROPUB, "Micropub"),
+        (SOURCE_INDIEAUTH, "IndieAuth"),
+    ]
+
+    source = models.CharField(max_length=32, choices=SOURCE_CHOICES)
+    method = models.CharField(max_length=10)
+    path = models.CharField(max_length=255)
+    status_code = models.PositiveSmallIntegerField()
+    error = models.TextField(blank=True)
+    request_headers = models.JSONField(default=dict)
+    request_query = models.JSONField(default=dict)
+    request_body = models.TextField(blank=True)
+    response_body = models.TextField(blank=True)
+    remote_addr = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    content_type = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.source} {self.method} {self.path} -> {self.status_code}"
 
 
 class ThemeInstallManager(models.Manager):
@@ -173,6 +203,7 @@ class SiteConfiguration(SingletonModel):
     bridgy_publish_github = models.BooleanField("Bridgy Publish: GitHub", default=True)
     bridgy_publish_mastodon = models.BooleanField("Bridgy Publish: Mastodon", default=True)
     comments_enabled = models.BooleanField("Comments enabled", default=False)
+    developer_tools_enabled = models.BooleanField("Developer tools enabled", default=False)
 
     def __str__(self):
         return "Site Configuration"
