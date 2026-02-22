@@ -20,7 +20,7 @@ from analytics.models import (
     Visit,
 )
 from blog.models import Comment, Post
-from core.models import HCard, HCardPhoto, RequestErrorLog, SiteConfiguration, ThemeInstall
+from core.models import HCard, HCardPhoto, Page, RequestErrorLog, SiteConfiguration, ThemeInstall
 from core.themes import ThemeDefinition, ThemeUpdateResult
 from core.test_utils import build_test_theme
 from files.models import Attachment, File
@@ -123,6 +123,174 @@ class SiteAdminPageTests(TestCase):
         page = self.staff.page_set.first()
         self.assertIsNotNone(page)
         self.assertEqual(page.author, self.staff)
+
+    def test_page_edit_saves_uploaded_photo(self):
+        self.client.force_login(self.staff)
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                upload = SimpleUploadedFile(
+                    "photo.jpg", b"fake-image-data", content_type="image/jpeg"
+                )
+                asset = File.objects.create(
+                    kind=File.IMAGE, file=upload, owner=self.staff
+                )
+                page = Page.objects.create(
+                    title="Gallery Test",
+                    slug="gallery-test",
+                    content="Hello",
+                    published_on=timezone.now(),
+                    author=self.staff,
+                )
+                published_on = timezone.localtime(page.published_on).strftime(
+                    "%Y-%m-%dT%H:%M"
+                )
+                response = self.client.post(
+                    reverse("site_admin:page_edit", kwargs={"slug": page.slug}),
+                    {
+                        "title": page.title,
+                        "content": page.content,
+                        "published_on": published_on,
+                        "uploaded_ids": [str(asset.id)],
+                        "uploaded_alts": ["A nice photo"],
+                        "uploaded_captions": ["Caption text"],
+                        "uploaded_positions": ["0"],
+                    },
+                )
+
+                self.assertEqual(response.status_code, 302)
+                page.refresh_from_db()
+                attachment = page.attachments.filter(role="photo").first()
+                self.assertIsNotNone(attachment)
+                self.assertEqual(attachment.asset, asset)
+
+    def test_page_edit_removes_existing_photo(self):
+        self.client.force_login(self.staff)
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                upload = SimpleUploadedFile(
+                    "photo.jpg", b"fake-image-data", content_type="image/jpeg"
+                )
+                asset = File.objects.create(
+                    kind=File.IMAGE, file=upload, owner=self.staff
+                )
+                page = Page.objects.create(
+                    title="Remove Photo Test",
+                    slug="remove-photo-test",
+                    content="Hello",
+                    published_on=timezone.now(),
+                    author=self.staff,
+                )
+                attachment = Attachment.objects.create(
+                    content_object=page, asset=asset, role="photo", sort_order=0
+                )
+                published_on = timezone.localtime(page.published_on).strftime(
+                    "%Y-%m-%dT%H:%M"
+                )
+                response = self.client.post(
+                    reverse("site_admin:page_edit", kwargs={"slug": page.slug}),
+                    {
+                        "title": page.title,
+                        "content": page.content,
+                        "published_on": published_on,
+                        "existing_remove_ids": [str(asset.id)],
+                    },
+                )
+
+                self.assertEqual(response.status_code, 302)
+                self.assertFalse(Attachment.objects.filter(id=attachment.id).exists())
+
+    def test_page_is_gallery_saves(self):
+        self.client.force_login(self.staff)
+        page = Page.objects.create(
+            title="Gallery Flag Test",
+            slug="gallery-flag-test",
+            content="Hello",
+            published_on=timezone.now(),
+            author=self.staff,
+        )
+        published_on = timezone.localtime(page.published_on).strftime(
+            "%Y-%m-%dT%H:%M"
+        )
+        response = self.client.post(
+            reverse("site_admin:page_edit", kwargs={"slug": page.slug}),
+            {
+                "title": page.title,
+                "content": page.content,
+                "published_on": published_on,
+                "is_gallery": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        page.refresh_from_db()
+        self.assertTrue(page.is_gallery)
+
+    def test_gallery_page_shows_slider_in_template(self):
+        with (
+            tempfile.TemporaryDirectory() as themes_root,
+            tempfile.TemporaryDirectory() as media_root,
+        ):
+            with override_settings(THEMES_ROOT=themes_root, MEDIA_ROOT=media_root):
+                from core.themes import clear_template_caches
+
+                page_template = (
+                    "{% load author %}"
+                    "{% if page.is_gallery %}"
+                    "{% with photos=page.attachments.all %}"
+                    '{% include "blog/_photo_gallery.html" %}'
+                    "{% endwith %}"
+                    "{% endif %}"
+                )
+                gallery_template = (
+                    "{% for photo in photos %}"
+                    '<section class="photo-slider">{{ photo.asset.alt_text }}</section>'
+                    "{% endfor %}"
+                )
+                build_test_theme(
+                    "gallery-theme",
+                    themes_root,
+                    extra_files=[
+                        ("templates/core/page.html", page_template),
+                        ("templates/blog/_photo_gallery.html", gallery_template),
+                    ],
+                )
+                config = SiteConfiguration.get_solo()
+                config.active_theme = "gallery-theme"
+                config.save()
+                clear_template_caches()
+
+                try:
+                    upload = SimpleUploadedFile(
+                        "photo.jpg", b"fake-image-data", content_type="image/jpeg"
+                    )
+                    asset = File.objects.create(
+                        kind=File.IMAGE, file=upload, owner=self.staff
+                    )
+                    page = Page.objects.create(
+                        title="Slider Page",
+                        slug="slider-page",
+                        content="",
+                        published_on=timezone.now(),
+                        author=self.staff,
+                        is_gallery=True,
+                    )
+                    Attachment.objects.create(
+                        content_object=page,
+                        asset=asset,
+                        role="photo",
+                        sort_order=0,
+                    )
+
+                    response = self.client.get(
+                        reverse("page", kwargs={"slug": page.slug})
+                    )
+
+                    self.assertEqual(response.status_code, 200)
+                    self.assertContains(response, "photo-slider")
+                finally:
+                    config.active_theme = ""
+                    config.save()
+                    clear_template_caches()
 
 
 class SiteAdminAnalyticsTests(TestCase):

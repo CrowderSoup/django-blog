@@ -18,6 +18,11 @@
     <div class="e-content">
       {{ page.html }}
     </div>
+    {% if page.is_gallery %}
+      {% with photos=page.attachments.all %}
+        {% include "blog/_photo_gallery.html" %}
+      {% endwith %}
+    {% endif %}
   </article>
 	<script async src="https://gardn.dev/gardn.js"></script>
 {% endblock %}

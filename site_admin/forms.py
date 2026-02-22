@@ -403,7 +403,7 @@ class WebmentionCreateForm(forms.Form):
 
 
 class PageForm(forms.ModelForm):
-    field_order = ["title", "slug", "content", "published_on"]
+    field_order = ["title", "slug", "content", "published_on", "is_gallery"]
     published_on = forms.DateTimeField(
         required=True,
         widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
@@ -413,7 +413,7 @@ class PageForm(forms.ModelForm):
 
     class Meta:
         model = Page
-        fields = ["title", "slug", "content", "published_on"]
+        fields = ["title", "slug", "content", "published_on", "is_gallery"]
         widgets = {
             "content": EasyMDETextarea(),
         }

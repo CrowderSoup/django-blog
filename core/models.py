@@ -17,6 +17,7 @@ class Page(models.Model):
     author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     content = models.TextField()
     published_on = models.DateTimeField("date published")
+    is_gallery = models.BooleanField(default=False)
     attachments = GenericRelation(Attachment, related_query_name="pages")
 
 

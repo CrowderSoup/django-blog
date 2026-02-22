@@ -1332,11 +1332,94 @@ def page_edit(request, slug=None):
 
     if request.method == "POST":
         form = PageForm(request.POST, instance=page)
+
+        existing_ids = request.POST.getlist("existing_ids")
+        existing_alts = request.POST.getlist("existing_alts")
+        existing_captions = request.POST.getlist("existing_captions")
+        existing_positions = request.POST.getlist("existing_positions")
+        existing_remove_ids = set()
+        for raw_id in request.POST.getlist("existing_remove_ids"):
+            try:
+                existing_remove_ids.add(int(raw_id))
+            except (TypeError, ValueError):
+                continue
+        existing_meta = {}
+        for i in range(min(len(existing_ids), len(existing_positions))):
+            try:
+                asset_id = int(existing_ids[i])
+                position = int(existing_positions[i])
+            except (TypeError, ValueError):
+                continue
+            alt_text = existing_alts[i] if i < len(existing_alts) else ""
+            caption = existing_captions[i] if i < len(existing_captions) else ""
+            existing_meta[asset_id] = {
+                "position": position,
+                "alt": alt_text,
+                "caption": caption,
+            }
+
+        uploaded_ids = request.POST.getlist("uploaded_ids")
+        uploaded_alts = request.POST.getlist("uploaded_alts")
+        uploaded_captions = request.POST.getlist("uploaded_captions")
+        uploaded_positions = request.POST.getlist("uploaded_positions")
+        uploaded_meta = {}
+        for i in range(min(len(uploaded_ids), len(uploaded_positions))):
+            try:
+                asset_id = int(uploaded_ids[i])
+                position = int(uploaded_positions[i])
+            except (TypeError, ValueError):
+                continue
+            alt_text = uploaded_alts[i] if i < len(uploaded_alts) else ""
+            caption = uploaded_captions[i] if i < len(uploaded_captions) else ""
+            uploaded_meta[asset_id] = {
+                "position": position,
+                "alt": alt_text,
+                "caption": caption,
+            }
+
         if form.is_valid():
             saved_page = form.save(commit=False)
             if not saved_page.author_id:
                 saved_page.author = request.user
             saved_page.save()
+
+            # Sync photo attachments
+            if page:
+                for attachment in list(
+                    saved_page.attachments.filter(role="photo").select_related("asset")
+                ):
+                    asset = attachment.asset
+                    asset_id = asset.id
+                    if asset_id in existing_remove_ids:
+                        attachment.delete()
+                        if not asset.is_in_use():
+                            asset.delete()
+                        continue
+                    meta = existing_meta.get(asset_id)
+                    if not meta:
+                        continue
+                    asset.alt_text = meta.get("alt", "")
+                    asset.caption = meta.get("caption", "")
+                    asset.save(update_fields=["alt_text", "caption"])
+                    attachment.sort_order = meta.get("position", attachment.sort_order)
+                    attachment.save(update_fields=["sort_order"])
+
+            if uploaded_meta:
+                uploaded_assets = File.objects.filter(
+                    id__in=uploaded_meta.keys(), owner=request.user
+                )
+                for asset in uploaded_assets:
+                    meta = uploaded_meta.get(asset.id, {})
+                    asset.alt_text = meta.get("alt", "")
+                    asset.caption = meta.get("caption", "")
+                    asset.save(update_fields=["alt_text", "caption"])
+                    Attachment.objects.create(
+                        content_object=saved_page,
+                        asset=asset,
+                        role="photo",
+                        sort_order=meta.get("position", 0),
+                    )
+
             if request.headers.get("HX-Request"):
                 if is_new:
                     response = HttpResponse(status=204)
@@ -1345,34 +1428,39 @@ def page_edit(request, slug=None):
                     )
                     return response
                 refreshed_form = PageForm(instance=saved_page)
-                return render(
-                    request,
-                    "site_admin/pages/_form_messages.html",
-                    {"form": refreshed_form, "page": saved_page, "saved": True},
+                ctx = _build_page_form_context(
+                    request=request,
+                    form=refreshed_form,
+                    page=saved_page,
+                    saved=True,
                 )
+                return render(request, "site_admin/pages/_form_messages.html", ctx)
             return redirect("site_admin:page_edit", slug=saved_page.slug)
+
+        ctx = _build_page_form_context(
+            request=request,
+            form=form,
+            page=page,
+            saved=False,
+            existing_meta=existing_meta,
+            existing_remove_ids=existing_remove_ids,
+            uploaded_meta=uploaded_meta,
+        )
         template_name = (
             "site_admin/pages/_form_messages.html"
             if request.headers.get("HX-Request")
             else "site_admin/pages/edit.html"
         )
-        return render(
-            request,
-            template_name,
-            {"form": form, "page": page, "saved": False},
-        )
+        return render(request, template_name, ctx)
 
     form = PageForm(instance=page)
+    ctx = _build_page_form_context(request=request, form=form, page=page, saved=False)
     template_name = (
         "site_admin/pages/_form.html"
         if request.headers.get("HX-Request")
         else "site_admin/pages/edit.html"
     )
-    return render(
-        request,
-        template_name,
-        {"form": form, "page": page, "saved": False},
-    )
+    return render(request, template_name, ctx)
 
 
 @require_POST
@@ -3500,6 +3588,67 @@ def profile_delete_photo(request):
 
     asset.delete()
     return JsonResponse({"status": "deleted"})
+
+
+def _build_page_form_context(
+    *,
+    request,
+    form,
+    page,
+    saved,
+    existing_meta=None,
+    existing_remove_ids=None,
+    uploaded_meta=None,
+):
+    existing_meta = existing_meta or {}
+    existing_remove_ids = existing_remove_ids or set()
+    uploaded_meta = uploaded_meta or {}
+
+    photo_items = []
+    if page:
+        for attachment in page.attachments.filter(role="photo").select_related("asset"):
+            asset = attachment.asset
+            if asset.id in existing_remove_ids:
+                continue
+            meta = existing_meta.get(asset.id, {})
+            photo_items.append(
+                {
+                    "kind": "existing",
+                    "id": asset.id,
+                    "url": asset.file.url,
+                    "alt": meta.get("alt", asset.alt_text),
+                    "caption": meta.get("caption", asset.caption),
+                    "order": meta.get("position", attachment.sort_order),
+                }
+            )
+
+    if uploaded_meta:
+        uploaded_assets = File.objects.filter(
+            id__in=uploaded_meta.keys(), owner=request.user
+        )
+        for asset in uploaded_assets:
+            meta = uploaded_meta.get(asset.id, {})
+            photo_items.append(
+                {
+                    "kind": "uploaded",
+                    "id": asset.id,
+                    "url": asset.file.url,
+                    "alt": meta.get("alt", ""),
+                    "caption": meta.get("caption", ""),
+                    "order": meta.get("position", 0),
+                }
+            )
+
+    photo_items.sort(key=lambda item: item.get("order", 0))
+
+    return {
+        "form": form,
+        "page": page,
+        "saved": saved,
+        "existing_photos_json": json.dumps(photo_items),
+        "photo_upload_url": reverse("site_admin:post_upload_photo"),
+        "photo_delete_url": reverse("site_admin:post_delete_photo"),
+    }
 
 
 def _build_post_form_context(
