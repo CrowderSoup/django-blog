@@ -493,6 +493,7 @@ class SiteConfigurationForm(forms.ModelForm):
             "active_theme",
             "main_menu",
             "footer_menu",
+            "default_feed_kinds",
             "comments_enabled",
             "developer_tools_enabled",
             "bridgy_publish_bluesky",
