@@ -168,12 +168,16 @@ def _post_from_url(url: str) -> Optional[Post]:
         return None
 
 
-def _send_webmention_request(source_url: str, target_url: str) -> tuple[str, str]:
+def _send_webmention_request(
+    source_url: str, target_url: str, mention_type: str = Webmention.MENTION
+) -> tuple[str, str]:
     endpoint = discover_webmention_endpoint(target_url)
     if not endpoint:
         return Webmention.REJECTED, "No webmention endpoint found"
 
-    data = urllib.parse.urlencode({"source": source_url, "target": target_url}).encode()
+    data = urllib.parse.urlencode(
+        {"source": source_url, "target": target_url, "wm-property": mention_type}
+    ).encode()
     send_request = urllib.request.Request(
         endpoint,
         data=data,
@@ -232,7 +236,7 @@ def send_webmention(
     mention_type: str = Webmention.MENTION,
     source_post: Optional[Post] = None,
 ) -> Webmention:
-    status, error = _send_webmention_request(source_url, target_url)
+    status, error = _send_webmention_request(source_url, target_url, mention_type)
     if not source_post:
         source_post = _post_from_url(source_url)
     mention_type = mention_type if mention_type in dict(Webmention.MENTION_CHOICES) else Webmention.MENTION
