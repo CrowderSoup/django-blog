@@ -307,14 +307,21 @@ def build_posts_listing_context(request, *, include_og=True):
     selected_tags = _split_filter_values(request.GET.getlist("tag"))
     valid_kinds = {kind for kind, _ in Post.KIND_CHOICES}
     selected_kinds = [kind for kind in requested_kinds if kind in valid_kinds]
-    default_kinds = [
-        Post.ARTICLE,
-        Post.NOTE,
-        Post.PHOTO,
-        Post.ACTIVITY,
-        Post.EVENT,
-        Post.CHECKIN,
-    ]
+    raw_default_kinds = settings.default_feed_kinds
+    if raw_default_kinds:
+        default_kinds = [
+            k.strip() for k in raw_default_kinds.split(",")
+            if k.strip() in valid_kinds
+        ]
+    else:
+        default_kinds = [
+            Post.ARTICLE,
+            Post.NOTE,
+            Post.PHOTO,
+            Post.ACTIVITY,
+            Post.EVENT,
+            Post.CHECKIN,
+        ]
     if not selected_kinds and not selected_tags:
         selected_kinds = default_kinds[:]
     filter_query = _build_filter_query(selected_kinds, selected_tags)
