@@ -204,6 +204,12 @@ class SiteConfiguration(SingletonModel):
     bridgy_publish_mastodon = models.BooleanField("Bridgy Publish: Mastodon", default=True)
     comments_enabled = models.BooleanField("Comments enabled", default=False)
     developer_tools_enabled = models.BooleanField("Developer tools enabled", default=False)
+    default_feed_kinds = models.CharField(
+        max_length=255,
+        default="",
+        blank=True,
+        help_text="Comma-separated list of post kinds shown by default when no filter is applied. Leave blank for the default (article, note, photo, activity, event, checkin). Valid values: article, note, photo, activity, like, repost, reply, event, rsvp, checkin, bookmark.",
+    )
 
     def __str__(self):
         return "Site Configuration"

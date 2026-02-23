@@ -99,6 +99,19 @@
         {{ form.footer_menu.errors }}
       </div>
       <div>
+        <label
+          for="{{ form.default_feed_kinds.id_for_label }}"
+          class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+        >
+          Default feed kinds
+        </label>
+        {{ form.default_feed_kinds }}
+        {% if form.default_feed_kinds.help_text %}
+          <p class="mt-1 text-xs text-[color:var(--admin-muted)]">{{ form.default_feed_kinds.help_text }}</p>
+        {% endif %}
+        {{ form.default_feed_kinds.errors }}
+      </div>
+      <div>
         <p class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
           Comments
         </p>
