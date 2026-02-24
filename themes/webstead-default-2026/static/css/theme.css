@@ -33,7 +33,6 @@
   --site-admin-bar-bg: #f5efe6;
   --site-admin-bar-hamburger-bg: #6b6a69;
   --bg-start: #f5efe6;
-  --bg-mid: #f8f4ee;
   --bg-end: #fbfaf7;
   --bg-pattern: url("../img/pattern.svg");
   --font-body: "IBM Plex Sans", "Avenir", "Trebuchet MS", sans-serif;
@@ -60,13 +59,11 @@ body {
   background: linear-gradient(
     120deg,
     var(--bg-start) 0%,
-    var(--bg-mid) 60%,
     var(--bg-end) 100%
   );
   background-image: linear-gradient(
       120deg,
       var(--bg-start) 0%,
-      var(--bg-mid) 60%,
       var(--bg-end) 100%
     ),
     var(--bg-pattern);

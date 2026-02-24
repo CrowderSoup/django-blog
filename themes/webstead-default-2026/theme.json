@@ -30,9 +30,9 @@
         "label": "Panel",
         "default": "#ffffff"
       },
-      "surface_cream_color": {
+      "surface_color": {
         "type": "color",
-        "label": "Surface cream",
+        "label": "Surface",
         "default": "#fffdf9"
       },
       "surface_warm_color": {
@@ -40,45 +40,10 @@
         "label": "Surface warm",
         "default": "#f3eee5"
       },
-      "surface_accent_soft_color": {
+      "surface_accent_color": {
         "type": "color",
-        "label": "Accent soft",
+        "label": "Surface accent",
         "default": "#fff4e8"
-      },
-      "surface_accent_soft_alt_color": {
-        "type": "color",
-        "label": "Accent soft alt",
-        "default": "#fff3e6"
-      },
-      "surface_accent_hover_color": {
-        "type": "color",
-        "label": "Accent hover",
-        "default": "#ffe6cc"
-      },
-      "activity_surface_color": {
-        "type": "color",
-        "label": "Activity surface",
-        "default": "#fff9f1"
-      },
-      "activity_border_color": {
-        "type": "color",
-        "label": "Activity border",
-        "default": "#e8ddcd"
-      },
-      "interaction_surface_color": {
-        "type": "color",
-        "label": "Interaction surface",
-        "default": "#f9f5ef"
-      },
-      "map_surface_color": {
-        "type": "color",
-        "label": "Map surface",
-        "default": "#f3ede2"
-      },
-      "photo_dark_color": {
-        "type": "color",
-        "label": "Photo dark",
-        "default": "#0f0f0f"
       },
       "accent_color": {
         "type": "color",
@@ -95,6 +60,16 @@
         "label": "Line",
         "default": "#ded8cd"
       },
+      "gradient_start_color": {
+        "type": "color",
+        "label": "Background gradient start",
+        "default": "#f5efe6"
+      },
+      "gradient_end_color": {
+        "type": "color",
+        "label": "Background gradient end",
+        "default": "#fbfaf7"
+      },
       "shadow_color": {
         "type": "color_alpha",
         "label": "Shadow color",
@@ -104,81 +79,6 @@
         "type": "color_alpha",
         "label": "Accent shadow",
         "default": "rgba(213, 107, 48, 0.18)"
-      },
-      "accent_shadow_strong_color": {
-        "type": "color_alpha",
-        "label": "Accent shadow strong",
-        "default": "rgba(154, 76, 43, 0.2)"
-      },
-      "interaction_shadow_color": {
-        "type": "color_alpha",
-        "label": "Interaction shadow",
-        "default": "rgba(68, 41, 6, 0.08)"
-      },
-      "input_shadow_color": {
-        "type": "color_alpha",
-        "label": "Input shadow",
-        "default": "rgba(22, 20, 19, 0.04)"
-      },
-      "focus_shadow_color": {
-        "type": "color_alpha",
-        "label": "Focus ring shadow",
-        "default": "rgba(213, 107, 48, 0.15)"
-      },
-      "scrollbar_shadow_color": {
-        "type": "color_alpha",
-        "label": "Scrollbar thumb",
-        "default": "rgba(22, 20, 19, 0.25)"
-      },
-      "glass_light_color": {
-        "type": "color_alpha",
-        "label": "Glass light",
-        "default": "rgba(255, 255, 255, 0.6)"
-      },
-      "glass_lighter_color": {
-        "type": "color_alpha",
-        "label": "Glass lighter",
-        "default": "rgba(255, 255, 255, 0.7)"
-      },
-      "photo_dot_color": {
-        "type": "color_alpha",
-        "label": "Photo dot",
-        "default": "rgba(0, 0, 0, 0.18)"
-      },
-      "photo_dot_active_color": {
-        "type": "color_alpha",
-        "label": "Photo dot active",
-        "default": "rgba(0, 0, 0, 0.6)"
-      },
-      "admin_bar_bg_color": {
-        "type": "color",
-        "label": "Admin bar background",
-        "default": "#f5efe6"
-      },
-      "admin_bar_hamburger_color": {
-        "type": "color",
-        "label": "Admin bar hamburger",
-        "default": "#6b6a69"
-      },
-      "background_gradient_start": {
-        "type": "color",
-        "label": "Background gradient start",
-        "default": "#f5efe6"
-      },
-      "background_gradient_mid": {
-        "type": "color",
-        "label": "Background gradient mid",
-        "default": "#f8f4ee"
-      },
-      "background_gradient_end": {
-        "type": "color",
-        "label": "Background gradient end",
-        "default": "#fbfaf7"
-      },
-      "show_background_pattern": {
-        "type": "boolean",
-        "label": "Show background pattern",
-        "default": true
       },
       "font_body": {
         "type": "string",
@@ -210,20 +110,16 @@
         "label": "Radius large",
         "default": "20px"
       },
-      "radius_xl": {
-        "type": "string",
-        "label": "Radius extra large",
-        "default": "24px"
-      },
-      "radius_pill": {
-        "type": "string",
-        "label": "Radius pill",
-        "default": "999px"
+      "show_background_pattern": {
+        "type": "boolean",
+        "label": "Show background pattern",
+        "default": true
       },
       "home_feed_mode": {
-        "type": "string",
-        "label": "Home feed mode (home or blog)",
-        "default": "home"
+        "type": "select",
+        "label": "Home feed mode",
+        "default": "home",
+        "choices": ["home", "blog"]
       },
       "home_feed_redirect": {
         "type": "boolean",
