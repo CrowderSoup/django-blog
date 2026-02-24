@@ -255,6 +255,9 @@
               forms.forEach((form) => {
                 const isMatch = form.dataset.installSource === selected;
                 form.classList.toggle("hidden", !isMatch);
+                form.querySelectorAll("input, select, textarea").forEach((el) => {
+                  el.disabled = !isMatch;
+                });
               });
               sourceButtons.forEach((button) => {
                 const isActive = button.dataset.installSourceButton === selected;
