@@ -360,12 +360,18 @@ def _redirect_uri_allowed(client_id: str, redirect_uri: str, client: IndieAuthCl
     if client_parsed.scheme != parsed.scheme or client_parsed.netloc != parsed.netloc:
         return False
     if client_parsed.path:
-        if not parsed.path.startswith(client_parsed.path):
+        # For directory-style client_ids (ending in /), require the redirect to
+        # be under that directory.  For file-style client_ids (e.g. /client.json),
+        # use the parent directory as the prefix — otherwise the path-prefix check
+        # would never pass for any redirect that doesn't literally start with the
+        # filename (e.g. /client.json/...).
+        if client_parsed.path.endswith("/"):
+            prefix = client_parsed.path
+        else:
+            parent = client_parsed.path.rsplit("/", 1)[0]
+            prefix = (parent + "/") if parent else "/"
+        if prefix != "/" and not parsed.path.startswith(prefix):
             return False
-        if parsed.path != client_parsed.path:
-            boundary = client_parsed.path.rstrip("/") + "/"
-            if not parsed.path.startswith(boundary):
-                return False
     return True
 
 

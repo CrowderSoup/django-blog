@@ -194,15 +194,33 @@ class IndieAuthFlowTests(TestCase):
 
 class IndieAuthSecurityTests(TestCase):
     def test_redirect_uri_path_boundary(self):
-        client_id = "https://client.example/app"
+        # Directory-style client_id: redirect must be under that directory.
+        dir_client_id = "https://client.example/app/"
         self.assertFalse(
-            views._redirect_uri_allowed(client_id, "https://client.example/app-evil", None)
+            views._redirect_uri_allowed(dir_client_id, "https://client.example/app-evil", None)
         )
         self.assertTrue(
-            views._redirect_uri_allowed(client_id, "https://client.example/app", None)
+            views._redirect_uri_allowed(dir_client_id, "https://client.example/app/sub", None)
+        )
+
+        # File-style client_id in a subdirectory: redirect must be under the parent dir.
+        sub_client_id = "https://client.example/myapp/client"
+        self.assertFalse(
+            views._redirect_uri_allowed(sub_client_id, "https://client.example/other/cb", None)
         )
         self.assertTrue(
-            views._redirect_uri_allowed(client_id, "https://client.example/app/sub", None)
+            views._redirect_uri_allowed(sub_client_id, "https://client.example/myapp/cb", None)
+        )
+
+        # File-style client_id at the root (e.g. /client.json): parent dir is /,
+        # so any same-host redirect is allowed (spec-compliant fallback).
+        root_client_id = "https://client.example/client.json"
+        self.assertTrue(
+            views._redirect_uri_allowed(root_client_id, "https://client.example/login/callback", None)
+        )
+        # Cross-host is still rejected.
+        self.assertFalse(
+            views._redirect_uri_allowed(root_client_id, "https://evil.example/callback", None)
         )
 
     def test_client_metadata_blocks_private_hosts(self):
