@@ -27,6 +27,19 @@ THEME_STARTUP_SYNC_ENABLED = env.bool("THEME_STARTUP_SYNC_ENABLED", default=True
 THEMES_STARTUP_RECONCILE = env.bool("THEMES_STARTUP_RECONCILE", default=True)
 THEMES_STARTUP_UPLOAD_MISSING = env.bool("THEMES_STARTUP_UPLOAD_MISSING", default=False)
 
+# Plugins
+PLUGINS_ROOT = env("PLUGINS_ROOT", default=str(BASE_DIR / "plugins"))
+
+# Add plugins directory to sys.path so plugin packages are importable
+if PLUGINS_ROOT not in sys.path:
+    sys.path.insert(0, PLUGINS_ROOT)
+
+# Load third-party plugin apps
+try:
+    from config.installed_plugins import INSTALLED_PLUGIN_APPS
+except ImportError:
+    INSTALLED_PLUGIN_APPS = []
+
 # ---------------------------------------------------------------------------
 # Hosts and security
 # ---------------------------------------------------------------------------
@@ -63,6 +76,10 @@ INSTALLED_APPS = [
     "indieauth.apps.IndieauthConfig",
     "analytics.apps.AnalyticsConfig",
     "site_admin.apps.SiteAdminConfig",
+    "widgets.apps.WidgetsConfig",
+
+    # Third-party plugins from config/installed_plugins.py
+    *INSTALLED_PLUGIN_APPS,
 
     # Django apps
     "django.contrib.auth",

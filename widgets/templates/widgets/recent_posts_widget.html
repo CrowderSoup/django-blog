@@ -1,0 +1,13 @@
+<div class="widget widget--recent-posts h-feed">
+  {% if title %}<h3 class="widget__title p-name">{{ title }}</h3>{% endif %}
+  <ul class="widget__list">
+    {% for post in posts %}
+    <li class="h-entry">
+      <a class="u-url p-name" href="{{ post.get_absolute_url }}">{{ post.title }}</a>
+      {% if post.published_on %}<time class="dt-published" datetime="{{ post.published_on|date:"c" }}" hidden>{{ post.published_on|date:"Y-m-d" }}</time>{% endif %}
+    </li>
+    {% empty %}
+    <li>No posts yet.</li>
+    {% endfor %}
+  </ul>
+</div>

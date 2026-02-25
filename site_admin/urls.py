@@ -178,4 +178,16 @@ urlpatterns = [
     path("files/new/", views.file_create, name="file_create"),
     path("files/<int:file_id>/delete/", views.file_delete, name="file_delete"),
     path("files/<int:file_id>/", views.file_edit, name="file_edit"),
+    # Plugins (under settings)
+    path("settings/plugins/", views.plugin_list, name="plugin_list"),
+    path("settings/plugins/install/", views.plugin_install, name="plugin_install"),
+    path("settings/plugins/restart-status/", views.plugin_restart_status, name="plugin_restart_status"),
+    path("settings/plugins/<slug:slug>/update/", views.plugin_update, name="plugin_update"),
+    path("settings/plugins/<slug:slug>/remove/", views.plugin_remove, name="plugin_remove"),
+    # Widgets (plugin detail page, under settings/plugins)
+    path("settings/plugins/widgets/", views.widget_list, name="widget_list"),
+    path("settings/plugins/widgets/add/", views.widget_add, name="widget_add"),
+    path("settings/plugins/widgets/reorder/", views.widget_reorder, name="widget_reorder"),
+    path("settings/plugins/widgets/<int:pk>/edit/", views.widget_edit, name="widget_edit"),
+    path("settings/plugins/widgets/<int:pk>/delete/", views.widget_delete, name="widget_delete"),
 ]

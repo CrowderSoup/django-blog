@@ -167,6 +167,43 @@ class ThemeInstall(models.Model):
         return self.source_ref or self.safe_source_url()
 
 
+class PluginInstall(models.Model):
+    SOURCE_BUILTIN = "builtin"
+    SOURCE_GIT = "git"
+    SOURCE_CHOICES = [
+        (SOURCE_BUILTIN, "Built-in"),
+        (SOURCE_GIT, "Git"),
+    ]
+
+    STATUS_PENDING = "pending"
+    STATUS_SUCCESS = "success"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_SUCCESS, "Success"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    name = models.SlugField(max_length=255, unique=True)
+    django_app = models.CharField(max_length=255)
+    label = models.CharField(max_length=255, blank=True, default="")
+    source_type = models.CharField(max_length=16, choices=SOURCE_CHOICES)
+    source_url = models.URLField(max_length=2000, blank=True, default="")
+    source_ref = models.CharField(max_length=255, blank=True, default="")
+    version = models.CharField(max_length=255, blank=True, default="")
+    installed_at = models.DateTimeField(auto_now_add=True)
+    last_synced_commit = models.CharField(max_length=255, blank=True, default="")
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    last_sync_status = models.CharField(max_length=16, choices=STATUS_CHOICES, blank=True, default="")
+    last_sync_error = models.CharField(max_length=500, blank=True, default="")
+
+    class Meta:
+        ordering = ("name",)
+
+    def __str__(self) -> str:
+        return self.label or self.name
+
+
 class SiteConfiguration(SingletonModel):
     title = models.CharField(max_length=255, default="", blank=True)
     tagline = models.CharField(max_length=1024, default="", blank=True)

@@ -34,6 +34,12 @@
         Menus
       </a>
       <a
+        href="{% url 'site_admin:plugin_list' %}"
+        class="rounded-2xl px-4 py-2 transition {% if current == 'plugin_list' or current == 'plugin_install' or current == 'widget_list' or current == 'widget_add' or current == 'widget_edit' or current == 'widget_delete' %}bg-[color:var(--admin-bg)] text-[color:var(--admin-ink)]{% else %}text-[color:var(--admin-muted)] hover:bg-[color:var(--admin-bg)] hover:text-[color:var(--admin-ink)]{% endif %}"
+      >
+        Plugins
+      </a>
+      <a
         href="{% url 'site_admin:indieauth_settings' %}"
         class="rounded-2xl px-4 py-2 transition {% if current == 'indieauth_settings' or current == 'indieauth_client_detail' %}bg-[color:var(--admin-bg)] text-[color:var(--admin-ink)]{% else %}text-[color:var(--admin-muted)] hover:bg-[color:var(--admin-bg)] hover:text-[color:var(--admin-ink)]{% endif %}"
       >

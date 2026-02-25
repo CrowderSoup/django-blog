@@ -1092,3 +1092,144 @@ class IndieAuthClientForm(forms.ModelForm):
     def save(self, commit=True):
         self.instance.redirect_uris = self.cleaned_data.get("redirect_uris_text", [])
         return super().save(commit=commit)
+
+
+class PluginGitInstallForm(forms.Form):
+    FIELD_CLASS = "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]"
+
+    git_url = forms.URLField(
+        label="Git URL",
+        help_text="Public git repository URL containing a plugin.json file.",
+    )
+    slug = forms.SlugField(
+        label="Plugin slug",
+        help_text="Unique identifier for this plugin (used as directory name).",
+    )
+    ref = forms.CharField(
+        required=False,
+        label="Branch / tag / commit",
+        help_text="Leave blank to use the default branch.",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", self.FIELD_CLASS)
+
+
+class WidgetInstanceForm(forms.Form):
+    FIELD_CLASS = "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]"
+
+    widget_type = forms.ChoiceField(label="Widget type", choices=[])
+    area = forms.ChoiceField(label="Area", choices=[])
+    order = forms.IntegerField(label="Order", initial=0, min_value=0)
+    is_active = forms.BooleanField(label="Active", required=False, initial=True)
+
+    def __init__(self, *args, instance=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance = instance
+
+        # Populate widget type choices from registry
+        from core.plugins import registry
+        self.fields["widget_type"].choices = registry.widget_choices()
+
+        # Populate area choices from active theme
+        from core.themes import get_active_theme_widget_areas
+        areas = get_active_theme_widget_areas()
+        self.fields["area"].choices = [(a["slug"], a["label"]) for a in areas]
+
+        # Build config fields based on selected widget type (or first available)
+        selected_type = None
+        if self.data:
+            selected_type = self.data.get("widget_type")
+        elif instance and instance.widget_type:
+            selected_type = instance.widget_type
+
+        if not selected_type and self.fields["widget_type"].choices:
+            selected_type = self.fields["widget_type"].choices[0][0]
+
+        self._config_field_keys = []
+        if selected_type:
+            cls = registry.get_widget_type(selected_type)
+            if cls:
+                schema_fields = (cls.config_schema or {}).get("fields", {})
+                for key, field_def in schema_fields.items():
+                    form_key = f"config_{key}"
+                    self._config_field_keys.append(key)
+                    field_type = field_def.get("type", "string")
+                    label = field_def.get("label", key)
+                    default = field_def.get("default", "")
+                    initial = ""
+                    if instance and isinstance(instance.config, dict):
+                        initial = instance.config.get(key, default)
+                    elif default:
+                        initial = default
+
+                    if field_type in ("text",):
+                        self.fields[form_key] = forms.CharField(
+                            label=label,
+                            required=False,
+                            initial=initial,
+                            widget=forms.Textarea(attrs={"rows": 5}),
+                        )
+                    elif field_type == "boolean":
+                        self.fields[form_key] = forms.BooleanField(
+                            label=label,
+                            required=False,
+                            initial=bool(initial),
+                        )
+                    elif field_type == "number":
+                        self.fields[form_key] = forms.IntegerField(
+                            label=label,
+                            required=False,
+                            initial=int(initial) if initial else None,
+                            min_value=0,
+                        )
+                    else:
+                        self.fields[form_key] = forms.CharField(
+                            label=label,
+                            required=False,
+                            initial=initial,
+                        )
+
+        # If editing an existing instance, populate initial values
+        if instance:
+            self.fields["widget_type"].initial = instance.widget_type
+            self.fields["area"].initial = instance.area
+            self.fields["order"].initial = instance.order
+            self.fields["is_active"].initial = instance.is_active
+
+        for name, field in self.fields.items():
+            if name == "is_active":
+                continue
+            field.widget.attrs.setdefault("class", self.FIELD_CLASS)
+
+    def clean_area(self):
+        area = self.cleaned_data.get("area")
+        from core.themes import get_active_theme_widget_areas
+        areas = get_active_theme_widget_areas()
+        valid_slugs = {a["slug"] for a in areas}
+        if area not in valid_slugs:
+            raise ValidationError(f"'{area}' is not a valid widget area for the active theme.")
+        return area
+
+    def save_instance(self):
+        """Save to a WidgetInstance, creating or updating as needed."""
+        from widgets.models import WidgetInstance
+
+        config = {}
+        for key in self._config_field_keys:
+            config[key] = self.cleaned_data.get(f"config_{key}")
+
+        if self.instance and self.instance.pk:
+            obj = self.instance
+        else:
+            obj = WidgetInstance()
+
+        obj.widget_type = self.cleaned_data["widget_type"]
+        obj.area = self.cleaned_data["area"]
+        obj.order = self.cleaned_data["order"]
+        obj.is_active = self.cleaned_data.get("is_active", True)
+        obj.config = config
+        obj.save()
+        return obj
