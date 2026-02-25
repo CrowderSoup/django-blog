@@ -1,0 +1,84 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}Plugins{% endblock %}
+
+{% block content %}
+<div class="site-settings-layout grid gap-6 lg:grid-cols-[220px_1fr]">
+  {% include "site_admin/settings/_sidebar.html" %}
+  <div class="flex flex-col gap-6">
+    <section class="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <div class="text-sm uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Site settings</div>
+        <h1 class="text-2xl font-semibold">Plugins</h1>
+        <p class="mt-1 text-sm text-[color:var(--admin-muted)]">Manage installed plugins. Third-party plugins require a server restart after install.</p>
+      </div>
+      <a
+        href="{% url 'site_admin:plugin_install' %}"
+        class="rounded-full bg-[color:var(--admin-accent)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+      >
+        Install plugin
+      </a>
+    </section>
+
+    {% include "site_admin/_messages.html" with wrapper_class="space-y-2" %}
+
+    <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+      {% if plugins %}
+      <ul class="divide-y divide-[color:var(--admin-border)]">
+        {% for entry in plugins %}
+        <li class="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
+          <div>
+            <p class="font-semibold">
+              {% if entry.manage_url %}
+              <a href="{{ entry.manage_url }}" class="hover:text-[color:var(--admin-accent)]">{{ entry.install.label|default:entry.install.name }}</a>
+              {% else %}
+              {{ entry.install.label|default:entry.install.name }}
+              {% endif %}
+            </p>
+            <p class="text-sm text-[color:var(--admin-muted)]">
+              {{ entry.install.django_app }}{% if entry.install.version %} &middot; v{{ entry.install.version }}{% endif %} &middot; {{ entry.install.get_source_type_display }}
+            </p>
+          </div>
+          <div class="flex gap-2">
+            {% if entry.manage_url %}
+            <a
+              href="{{ entry.manage_url }}"
+              class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-sm font-semibold transition hover:bg-[color:var(--admin-bg)]"
+            >
+              Manage
+            </a>
+            {% endif %}
+            {% if entry.install.source_type == "git" %}
+            <form method="post" action="{% url 'site_admin:plugin_update' slug=entry.install.name %}">
+              {% csrf_token %}
+              <button
+                type="submit"
+                class="rounded-full border border-[color:var(--admin-border)] px-3 py-1 text-sm font-semibold transition hover:bg-[color:var(--admin-bg)]"
+              >
+                Update
+              </button>
+            </form>
+            {% endif %}
+            {% if entry.install.source_type != "builtin" %}
+            <form method="post" action="{% url 'site_admin:plugin_remove' slug=entry.install.name %}">
+              {% csrf_token %}
+              <button
+                type="submit"
+                class="rounded-full border border-red-300 px-3 py-1 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                onclick="return confirm('Remove plugin {{ entry.install.name }}? This cannot be undone.');"
+              >
+                Remove
+              </button>
+            </form>
+            {% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-sm text-[color:var(--admin-muted)]">No plugins installed yet. <a href="{% url 'site_admin:plugin_install' %}" class="text-[color:var(--admin-accent)] hover:underline">Install one</a>.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

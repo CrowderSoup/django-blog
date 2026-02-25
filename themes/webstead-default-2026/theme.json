@@ -3,6 +3,10 @@
   "author": "CrowderSoup",
   "version": "0.1.3",
   "description": "Reference theme with annotated templates and assets for Webstead-style blogs.",
+  "widget_areas": [
+    {"slug": "before_content", "label": "Before Content"},
+    {"slug": "footer", "label": "Footer"}
+  ],
   "settings": {
     "fields": {
       "ink_color": {

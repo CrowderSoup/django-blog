@@ -387,6 +387,7 @@ def metadata(request):
     return JsonResponse(_build_metadata_payload(request))
 
 
+@csrf_exempt
 def authorize(request):
     if request.method == "POST":
         return _authorize_post(request)
@@ -464,7 +465,68 @@ def _authorize_get(request):
     return render(request, "indieauth/authorize.html", context)
 
 
+def _verify_code_at_authorization_endpoint(request):
+    """Handle server-to-server code verification POSTs at the authorization endpoint.
+
+    Per IndieAuth spec §5.3, clients that only need identity (no access token)
+    exchange the authorization code here and receive {"me": "..."} in return.
+    """
+    code = request.POST.get("code", "")
+    client_id = request.POST.get("client_id", "")
+    redirect_uri = request.POST.get("redirect_uri", "")
+    code_verifier = request.POST.get("code_verifier", "")
+
+    if not code or not client_id or not redirect_uri or not code_verifier:
+        response = JsonResponse({"error": "invalid_request"}, status=400)
+        _log_indieauth_error(request, response)
+        return response
+
+    with transaction.atomic():
+        code_hash = _hash_token(code)
+        auth_code = (
+            IndieAuthAuthorizationCode.objects.select_for_update()
+            .filter(code_hash=code_hash, used_at__isnull=True)
+            .first()
+        )
+        if not auth_code:
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
+        if auth_code.expires_at <= timezone.now():
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
+        if auth_code.client_id != client_id or auth_code.redirect_uri != redirect_uri:
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
+        if auth_code.code_challenge_method != "S256":
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
+
+        computed = _base64url_sha256(code_verifier)
+        if computed != auth_code.code_challenge:
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
+
+        auth_code.used_at = timezone.now()
+        auth_code.save(update_fields=["used_at"])
+
+    return JsonResponse({"me": auth_code.me})
+
+
 def _authorize_post(request):
+    # Server-to-server code verification (IndieAuth spec §5.3).
+    # Clients that only need identity (no token) POST the code here instead of
+    # the token endpoint.  These requests come without a browser session or CSRF
+    # token, so they must be handled before the user-auth check.
+    code = request.POST.get("code", "")
+    code_verifier = request.POST.get("code_verifier", "")
+    if code and code_verifier:
+        return _verify_code_at_authorization_endpoint(request)
+
     if not request.user.is_authenticated:
         login_url = reverse("site_admin:login")
         return redirect(f"{login_url}?{urlencode({'next': request.get_full_path()})}")

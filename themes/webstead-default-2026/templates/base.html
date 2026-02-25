@@ -1,4 +1,4 @@
-{% load static author %}
+{% load static author widgets %}
 <!doctype html>
 <html lang="en">
   <head>
@@ -110,6 +110,8 @@
       {% endif %}
     </header>
 
+    {% render_widget_area "before_content" %}
+
     <main id="content" class="site-main">
       {% block content %}{% endblock %}
     </main>
@@ -127,6 +129,8 @@
         {% endfor %}
       </nav>
       {% endif %}
+
+      {% render_widget_area "footer" %}
 
       {% block footer_extra %}
       {% endblock %}

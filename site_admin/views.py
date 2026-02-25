@@ -42,6 +42,7 @@ from core.models import (
     Menu,
     MenuItem,
     Page,
+    PluginInstall,
     Redirect,
     RequestErrorLog,
     SiteConfiguration,
@@ -90,6 +91,7 @@ from .forms import (
     MenuItemForm,
     PageFilterForm,
     PageForm,
+    PluginGitInstallForm,
     PostFilterForm,
     PostForm,
     RedirectForm,
@@ -98,6 +100,7 @@ from .forms import (
     ThemeGitInstallForm,
     ThemeFileForm,
     ThemeSettingsForm,
+    WidgetInstanceForm,
     ThemeUploadForm,
     UserAgentBotRuleForm,
     WebmentionCreateForm,
@@ -3825,3 +3828,204 @@ def nearby_checkin_places(request):
 
     places.sort(key=lambda p: p["distance_km"])
     return JsonResponse({"places": places[:10]})
+
+
+# ---------------------------------------------------------------------------
+# Plugin management views
+# ---------------------------------------------------------------------------
+
+
+@require_http_methods(["GET"])
+def plugin_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from core.plugin_loader import discover_plugins
+    from core.plugins import registry
+
+    db_installs = {inst.name: inst for inst in PluginInstall.objects.all()}
+    fs_plugins = {p.name: p for p in discover_plugins()}
+
+    plugins = []
+    for name, install in db_installs.items():
+        fs = fs_plugins.get(name)
+        manage_url = None
+        plugin_instance = registry.get_plugin(name)
+        if plugin_instance:
+            nav_items = plugin_instance.get_admin_nav_items()
+            if nav_items:
+                try:
+                    manage_url = reverse(nav_items[0]["url_name"])
+                except Exception:
+                    pass
+        plugins.append({"install": install, "definition": fs, "manage_url": manage_url})
+
+    return render(request, "site_admin/plugins/index.html", {"plugins": plugins})
+
+
+@require_http_methods(["GET", "POST"])
+def plugin_install(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    form = PluginGitInstallForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        from core.plugin_loader import PluginInstallError, install_plugin_from_git
+
+        try:
+            plugin = install_plugin_from_git(
+                form.cleaned_data["git_url"],
+                form.cleaned_data["slug"],
+                ref=form.cleaned_data.get("ref", ""),
+            )
+            messages.success(
+                request,
+                f"Plugin '{plugin.label}' installed. The server is restarting to load it.",
+            )
+            return redirect("site_admin:plugin_list")
+        except PluginInstallError as exc:
+            messages.error(request, str(exc))
+        except Exception as exc:
+            logger.exception("Unexpected error installing plugin")
+            messages.error(request, f"Unexpected error: {exc}")
+
+    return render(request, "site_admin/plugins/install.html", {"form": form})
+
+
+@require_POST
+def plugin_update(request, slug):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from core.plugin_loader import PluginInstallError, update_plugin_from_git
+
+    install = get_object_or_404(PluginInstall, name=slug)
+    try:
+        update_plugin_from_git(install)
+        messages.success(request, f"Plugin '{install.label or install.name}' updated successfully.")
+    except PluginInstallError as exc:
+        messages.error(request, str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error updating plugin %s", slug)
+        messages.error(request, f"Unexpected error: {exc}")
+
+    return redirect("site_admin:plugin_list")
+
+
+@require_POST
+def plugin_remove(request, slug):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from core.plugin_loader import remove_plugin
+
+    try:
+        remove_plugin(slug)
+        messages.success(request, f"Plugin '{slug}' removed. Restart required for changes to take effect.")
+    except Exception as exc:
+        logger.exception("Unexpected error removing plugin %s", slug)
+        messages.error(request, f"Unexpected error: {exc}")
+
+    return redirect("site_admin:plugin_list")
+
+
+@require_GET
+def plugin_restart_status(request):
+    """Lightweight health check endpoint polled during server restart."""
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+    return JsonResponse({"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
+# Widget management views
+# ---------------------------------------------------------------------------
+
+
+@require_http_methods(["GET"])
+def widget_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from widgets.models import WidgetInstance
+    from core.themes import get_active_theme_widget_areas
+
+    widgets = WidgetInstance.objects.all()
+    areas = get_active_theme_widget_areas()
+
+    return render(request, "site_admin/widgets/index.html", {
+        "widgets": widgets,
+        "areas": areas,
+    })
+
+
+@require_http_methods(["GET", "POST"])
+def widget_add(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    form = WidgetInstanceForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        obj = form.save_instance()
+        messages.success(request, "Widget added successfully.")
+        return redirect("site_admin:widget_list")
+
+    return render(request, "site_admin/widgets/edit.html", {"form": form, "widget": None})
+
+
+@require_http_methods(["GET", "POST"])
+def widget_edit(request, pk):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from widgets.models import WidgetInstance
+
+    widget = get_object_or_404(WidgetInstance, pk=pk)
+    form = WidgetInstanceForm(request.POST or None, instance=widget)
+    if request.method == "POST" and form.is_valid():
+        form.save_instance()
+        messages.success(request, "Widget updated successfully.")
+        return redirect("site_admin:widget_list")
+
+    return render(request, "site_admin/widgets/edit.html", {"form": form, "widget": widget})
+
+
+@require_POST
+def widget_delete(request, pk):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from widgets.models import WidgetInstance
+
+    widget = get_object_or_404(WidgetInstance, pk=pk)
+    widget.delete()
+    messages.success(request, "Widget deleted.")
+    return redirect("site_admin:widget_list")
+
+
+@require_POST
+def widget_reorder(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from widgets.models import WidgetInstance
+
+    try:
+        data = json.loads(request.body)
+        order_map = data.get("order", {})
+        for pk_str, order_val in order_map.items():
+            WidgetInstance.objects.filter(pk=int(pk_str)).update(order=int(order_val))
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    return JsonResponse({"status": "ok"})
