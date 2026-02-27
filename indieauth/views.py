@@ -7,6 +7,7 @@ import secrets
 import socket
 from datetime import timedelta
 from html.parser import HTMLParser
+import http.client
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -336,7 +337,7 @@ def _get_or_fetch_client(client_id: str) -> IndieAuthClient | None:
             client.name = metadata.get("client_name") or client.name
             client.logo_url = metadata.get("logo_url") or client.logo_url
             client.fetch_error = ""
-        except (HTTPError, URLError, TimeoutError, ValueError) as exc:
+        except (HTTPError, URLError, TimeoutError, ValueError, http.client.HTTPException) as exc:
             client.fetch_error = str(exc)
         client.last_fetched_at = timezone.now()
         client.save()

@@ -285,6 +285,11 @@ LOGGING = {
         "console": {"class": "logging.StreamHandler"},
     },
     "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
         "micropub.webmention": {
             "handlers": ["console"],
             "level": "INFO",
