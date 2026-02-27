@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     "analytics.apps.AnalyticsConfig",
     "site_admin.apps.SiteAdminConfig",
     "widgets.apps.WidgetsConfig",
+    "microsub.apps.MicrosubConfig",
 
     # Third-party plugins from config/installed_plugins.py
     *INSTALLED_PLUGIN_APPS,

@@ -1,0 +1,51 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}{% if channel %}Rename channel{% else %}New channel{% endif %} – Microsub{% endblock %}
+
+{% block content %}
+  <div class="site-settings-layout grid gap-6 lg:grid-cols-[220px_1fr]">
+    {% include "site_admin/settings/_sidebar.html" %}
+    <div class="flex flex-col gap-6">
+      <section class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div class="text-sm uppercase tracking-[0.2em] text-[color:var(--admin-muted)]">Microsub</div>
+          <h1 class="text-2xl font-semibold">{% if channel %}Rename "{{ channel.name }}"{% else %}New channel{% endif %}</h1>
+        </div>
+        <a
+          href="{% if channel %}{% url 'site_admin:microsub_channel_detail' uid=channel.uid %}{% else %}{% url 'site_admin:microsub_channel_list' %}{% endif %}"
+          class="rounded-full border border-[color:var(--admin-border)] px-4 py-2 text-sm font-semibold text-[color:var(--admin-ink)] transition hover:bg-[color:var(--admin-bg)]"
+        >
+          Cancel
+        </a>
+      </section>
+
+      {% include "site_admin/_messages.html" with wrapper_class="space-y-2" %}
+
+      <section class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-6 shadow-sm">
+        <form method="post" class="flex flex-col gap-4 max-w-md">
+          {% csrf_token %}
+          <div>
+            <label
+              for="{{ form.name.id_for_label }}"
+              class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+            >
+              Channel name
+            </label>
+            {{ form.name }}
+            {% if form.name.errors %}
+              <div class="mt-1 text-xs text-rose-600">{{ form.name.errors|join:", " }}</div>
+            {% endif %}
+          </div>
+          <div>
+            <button
+              type="submit"
+              class="rounded-full bg-[color:var(--admin-accent)] px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+            >
+              {% if channel %}Save{% else %}Create channel{% endif %}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+{% endblock %}
