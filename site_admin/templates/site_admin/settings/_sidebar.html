@@ -45,6 +45,12 @@
       >
         IndieAuth
       </a>
+      <a
+        href="{% url 'site_admin:microsub_channel_list' %}"
+        class="rounded-2xl px-4 py-2 transition {% if current == 'microsub_channel_list' or current == 'microsub_channel_create' or current == 'microsub_channel_detail' or current == 'microsub_channel_edit' or current == 'microsub_channel_delete' or current == 'microsub_feed_add' %}bg-[color:var(--admin-bg)] text-[color:var(--admin-ink)]{% else %}text-[color:var(--admin-muted)] hover:bg-[color:var(--admin-bg)] hover:text-[color:var(--admin-ink)]{% endif %}"
+      >
+        Microsub
+      </a>
       {% if settings.developer_tools_enabled %}
         <a
           href="{% url 'site_admin:error_log_list' %}"

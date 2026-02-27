@@ -190,4 +190,15 @@ urlpatterns = [
     path("settings/plugins/widgets/reorder/", views.widget_reorder, name="widget_reorder"),
     path("settings/plugins/widgets/<int:pk>/edit/", views.widget_edit, name="widget_edit"),
     path("settings/plugins/widgets/<int:pk>/delete/", views.widget_delete, name="widget_delete"),
+    # Microsub
+    path("microsub/", views.microsub_channel_list, name="microsub_channel_list"),
+    path("microsub/channels/new/", views.microsub_channel_create, name="microsub_channel_create"),
+    path("microsub/channels/reorder/", views.microsub_channel_reorder, name="microsub_channel_reorder"),
+    path("microsub/channels/<slug:uid>/", views.microsub_channel_detail, name="microsub_channel_detail"),
+    path("microsub/channels/<slug:uid>/edit/", views.microsub_channel_edit, name="microsub_channel_edit"),
+    path("microsub/channels/<slug:uid>/delete/", views.microsub_channel_delete, name="microsub_channel_delete"),
+    path("microsub/channels/<slug:uid>/mark-read/", views.microsub_channel_mark_read, name="microsub_channel_mark_read"),
+    path("microsub/channels/<slug:uid>/feeds/add/", views.microsub_feed_add, name="microsub_feed_add"),
+    path("microsub/channels/<slug:uid>/feeds/<int:feed_id>/remove/", views.microsub_feed_remove, name="microsub_feed_remove"),
+    path("microsub/import/", views.microsub_import_opml, name="microsub_import_opml"),
 ]

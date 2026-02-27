@@ -4029,3 +4029,300 @@ def widget_reorder(request):
         return JsonResponse({"error": str(exc)}, status=400)
 
     return JsonResponse({"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
+# Microsub admin views
+# ---------------------------------------------------------------------------
+
+@require_http_methods(["GET"])
+def microsub_channel_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+    from django.db.models import Count, Q
+
+    channels = Channel.objects.annotate(
+        entry_count=Count("entries"),
+        unread_count=Count("entries", filter=Q(entries__is_read=False, entries__is_removed=False)),
+        feed_count=Count("subscriptions", filter=Q(subscriptions__is_active=True)),
+    ).order_by("order", "id")
+
+    return render(request, "site_admin/microsub/channel_list.html", {"channels": channels})
+
+
+@require_http_methods(["GET", "POST"])
+def microsub_channel_create(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+    from site_admin.forms import ChannelForm
+    from django.utils.text import slugify
+
+    if request.method == "POST":
+        form = ChannelForm(request.POST)
+        if form.is_valid():
+            name = form.cleaned_data["name"]
+            base_slug = slugify(name) or "channel"
+            uid = base_slug
+            suffix = 1
+            while Channel.objects.filter(uid=uid).exists():
+                uid = f"{base_slug}-{suffix}"
+                suffix += 1
+            max_order = Channel.objects.order_by("-order").values_list("order", flat=True).first() or 0
+            channel = Channel.objects.create(uid=uid, name=name, order=max_order + 1)
+            messages.success(request, f'Channel "{channel.name}" created.')
+            return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
+    else:
+        form = ChannelForm()
+
+    return render(request, "site_admin/microsub/channel_form.html", {"form": form, "channel": None})
+
+
+@require_http_methods(["GET"])
+def microsub_channel_detail(request, uid):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+
+    channel = get_object_or_404(Channel, uid=uid)
+    subscriptions = channel.subscriptions.filter(is_active=True).order_by("name", "url")
+    entry_count = channel.entries.filter(is_removed=False).count()
+    unread_count = channel.entries.filter(is_read=False, is_removed=False).count()
+
+    return render(
+        request,
+        "site_admin/microsub/channel_detail.html",
+        {
+            "channel": channel,
+            "subscriptions": subscriptions,
+            "entry_count": entry_count,
+            "unread_count": unread_count,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def microsub_channel_edit(request, uid):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+    from site_admin.forms import ChannelForm
+
+    channel = get_object_or_404(Channel, uid=uid)
+
+    if request.method == "POST":
+        form = ChannelForm(request.POST)
+        if form.is_valid():
+            channel.name = form.cleaned_data["name"]
+            channel.save(update_fields=["name"])
+            messages.success(request, "Channel renamed.")
+            return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
+    else:
+        form = ChannelForm(initial={"name": channel.name})
+
+    return render(
+        request,
+        "site_admin/microsub/channel_form.html",
+        {"form": form, "channel": channel},
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def microsub_channel_delete(request, uid):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+
+    channel = get_object_or_404(Channel, uid=uid)
+
+    if channel.uid == "notifications":
+        messages.error(request, "The notifications channel cannot be deleted.")
+        return redirect("site_admin:microsub_channel_detail", uid=uid)
+
+    if request.method == "POST":
+        channel.delete()
+        messages.success(request, "Channel deleted.")
+        return redirect("site_admin:microsub_channel_list")
+
+    return render(
+        request,
+        "site_admin/microsub/channel_confirm_delete.html",
+        {"channel": channel},
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def microsub_feed_add(request, uid):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel, Subscription
+    from site_admin.forms import SubscriptionForm
+
+    channel = get_object_or_404(Channel, uid=uid)
+
+    if request.method == "POST":
+        form = SubscriptionForm(request.POST)
+        if form.is_valid():
+            feed_url = form.cleaned_data["url"]
+            sub, created = Subscription.objects.get_or_create(
+                channel=channel,
+                url=feed_url,
+                defaults={"is_active": True},
+            )
+            if not created:
+                sub.is_active = True
+                sub.save(update_fields=["is_active"])
+                messages.info(request, "Feed already subscribed (reactivated).")
+            else:
+                messages.success(request, f"Subscribed to {feed_url}.")
+            return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
+    else:
+        form = SubscriptionForm(initial={"channel": uid})
+
+    return render(
+        request,
+        "site_admin/microsub/feed_add.html",
+        {"form": form, "channel": channel},
+    )
+
+
+@require_POST
+def microsub_feed_remove(request, uid, feed_id):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel, Subscription
+
+    channel = get_object_or_404(Channel, uid=uid)
+    sub = get_object_or_404(Subscription, pk=feed_id, channel=channel)
+    sub.delete()
+    messages.success(request, "Feed removed.")
+    return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
+
+
+@require_POST
+def microsub_channel_mark_read(request, uid):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel, Entry
+
+    channel = get_object_or_404(Channel, uid=uid)
+    updated = Entry.objects.filter(channel=channel, is_read=False).update(is_read=True)
+    messages.success(request, f"Marked {updated} entr{'y' if updated == 1 else 'ies'} as read.")
+    return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
+
+
+@require_POST
+def microsub_channel_reorder(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+
+    try:
+        data = json.loads(request.body)
+        order_list = data.get("channels", [])
+        for i, uid in enumerate(order_list):
+            Channel.objects.filter(uid=uid).update(order=i)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    return JsonResponse({"status": "ok"})
+
+
+@require_http_methods(["GET", "POST"])
+def microsub_import_opml(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel, Subscription
+    from microsub.opml import parse_opml
+    from site_admin.forms import OPMLImportForm
+    from django.utils.text import slugify
+
+    results = None
+    form = OPMLImportForm()
+
+    if request.method == "POST":
+        form = OPMLImportForm(request.POST, request.FILES)
+        if form.is_valid():
+            try:
+                content = request.FILES["opml_file"].read()
+                parsed = parse_opml(content)
+            except ValueError as exc:
+                form.add_error("opml_file", str(exc))
+                parsed = None
+
+            if parsed is not None:
+                max_order = (
+                    Channel.objects.order_by("-order").values_list("order", flat=True).first() or 0
+                )
+                results = {"channels": [], "total_feeds": 0, "new_feeds": 0}
+
+                for group in parsed:
+                    channel_name = group["name"]
+                    base_slug = slugify(channel_name) or "channel"
+                    uid = base_slug
+                    suffix = 1
+                    while Channel.objects.filter(uid=uid).exists():
+                        # If a channel with this uid already has the same name, use it.
+                        if Channel.objects.filter(uid=uid, name=channel_name).exists():
+                            break
+                        uid = f"{base_slug}-{suffix}"
+                        suffix += 1
+
+                    channel, channel_created = Channel.objects.get_or_create(
+                        uid=uid,
+                        defaults={"name": channel_name, "order": max_order + 1},
+                    )
+                    if channel_created:
+                        max_order += 1
+
+                    channel_result = {
+                        "channel": channel,
+                        "created": channel_created,
+                        "feeds_total": len(group["feeds"]),
+                        "feeds_new": 0,
+                    }
+
+                    for feed in group["feeds"]:
+                        sub, created = Subscription.objects.get_or_create(
+                            channel=channel,
+                            url=feed["url"],
+                            defaults={"name": feed["name"], "is_active": True},
+                        )
+                        if not created and not sub.is_active:
+                            sub.is_active = True
+                            sub.save(update_fields=["is_active"])
+                        if created:
+                            channel_result["feeds_new"] += 1
+
+                    results["channels"].append(channel_result)
+                    results["total_feeds"] += channel_result["feeds_total"]
+                    results["new_feeds"] += channel_result["feeds_new"]
+
+                messages.success(
+                    request,
+                    f"Imported {results['new_feeds']} new feed(s) across "
+                    f"{len(results['channels'])} channel(s).",
+                )
+
+    return render(request, "site_admin/microsub/import_opml.html", {"form": form, "results": results})

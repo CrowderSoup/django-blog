@@ -1233,3 +1233,35 @@ class WidgetInstanceForm(forms.Form):
         obj.config = config
         obj.save()
         return obj
+
+
+_ADMIN_INPUT_CLASS = (
+    "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white "
+    "px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] "
+    "focus:ring-[color:var(--admin-accent)]"
+)
+
+
+class ChannelForm(forms.Form):
+    name = forms.CharField(
+        max_length=255,
+        label="Channel name",
+        widget=forms.TextInput(attrs={"class": _ADMIN_INPUT_CLASS, "placeholder": "e.g. Blogs"}),
+    )
+
+
+class SubscriptionForm(forms.Form):
+    url = forms.URLField(
+        max_length=2000,
+        label="Feed URL",
+        widget=forms.URLInput(attrs={"class": _ADMIN_INPUT_CLASS, "placeholder": "https://example.com/feed.xml"}),
+    )
+    channel = forms.CharField(widget=forms.HiddenInput())
+
+
+class OPMLImportForm(forms.Form):
+    opml_file = forms.FileField(
+        label="OPML file",
+        help_text="Upload an OPML file exported from your feed reader.",
+        widget=forms.FileInput(attrs={"accept": ".opml,.xml", "class": _ADMIN_INPUT_CLASS}),
+    )
