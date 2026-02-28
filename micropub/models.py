@@ -26,8 +26,8 @@ class Webmention(models.Model):
         (TIMED_OUT, "Timed out"),
     ]
 
-    source = models.URLField()
-    target = models.URLField()
+    source = models.URLField(max_length=2000)
+    target = models.URLField(max_length=2000)
     mention_type = models.CharField(max_length=16, choices=MENTION_CHOICES, default=MENTION)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=PENDING)
     created_at = models.DateTimeField(auto_now_add=True)
