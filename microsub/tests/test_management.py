@@ -26,21 +26,21 @@ class PollMicrosubFeedsCommandTests(TestCase):
         return out.getvalue()
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([], None))
+           return_value=([], None, {}))
     def test_polls_active_subscriptions(self, mock_fetch):
         _make_sub(self.channel)
         self._call()
         mock_fetch.assert_called_once()
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([], None))
+           return_value=([], None, {}))
     def test_skips_inactive_subscriptions(self, mock_fetch):
         _make_sub(self.channel, is_active=False)
         self._call()
         mock_fetch.assert_not_called()
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([], None))
+           return_value=([], None, {}))
     def test_channel_filter_limits_subs(self, mock_fetch):
         ch2 = Channel.objects.create(uid="tech", name="Tech")
         _make_sub(self.channel, url="https://news.example.com/feed")
@@ -51,7 +51,7 @@ class PollMicrosubFeedsCommandTests(TestCase):
         self.assertEqual(call_url, "https://tech.example.com/feed")
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([], None))
+           return_value=([], None, {}))
     def test_skips_recently_fetched_without_force(self, mock_fetch):
         sub = _make_sub(self.channel)
         sub.last_fetched_at = timezone.now() - datetime.timedelta(minutes=5)
@@ -60,7 +60,7 @@ class PollMicrosubFeedsCommandTests(TestCase):
         mock_fetch.assert_not_called()
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([], None))
+           return_value=([], None, {}))
     def test_force_polls_recently_fetched(self, mock_fetch):
         sub = _make_sub(self.channel)
         sub.last_fetched_at = timezone.now() - datetime.timedelta(minutes=5)
@@ -69,14 +69,14 @@ class PollMicrosubFeedsCommandTests(TestCase):
         mock_fetch.assert_called_once()
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([], None))
+           return_value=([], None, {}))
     def test_polls_sub_with_no_last_fetched_at(self, mock_fetch):
         _make_sub(self.channel)  # last_fetched_at is None
         self._call()
         mock_fetch.assert_called_once()
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([], None))
+           return_value=([], None, {}))
     def test_polls_sub_older_than_15_minutes(self, mock_fetch):
         sub = _make_sub(self.channel)
         sub.last_fetched_at = timezone.now() - datetime.timedelta(minutes=20)
@@ -85,7 +85,7 @@ class PollMicrosubFeedsCommandTests(TestCase):
         mock_fetch.assert_called_once()
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([{"_uid": "e1", "type": "entry"}], None))
+           return_value=([{"_uid": "e1", "type": "entry"}], None, {}))
     def test_successful_fetch_updates_last_fetched_at(self, mock_fetch):
         sub = _make_sub(self.channel)
         before = timezone.now()
@@ -95,7 +95,7 @@ class PollMicrosubFeedsCommandTests(TestCase):
         self.assertGreaterEqual(sub.last_fetched_at, before)
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([{"_uid": "e1"}], None))
+           return_value=([{"_uid": "e1"}], None, {}))
     def test_successful_fetch_clears_fetch_error(self, mock_fetch):
         sub = _make_sub(self.channel)
         sub.fetch_error = "previous error"
@@ -105,7 +105,7 @@ class PollMicrosubFeedsCommandTests(TestCase):
         self.assertEqual(sub.fetch_error, "")
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([{"_uid": "e1"}], None))
+           return_value=([{"_uid": "e1"}], None, {}))
     def test_successful_fetch_stores_entries(self, mock_fetch):
         _make_sub(self.channel)
         self._call()
@@ -133,7 +133,7 @@ class PollMicrosubFeedsCommandTests(TestCase):
     def test_fetch_error_continues_to_next_sub(self, mock_fetch):
         mock_fetch.side_effect = [
             RuntimeError("first fails"),
-            ([{"_uid": "e1"}], None),
+            ([{"_uid": "e1"}], None, {}),
         ]
         _make_sub(self.channel, url="https://a.example.com/feed")
         _make_sub(self.channel, url="https://b.example.com/feed")
@@ -141,7 +141,7 @@ class PollMicrosubFeedsCommandTests(TestCase):
         self.assertEqual(Entry.objects.count(), 1)
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([], "https://hub.example.com/"))
+           return_value=([], "https://hub.example.com/", {}))
     def test_hub_url_saved_when_discovered(self, mock_fetch):
         sub = _make_sub(self.channel)
         self._call()
@@ -149,7 +149,7 @@ class PollMicrosubFeedsCommandTests(TestCase):
         self.assertEqual(sub.websub_hub, "https://hub.example.com/")
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([], "https://new-hub.example.com/"))
+           return_value=([], "https://new-hub.example.com/", {}))
     def test_existing_hub_not_overwritten(self, mock_fetch):
         sub = _make_sub(self.channel, websub_hub="https://existing-hub.example.com/")
         self._call()
@@ -157,7 +157,7 @@ class PollMicrosubFeedsCommandTests(TestCase):
         self.assertEqual(sub.websub_hub, "https://existing-hub.example.com/")
 
     @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
-           return_value=([], None))
+           return_value=([], None, {}))
     def test_output_contains_done(self, mock_fetch):
         _make_sub(self.channel)
         output = self._call()

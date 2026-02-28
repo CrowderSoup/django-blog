@@ -176,7 +176,7 @@ class PostFollowTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     @authorized
-    @patch("microsub.views.fetch_and_parse_feed", return_value=([], None))
+    @patch("microsub.views.fetch_and_parse_feed", return_value=([], None, {}))
     def test_creates_new_subscription(self, mock_fetch, _auth):
         response = self.client.post(
             MICROSUB_URL,
@@ -187,7 +187,7 @@ class PostFollowTests(TestCase):
         self.assertTrue(Subscription.objects.filter(url="https://example.com/feed").exists())
 
     @authorized
-    @patch("microsub.views.fetch_and_parse_feed", return_value=([], None))
+    @patch("microsub.views.fetch_and_parse_feed", return_value=([], None, {}))
     def test_reactivates_inactive_subscription(self, mock_fetch, _auth):
         Subscription.objects.create(channel=self.channel, url="https://example.com/feed", is_active=False)
         self.client.post(
@@ -200,7 +200,7 @@ class PostFollowTests(TestCase):
 
     @authorized
     @patch("microsub.views._subscribe_to_websub")
-    @patch("microsub.views.fetch_and_parse_feed", return_value=([], "https://hub.example.com/"))
+    @patch("microsub.views.fetch_and_parse_feed", return_value=([], "https://hub.example.com/", {}))
     def test_hub_discovered_and_stored(self, mock_fetch, mock_websub, _auth):
         self.client.post(
             MICROSUB_URL,
@@ -223,7 +223,7 @@ class PostFollowTests(TestCase):
         self.assertTrue(Subscription.objects.filter(url="https://example.com/feed").exists())
 
     @authorized
-    @patch("microsub.views.fetch_and_parse_feed", return_value=([], None))
+    @patch("microsub.views.fetch_and_parse_feed", return_value=([], None, {}))
     def test_response_has_feed_shape(self, mock_fetch, _auth):
         response = self.client.post(
             MICROSUB_URL,

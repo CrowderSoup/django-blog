@@ -7,7 +7,10 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
+from urllib.parse import urljoin as _urljoin
+
 from django.db import IntegrityError
+from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.text import slugify
@@ -214,23 +217,37 @@ class MicrosubView(View):
         blocked_urls.update(BlockedUser.objects.filter(channel=channel).values_list("url", flat=True))
         excluded = muted_urls | blocked_urls
 
+        # Cursor-based paging using entry PKs as stable cursors.
+        # We look up the cursor entry to get its (published, id) for a compound filter
+        # that handles entries sharing the same published timestamp correctly.
         before_cursor = request.GET.get("before")
         after_cursor = request.GET.get("after")
 
         if before_cursor:
             try:
-                from dateutil.parser import parse as parse_dt
-                qs = qs.filter(published__lt=parse_dt(before_cursor))
-            except Exception:
-                pass
-        if after_cursor:
-            try:
-                from dateutil.parser import parse as parse_dt
-                qs = qs.filter(published__gt=parse_dt(after_cursor))
-            except Exception:
+                cursor_id = int(before_cursor)
+                cursor = channel.entries.filter(pk=cursor_id).values("published", "id").first()
+                if cursor:
+                    qs = qs.filter(
+                        Q(published__lt=cursor["published"])
+                        | Q(published=cursor["published"], id__lt=cursor_id)
+                    )
+            except (ValueError, TypeError):
                 pass
 
-        qs = qs.select_related("subscription").order_by("-published")[:PAGE_SIZE + 1]
+        if after_cursor:
+            try:
+                cursor_id = int(after_cursor)
+                cursor = channel.entries.filter(pk=cursor_id).values("published", "id").first()
+                if cursor:
+                    qs = qs.filter(
+                        Q(published__gt=cursor["published"])
+                        | Q(published=cursor["published"], id__gt=cursor_id)
+                    )
+            except (ValueError, TypeError):
+                pass
+
+        qs = qs.select_related("subscription").order_by("-published", "-id")[:PAGE_SIZE + 1]
         entries_list = list(qs)
         has_more = len(entries_list) > PAGE_SIZE
         entries_list = entries_list[:PAGE_SIZE]
@@ -252,10 +269,10 @@ class MicrosubView(View):
 
         paging = {}
         if filtered:
-            paging["after"] = filtered[0].published.isoformat()
-            paging["before"] = filtered[-1].published.isoformat()
+            paging["after"] = str(filtered[0].pk)
+            paging["before"] = str(filtered[-1].pk)
         if has_more:
-            paging["before"] = entries_list[-1].published.isoformat()
+            paging["before"] = str(entries_list[-1].pk)
 
         return JsonResponse(
             {
@@ -325,7 +342,7 @@ class MicrosubView(View):
                     results.append(
                         {
                             "type": "feed",
-                            "url": feed["url"] if feed["url"].startswith("http") else f"https://{query.rstrip('/')}/{feed['url'].lstrip('/')}",
+                            "url": _urljoin(url, feed["url"]),
                             "name": feed["name"],
                         }
                     )
@@ -419,13 +436,23 @@ class MicrosubView(View):
             sub.is_active = True
             sub.save(update_fields=["is_active"])
 
-        # Try to discover feed name and WebSub hub
+        # Try to discover feed name, photo, and WebSub hub
         if created:
             try:
-                entries, hub_url = fetch_and_parse_feed(url)
+                entries, hub_url, feed_meta = fetch_and_parse_feed(url)
+                update_fields = []
+                if feed_meta.get("name") and not sub.name:
+                    sub.name = feed_meta["name"]
+                    update_fields.append("name")
+                if feed_meta.get("photo") and not sub.photo:
+                    sub.photo = feed_meta["photo"]
+                    update_fields.append("photo")
                 if hub_url and not sub.websub_hub:
                     sub.websub_hub = hub_url
-                    sub.save(update_fields=["websub_hub"])
+                    update_fields.append("websub_hub")
+                if update_fields:
+                    sub.save(update_fields=update_fields)
+                if hub_url:
                     _subscribe_to_websub(sub, request)
             except Exception as exc:
                 logger.debug("Feed discovery failed for %s: %s", url, exc)
@@ -599,13 +626,13 @@ class WebSubCallbackView(View):
                 import json as _json
                 data = _json.loads(request.body.decode("utf-8", errors="replace"))
                 if isinstance(data.get("version"), str) and "jsonfeed" in data["version"]:
-                    entries = _parse_json_feed(data, sub.url)
+                    entries, _ = _parse_json_feed(data, sub.url)
                 else:
-                    entries = _parse_rss_atom(request.body, sub.url)
+                    entries, _ = _parse_rss_atom(request.body, sub.url)
             elif "html" in content_type:
-                entries = _parse_hfeed(request.body.decode("utf-8", errors="replace"), sub.url)
+                entries, _ = _parse_hfeed(request.body.decode("utf-8", errors="replace"), sub.url)
             else:
-                entries = _parse_rss_atom(request.body, sub.url)
+                entries, _ = _parse_rss_atom(request.body, sub.url)
 
             from .views import _store_entries
             _store_entries(sub.channel, sub, entries)

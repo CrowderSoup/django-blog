@@ -49,7 +49,7 @@ class Command(BaseCommand):
 
             self.stdout.write(f"Polling {sub.url} ...")
             try:
-                entries, hub_url = fetch_and_parse_feed(sub.url)
+                entries, hub_url, feed_meta = fetch_and_parse_feed(sub.url)
             except Exception as exc:
                 sub.fetch_error = str(exc)
                 sub.last_fetched_at = now
@@ -57,10 +57,19 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f"  Error: {exc}"))
                 continue
 
-            # Update WebSub hub if discovered and not yet subscribed
+            # Update feed name/photo and WebSub hub if newly discovered
+            meta_fields = []
+            if feed_meta.get("name") and not sub.name:
+                sub.name = feed_meta["name"]
+                meta_fields.append("name")
+            if feed_meta.get("photo") and not sub.photo:
+                sub.photo = feed_meta["photo"]
+                meta_fields.append("photo")
             if hub_url and not sub.websub_hub:
                 sub.websub_hub = hub_url
-                sub.save(update_fields=["websub_hub"])
+                meta_fields.append("websub_hub")
+            if meta_fields:
+                sub.save(update_fields=meta_fields)
 
             # Subscribe to WebSub hub if we haven't yet
             if sub.websub_hub and not sub.websub_subscribed_at:

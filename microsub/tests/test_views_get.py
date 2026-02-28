@@ -217,10 +217,11 @@ class GetTimelineTests(TestCase):
 
     @authorized
     def test_before_cursor_filters_by_published_lt(self, _auth):
-        # "before" cursor is an ISO datetime; returns entries published before it.
+        # "before" cursor is the entry PK of the oldest entry on the current page;
+        # the response should contain entries older than that entry.
         response = self.client.get(
             MICROSUB_URL,
-            {"action": "timeline", "channel": "news", "before": self.e2.published.isoformat()},
+            {"action": "timeline", "channel": "news", "before": str(self.e2.pk)},
             HTTP_AUTHORIZATION="Bearer token",
         )
         items = response.json()["items"]
@@ -229,10 +230,11 @@ class GetTimelineTests(TestCase):
 
     @authorized
     def test_after_cursor_filters_by_published_gt(self, _auth):
-        # "after" cursor is an ISO datetime; returns entries published after it.
+        # "after" cursor is the entry PK of the newest entry on the current page;
+        # the response should contain entries newer than that entry.
         response = self.client.get(
             MICROSUB_URL,
-            {"action": "timeline", "channel": "news", "after": self.e1.published.isoformat()},
+            {"action": "timeline", "channel": "news", "after": str(self.e1.pk)},
             HTTP_AUTHORIZATION="Bearer token",
         )
         items = response.json()["items"]
@@ -243,7 +245,7 @@ class GetTimelineTests(TestCase):
     def test_invalid_cursor_is_ignored(self, _auth):
         response = self.client.get(
             MICROSUB_URL,
-            {"action": "timeline", "channel": "news", "before": "not-a-datetime"},
+            {"action": "timeline", "channel": "news", "before": "not-an-integer"},
             HTTP_AUTHORIZATION="Bearer token",
         )
         self.assertEqual(response.status_code, 200)
@@ -267,23 +269,23 @@ class GetTimelineTests(TestCase):
         self.assertEqual(response.json()["paging"], {})
 
     @authorized
-    def test_paging_after_is_newest_entry_published(self, _auth):
+    def test_paging_after_is_newest_entry_pk(self, _auth):
         # Items ordered newest-first: e2 (newer) then e1 (older).
-        # "after" cursor should be the newest published datetime so clients can poll for new entries.
+        # "after" cursor should be the PK of the newest entry so clients can poll for new entries.
         response = self.client.get(
             MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         )
         paging = response.json()["paging"]
-        self.assertEqual(paging["after"], self.e2.published.isoformat())
+        self.assertEqual(paging["after"], str(self.e2.pk))
 
     @authorized
-    def test_paging_before_is_oldest_entry_published(self, _auth):
-        # "before" cursor should be the oldest published datetime so clients can fetch older entries.
+    def test_paging_before_is_oldest_entry_pk(self, _auth):
+        # "before" cursor should be the PK of the oldest entry so clients can fetch older entries.
         response = self.client.get(
             MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         )
         paging = response.json()["paging"]
-        self.assertEqual(paging["before"], self.e1.published.isoformat())
+        self.assertEqual(paging["before"], str(self.e1.pk))
 
     @authorized
     def test_paging_before_cursor_fetches_next_older_page(self, _auth):

@@ -105,8 +105,7 @@ class AuthorFromMf2Tests(SimpleTestCase):
         result = _author_from_mf2("https://author.example.com/", "https://example.com/")
         self.assertEqual(result, {"type": "card", "url": "https://author.example.com/"})
 
-    def test_dict_author_returns_type_card(self):
-        # Note: known bug — dict branch falls through to return {"type": "card"}
+    def test_dict_author_returns_full_card(self):
         author = {
             "type": ["h-card"],
             "properties": {
@@ -115,8 +114,9 @@ class AuthorFromMf2Tests(SimpleTestCase):
             },
         }
         result = _author_from_mf2(author, "https://example.com/")
-        # The function has a bug: it discards extracted fields and returns bare {"type": "card"}
         self.assertEqual(result["type"], "card")
+        self.assertEqual(result["name"], "Alice")
+        self.assertEqual(result["url"], "https://alice.example.com/")
 
 
 class HentryToJf2Tests(SimpleTestCase):
@@ -189,17 +189,22 @@ class ParseJsonFeedTests(SimpleTestCase):
             "title": "Hello",
             "url": "https://example.com/1",
         }])
-        entries = _parse_json_feed(data, "https://example.com/")
+        entries, meta = _parse_json_feed(data, "https://example.com/")
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["_uid"], "https://example.com/1")
         self.assertEqual(entries[0]["name"], "Hello")
+
+    def test_feed_meta_title_extracted(self):
+        data = self._make_data([])
+        _, meta = _parse_json_feed(data, "https://example.com/")
+        self.assertEqual(meta["name"], "Test")
 
     def test_external_url_used_when_url_absent(self):
         data = self._make_data([{
             "id": "1",
             "external_url": "https://external.example.com/",
         }])
-        entries = _parse_json_feed(data, "https://example.com/")
+        entries, _ = _parse_json_feed(data, "https://example.com/")
         self.assertEqual(entries[0]["url"], "https://external.example.com/")
 
     def test_content_html_and_text_included(self):
@@ -208,7 +213,7 @@ class ParseJsonFeedTests(SimpleTestCase):
             "content_html": "<p>hi</p>",
             "content_text": "hi",
         }])
-        entries = _parse_json_feed(data, "https://example.com/")
+        entries, _ = _parse_json_feed(data, "https://example.com/")
         self.assertEqual(entries[0]["content"]["html"], "<p>hi</p>")
         self.assertEqual(entries[0]["content"]["text"], "hi")
 
@@ -217,7 +222,7 @@ class ParseJsonFeedTests(SimpleTestCase):
             "id": "1",
             "date_modified": "2024-01-01T00:00:00Z",
         }])
-        entries = _parse_json_feed(data, "https://example.com/")
+        entries, _ = _parse_json_feed(data, "https://example.com/")
         self.assertEqual(entries[0]["published"], "2024-01-01T00:00:00Z")
 
     def test_author_from_authors_array(self):
@@ -225,12 +230,12 @@ class ParseJsonFeedTests(SimpleTestCase):
             "id": "1",
             "authors": [{"name": "Alice", "url": "https://alice.example.com/"}],
         }])
-        entries = _parse_json_feed(data, "https://example.com/")
+        entries, _ = _parse_json_feed(data, "https://example.com/")
         self.assertEqual(entries[0]["author"]["name"], "Alice")
 
     def test_empty_items_returns_empty_list(self):
         data = self._make_data([])
-        entries = _parse_json_feed(data, "https://example.com/")
+        entries, _ = _parse_json_feed(data, "https://example.com/")
         self.assertEqual(entries, [])
 
 
@@ -249,14 +254,18 @@ class ParseRssAtomTests(SimpleTestCase):
 </rss>"""
 
     def test_parses_rss_item(self):
-        entries = _parse_rss_atom(self.RSS_FEED, "https://example.com/")
+        entries, meta = _parse_rss_atom(self.RSS_FEED, "https://example.com/")
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["_uid"], "https://example.com/1")
         self.assertEqual(entries[0]["name"], "Item One")
 
+    def test_rss_feed_meta_title_extracted(self):
+        _, meta = _parse_rss_atom(self.RSS_FEED, "https://example.com/")
+        self.assertEqual(meta["name"], "Test Feed")
+
     def test_empty_feed_returns_empty_list(self):
         empty_rss = b"<?xml version='1.0'?><rss version='2.0'><channel></channel></rss>"
-        entries = _parse_rss_atom(empty_rss, "https://example.com/")
+        entries, _ = _parse_rss_atom(empty_rss, "https://example.com/")
         self.assertEqual(entries, [])
 
 
@@ -287,7 +296,7 @@ class FetchAndParseFeedTests(SimpleTestCase):
             "items": [{"id": "1", "title": "Post"}],
         }).encode()
         mock_urlopen.return_value = self._mock_urlopen("application/json", data)
-        entries, hub = fetch_and_parse_feed("https://example.com/feed")
+        entries, hub, meta = fetch_and_parse_feed("https://example.com/feed")
         self.assertEqual(len(entries), 1)
 
     @patch("microsub.feed_parser.urlopen")
@@ -296,7 +305,7 @@ class FetchAndParseFeedTests(SimpleTestCase):
           <item><guid>1</guid><link>https://example.com/1</link></item>
         </channel></rss>"""
         mock_urlopen.return_value = self._mock_urlopen("application/rss+xml", rss)
-        entries, hub = fetch_and_parse_feed("https://example.com/feed")
+        entries, hub, meta = fetch_and_parse_feed("https://example.com/feed")
         self.assertEqual(len(entries), 1)
 
     @patch("microsub.feed_parser.urlopen")
@@ -310,14 +319,14 @@ class FetchAndParseFeedTests(SimpleTestCase):
         }.get(k, d)
         mock_resp.read.return_value = b"<rss version='2.0'><channel></channel></rss>"
         mock_urlopen.return_value = mock_resp
-        _, hub = fetch_and_parse_feed("https://example.com/feed")
+        _, hub, _ = fetch_and_parse_feed("https://example.com/feed")
         self.assertEqual(hub, "https://hub.example.com/")
 
     @patch("microsub.feed_parser.urlopen")
     def test_no_hub_returns_none(self, mock_urlopen):
         rss = b"<rss version='2.0'><channel></channel></rss>"
         mock_urlopen.return_value = self._mock_urlopen("application/rss+xml", rss)
-        _, hub = fetch_and_parse_feed("https://example.com/feed")
+        _, hub, _ = fetch_and_parse_feed("https://example.com/feed")
         self.assertIsNone(hub)
 
     @patch("microsub.feed_parser.urlopen")

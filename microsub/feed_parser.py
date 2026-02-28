@@ -10,6 +10,24 @@ USER_AGENT = "Webstead Microsub/1.0"
 FETCH_TIMEOUT = 15
 
 
+def _strip_html(html_str: str) -> str:
+    """Strip HTML tags and return plain text."""
+    class _Stripper(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self._parts: list[str] = []
+
+        def handle_data(self, d: str) -> None:
+            self._parts.append(d)
+
+    s = _Stripper()
+    try:
+        s.feed(html_str)
+        return " ".join("".join(s._parts).split())
+    except Exception:
+        return html_str
+
+
 class _HubLinkParser(HTMLParser):
     """Parse <link rel="hub"> from HTML."""
 
@@ -81,6 +99,7 @@ def _author_from_mf2(author_val, base_url: str) -> dict:
         if photo:
             p = photo[0]
             card["photo"] = (p.get("value") or p) if isinstance(p, dict) else p
+        return card  # was missing — caused all mf2 authors to return empty {"type": "card"}
     return {"type": "card"}
 
 
@@ -114,10 +133,9 @@ def _hentry_to_jf2(item: dict, base_url: str) -> dict:
     if content_vals:
         cv = content_vals[0]
         if isinstance(cv, dict):
-            entry["content"] = {
-                "html": cv.get("html", ""),
-                "text": cv.get("value", ""),
-            }
+            html_val = cv.get("html", "")
+            text_val = cv.get("value", "") or _strip_html(html_val)
+            entry["content"] = {"html": html_val, "text": text_val}
         else:
             entry["content"] = {"text": str(cv)}
 
@@ -148,42 +166,68 @@ def _hentry_to_jf2(item: dict, base_url: str) -> dict:
     return entry
 
 
-def _parse_hfeed(html: str, base_url: str) -> list[dict]:
+def _parse_hfeed(html: str, base_url: str) -> tuple[list[dict], dict]:
+    """Return (entries, feed_meta) from an h-feed HTML document."""
     try:
         import mf2py
     except ImportError:
         logger.warning("mf2py not installed; skipping h-feed parsing")
-        return []
+        return [], {}
 
     parsed = mf2py.parse(doc=html, url=base_url)
     items = parsed.get("items", [])
+    feed_meta: dict = {"name": "", "photo": ""}
 
     # Find h-feed and use its children, or fall back to bare h-entries
     for item in items:
         if "h-feed" in item.get("type", []):
+            props = item.get("properties", {})
+            name_vals = props.get("name", [])
+            if name_vals and isinstance(name_vals[0], str):
+                feed_meta["name"] = name_vals[0]
+            photo_vals = props.get("photo", [])
+            if photo_vals:
+                p = photo_vals[0]
+                feed_meta["photo"] = (p.get("value") or p) if isinstance(p, dict) else p
             children = item.get("children", [])
-            return [
+            entries = [
                 _hentry_to_jf2(child, base_url)
                 for child in children
                 if "h-entry" in child.get("type", [])
             ]
+            return entries, feed_meta
 
     # Bare h-entries
-    return [
+    entries = [
         _hentry_to_jf2(item, base_url)
         for item in items
         if "h-entry" in item.get("type", [])
     ]
+    return entries, feed_meta
 
 
-def _parse_rss_atom(content: bytes, url: str) -> list[dict]:
+def _parse_rss_atom(content: bytes, url: str) -> tuple[list[dict], dict]:
+    """Return (entries, feed_meta) from RSS/Atom content."""
     try:
         import feedparser
     except ImportError:
         logger.warning("feedparser not installed; skipping RSS/Atom parsing")
-        return []
+        return [], {}
 
     feed = feedparser.parse(content)
+    feed_meta: dict = {"name": "", "photo": ""}
+
+    # Feed-level metadata
+    feed_info = getattr(feed, "feed", None)
+    if feed_info:
+        title = getattr(feed_info, "title", "") or ""
+        feed_meta["name"] = title
+        image = getattr(feed_info, "image", None)
+        if image and getattr(image, "href", None):
+            feed_meta["photo"] = image.href
+        elif getattr(feed_info, "icon", None):
+            feed_meta["photo"] = feed_info.icon
+
     entries = []
     for e in feed.entries:
         entry: dict = {"type": "entry"}
@@ -201,9 +245,12 @@ def _parse_rss_atom(content: bytes, url: str) -> list[dict]:
         summary = getattr(e, "summary", None)
         if content_list:
             c = content_list[0]
-            entry["content"] = {"html": c.get("value", ""), "text": c.get("value", "")}
+            html_val = c.get("value", "")
+            ct = c.get("type", "text/html")
+            text_val = _strip_html(html_val) if "html" in ct else html_val
+            entry["content"] = {"html": html_val, "text": text_val}
         elif summary:
-            entry["content"] = {"text": summary}
+            entry["content"] = {"text": summary, "html": summary}
         # published / updated
         pub = getattr(e, "published", None) or getattr(e, "updated", None)
         if pub:
@@ -217,14 +264,27 @@ def _parse_rss_atom(content: bytes, url: str) -> list[dict]:
                 card: dict = {"type": "card"}
                 if getattr(author, "name", None):
                     card["name"] = author.name
+                # Some RSS feeds put the name in email field (author@example.com (Name))
+                elif getattr(author, "email", None):
+                    email = author.email
+                    # Strip trailing "(Name)" style
+                    if "(" in email and email.endswith(")"):
+                        card["name"] = email[email.index("(") + 1:-1].strip()
+                    else:
+                        card["name"] = email
                 if getattr(author, "href", None):
                     card["url"] = author.href
                 entry["author"] = card
         entries.append(entry)
-    return entries
+    return entries, feed_meta
 
 
-def _parse_json_feed(data: dict, base_url: str) -> list[dict]:
+def _parse_json_feed(data: dict, base_url: str) -> tuple[list[dict], dict]:
+    """Return (entries, feed_meta) from a JSON Feed dict."""
+    feed_meta: dict = {"name": "", "photo": ""}
+    feed_meta["name"] = data.get("title", "") or ""
+    feed_meta["photo"] = data.get("icon", "") or data.get("favicon", "") or ""
+
     items = data.get("items", [])
     entries = []
     for item in items:
@@ -239,7 +299,9 @@ def _parse_json_feed(data: dict, base_url: str) -> list[dict]:
         if title:
             entry["name"] = title
         content_html = item.get("content_html", "")
-        content_text = item.get("content_text", "")
+        content_text = item.get("content_text", "") or (
+            _strip_html(content_html) if content_html else ""
+        )
         if content_html or content_text:
             entry["content"] = {"html": content_html, "text": content_text}
         published = item.get("date_published") or item.get("date_modified")
@@ -256,11 +318,14 @@ def _parse_json_feed(data: dict, base_url: str) -> list[dict]:
                 card["photo"] = author_data["avatar"]
             entry["author"] = card
         entries.append(entry)
-    return entries
+    return entries, feed_meta
 
 
-def fetch_and_parse_feed(url: str) -> tuple[list[dict], str | None]:
-    """Fetch a URL and return (jf2_entries, websub_hub_url)."""
+def fetch_and_parse_feed(url: str) -> tuple[list[dict], str | None, dict]:
+    """Fetch a URL and return (jf2_entries, websub_hub_url, feed_meta).
+
+    feed_meta is {"name": str, "photo": str} with feed-level title and icon.
+    """
     req = Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urlopen(req, timeout=FETCH_TIMEOUT) as response:
@@ -271,6 +336,7 @@ def fetch_and_parse_feed(url: str) -> tuple[list[dict], str | None]:
         raise RuntimeError(f"Failed to fetch {url}: {exc}") from exc
 
     hub_url = discover_websub_hub(url, link_header)
+    feed_meta: dict = {"name": "", "photo": ""}
 
     # Detect format
     if "json" in content_type:
@@ -281,17 +347,15 @@ def fetch_and_parse_feed(url: str) -> tuple[list[dict], str | None]:
             data = {}
         # JSON Feed has a "version" key starting with "https://jsonfeed.org/"
         if isinstance(data.get("version"), str) and "jsonfeed" in data["version"]:
-            entries = _parse_json_feed(data, url)
+            entries, feed_meta = _parse_json_feed(data, url)
         else:
-            entries = _parse_rss_atom(raw, url)
+            entries, feed_meta = _parse_rss_atom(raw, url)
     elif "html" in content_type:
         html_str = raw.decode("utf-8", errors="replace")
-        entries = _parse_hfeed(html_str, url)
-        if not entries:
-            # Also try to discover hub from HTML
-            hub_url = discover_websub_hub(url, link_header, html_str) or hub_url
+        entries, feed_meta = _parse_hfeed(html_str, url)
+        hub_url = discover_websub_hub(url, link_header, html_str) or hub_url
     else:
         # Try RSS/Atom (XML)
-        entries = _parse_rss_atom(raw, url)
+        entries, feed_meta = _parse_rss_atom(raw, url)
 
-    return entries, hub_url
+    return entries, hub_url, feed_meta
