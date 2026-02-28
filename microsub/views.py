@@ -219,13 +219,15 @@ class MicrosubView(View):
 
         if before_cursor:
             try:
-                qs = qs.filter(id__lt=int(before_cursor))
-            except (ValueError, TypeError):
+                from dateutil.parser import parse as parse_dt
+                qs = qs.filter(published__lt=parse_dt(before_cursor))
+            except Exception:
                 pass
         if after_cursor:
             try:
-                qs = qs.filter(id__gt=int(after_cursor))
-            except (ValueError, TypeError):
+                from dateutil.parser import parse as parse_dt
+                qs = qs.filter(published__gt=parse_dt(after_cursor))
+            except Exception:
                 pass
 
         qs = qs.select_related("subscription").order_by("-published")[:PAGE_SIZE + 1]
@@ -250,10 +252,10 @@ class MicrosubView(View):
 
         paging = {}
         if filtered:
-            paging["before"] = str(filtered[0].pk)
-            paging["after"] = str(filtered[-1].pk)
+            paging["after"] = filtered[0].published.isoformat()
+            paging["before"] = filtered[-1].published.isoformat()
         if has_more:
-            paging["after"] = str(entries_list[-1].pk)
+            paging["before"] = entries_list[-1].published.isoformat()
 
         return JsonResponse(
             {

@@ -216,10 +216,11 @@ class GetTimelineTests(TestCase):
         self.assertEqual(len(items), 1)
 
     @authorized
-    def test_before_cursor_filters_by_id_lt(self, _auth):
+    def test_before_cursor_filters_by_published_lt(self, _auth):
+        # "before" cursor is an ISO datetime; returns entries published before it.
         response = self.client.get(
             MICROSUB_URL,
-            {"action": "timeline", "channel": "news", "before": str(self.e2.pk)},
+            {"action": "timeline", "channel": "news", "before": self.e2.published.isoformat()},
             HTTP_AUTHORIZATION="Bearer token",
         )
         items = response.json()["items"]
@@ -227,10 +228,11 @@ class GetTimelineTests(TestCase):
         self.assertEqual(items[0]["_id"], str(self.e1.pk))
 
     @authorized
-    def test_after_cursor_filters_by_id_gt(self, _auth):
+    def test_after_cursor_filters_by_published_gt(self, _auth):
+        # "after" cursor is an ISO datetime; returns entries published after it.
         response = self.client.get(
             MICROSUB_URL,
-            {"action": "timeline", "channel": "news", "after": str(self.e1.pk)},
+            {"action": "timeline", "channel": "news", "after": self.e1.published.isoformat()},
             HTTP_AUTHORIZATION="Bearer token",
         )
         items = response.json()["items"]
@@ -241,7 +243,7 @@ class GetTimelineTests(TestCase):
     def test_invalid_cursor_is_ignored(self, _auth):
         response = self.client.get(
             MICROSUB_URL,
-            {"action": "timeline", "channel": "news", "before": "not-an-int"},
+            {"action": "timeline", "channel": "news", "before": "not-a-datetime"},
             HTTP_AUTHORIZATION="Bearer token",
         )
         self.assertEqual(response.status_code, 200)
@@ -263,6 +265,60 @@ class GetTimelineTests(TestCase):
             MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         )
         self.assertEqual(response.json()["paging"], {})
+
+    @authorized
+    def test_paging_after_is_newest_entry_published(self, _auth):
+        # Items ordered newest-first: e2 (newer) then e1 (older).
+        # "after" cursor should be the newest published datetime so clients can poll for new entries.
+        response = self.client.get(
+            MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
+        )
+        paging = response.json()["paging"]
+        self.assertEqual(paging["after"], self.e2.published.isoformat())
+
+    @authorized
+    def test_paging_before_is_oldest_entry_published(self, _auth):
+        # "before" cursor should be the oldest published datetime so clients can fetch older entries.
+        response = self.client.get(
+            MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
+        )
+        paging = response.json()["paging"]
+        self.assertEqual(paging["before"], self.e1.published.isoformat())
+
+    @authorized
+    def test_paging_before_cursor_fetches_next_older_page(self, _auth):
+        # Regression: requesting ?before=<paging.before> must return entries
+        # OLDER than the current page, not overlap with it.
+        now = timezone.now()
+        # Create PAGE_SIZE + 2 entries so there are multiple pages.
+        from microsub.views import PAGE_SIZE
+        older_entries = []
+        for i in range(PAGE_SIZE):
+            e = Entry.objects.create(
+                channel=self.channel,
+                uid=f"old-{i}",
+                data={},
+                published=now - datetime.timedelta(hours=i + 1),
+            )
+            older_entries.append(e)
+
+        # Get the first page (newest entries).
+        page1 = self.client.get(
+            MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
+        ).json()
+        before_cursor = page1["paging"]["before"]
+        page1_ids = {item["_id"] for item in page1["items"]}
+
+        # Get the second page using the before cursor.
+        page2 = self.client.get(
+            MICROSUB_URL,
+            {"action": "timeline", "channel": "news", "before": before_cursor},
+            HTTP_AUTHORIZATION="Bearer token",
+        ).json()
+        page2_ids = {item["_id"] for item in page2["items"]}
+
+        # Pages must not overlap.
+        self.assertEqual(page1_ids & page2_ids, set(), "Pages overlap — paging cursor is wrong")
 
 
 class GetMuteTests(TestCase):
