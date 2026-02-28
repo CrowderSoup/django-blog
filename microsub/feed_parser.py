@@ -178,6 +178,30 @@ def _parse_hfeed(html: str, base_url: str) -> tuple[list[dict], dict]:
     items = parsed.get("items", [])
     feed_meta: dict = {"name": "", "photo": ""}
 
+    def _apply_hcard_meta(search_items: list) -> None:
+        """Populate feed_meta from an h-card if name/photo not yet found."""
+        for i in search_items:
+            if "h-card" in i.get("type", []):
+                if not feed_meta["name"]:
+                    card_name = i.get("properties", {}).get("name", [])
+                    if card_name and isinstance(card_name[0], str):
+                        feed_meta["name"] = card_name[0]
+                if not feed_meta["photo"]:
+                    card_photo = i.get("properties", {}).get("photo", [])
+                    if card_photo:
+                        p = card_photo[0]
+                        feed_meta["photo"] = (p.get("value") or p) if isinstance(p, dict) else p
+                break
+
+    def _apply_title_fallback() -> None:
+        """Extract <title> tag as last-resort feed name."""
+        if not feed_meta["name"]:
+            import re as _re
+            from html import unescape as _unescape
+            m = _re.search(r"<title[^>]*>(.*?)</title>", html, _re.IGNORECASE | _re.DOTALL)
+            if m:
+                feed_meta["name"] = _unescape(m.group(1).strip())
+
     # Find h-feed and use its children, or fall back to bare h-entries
     for item in items:
         if "h-feed" in item.get("type", []):
@@ -195,9 +219,14 @@ def _parse_hfeed(html: str, base_url: str) -> tuple[list[dict], dict]:
                 for child in children
                 if "h-entry" in child.get("type", [])
             ]
+            _apply_hcard_meta(items)
+            _apply_title_fallback()
             return entries, feed_meta
 
-    # Bare h-entries
+    # Bare h-entries — use h-card name as the feed name if present
+    _apply_hcard_meta(items)
+    _apply_title_fallback()
+
     entries = [
         _hentry_to_jf2(item, base_url)
         for item in items
@@ -250,11 +279,17 @@ def _parse_rss_atom(content: bytes, url: str) -> tuple[list[dict], dict]:
             text_val = _strip_html(html_val) if "html" in ct else html_val
             entry["content"] = {"html": html_val, "text": text_val}
         elif summary:
-            entry["content"] = {"text": summary, "html": summary}
-        # published / updated
-        pub = getattr(e, "published", None) or getattr(e, "updated", None)
-        if pub:
-            entry["published"] = pub
+            entry["content"] = {"text": _strip_html(summary), "html": summary}
+        # published / updated — use the parsed time.struct_time to produce a
+        # stable ISO 8601 string regardless of what format the feed used.
+        pub_parsed = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
+        if pub_parsed:
+            from datetime import datetime, timezone as _tz
+            entry["published"] = datetime(*pub_parsed[:6], tzinfo=_tz.utc).isoformat()
+        else:
+            pub = getattr(e, "published", None) or getattr(e, "updated", None)
+            if pub:
+                entry["published"] = pub
         # author
         author = getattr(e, "author_detail", None) or getattr(e, "author", None)
         if author:

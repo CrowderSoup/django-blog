@@ -44,10 +44,12 @@ def _entry_json(entry: Entry) -> dict:
     data = entry.data.copy() if isinstance(entry.data, dict) else {}
     data["_id"] = str(entry.pk)
     data["_is_read"] = entry.is_read
+    # Always use the DB datetime for published so it's a stable ISO 8601 string.
+    data["published"] = entry.published.isoformat()
     if entry.subscription:
         data["_source"] = {
             "url": entry.subscription.url,
-            "name": entry.subscription.name,
+            "name": entry.subscription.name or entry.subscription.url,
             "photo": entry.subscription.photo,
         }
     return data
@@ -441,7 +443,7 @@ class MicrosubView(View):
             try:
                 entries, hub_url, feed_meta = fetch_and_parse_feed(url)
                 update_fields = []
-                if feed_meta.get("name") and not sub.name:
+                if feed_meta.get("name") and (not sub.name or sub.name == sub.url):
                     sub.name = feed_meta["name"]
                     update_fields.append("name")
                 if feed_meta.get("photo") and not sub.photo:

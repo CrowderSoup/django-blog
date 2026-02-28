@@ -59,7 +59,7 @@ class Command(BaseCommand):
 
             # Update feed name/photo and WebSub hub if newly discovered
             meta_fields = []
-            if feed_meta.get("name") and not sub.name:
+            if feed_meta.get("name") and (not sub.name or sub.name == sub.url):
                 sub.name = feed_meta["name"]
                 meta_fields.append("name")
             if feed_meta.get("photo") and not sub.photo:
