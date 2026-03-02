@@ -286,6 +286,10 @@ class MicrosubView(View):
 
         qs = channel.entries.filter(is_removed=False)
 
+        filter_param = request.GET.get("filter", "")
+        if filter_param == "unread":
+            qs = qs.filter(is_read=False)
+
         is_read_param = request.GET.get("is_read", "")
         if is_read_param == "false":
             qs = qs.filter(is_read=False)

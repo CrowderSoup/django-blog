@@ -2176,8 +2176,8 @@ def webmention_delete(request, mention_id):
         return guard
 
     mention = get_object_or_404(Webmention, pk=mention_id)
-    if mention.status != Webmention.REJECTED:
-        messages.error(request, "Only rejected webmentions can be deleted.")
+    if mention.is_incoming and mention.status != Webmention.REJECTED:
+        messages.error(request, "Only rejected incoming webmentions can be deleted.")
         return redirect("site_admin:webmention_detail", mention_id=mention.id)
     mention.delete()
     messages.success(request, "Webmention deleted.")
@@ -2191,6 +2191,9 @@ def webmention_approve(request, mention_id):
         return guard
 
     mention = get_object_or_404(Webmention, pk=mention_id)
+    if not mention.is_incoming:
+        messages.error(request, "Cannot approve outgoing webmentions.")
+        return redirect("site_admin:webmention_detail", mention_id=mention.id)
     if mention.status != Webmention.PENDING:
         messages.error(request, "Only pending webmentions can be approved.")
         return redirect("site_admin:webmention_detail", mention_id=mention.id)

@@ -309,5 +309,9 @@ if RUNNING_TESTS:
         {
             "core.themes": {"handlers": [], "level": "ERROR", "propagate": False},
             "core.theme_sync": {"handlers": [], "level": "ERROR", "propagate": False},
+            # Suppress 5xx request logs (e.g. intentional 502 in preview tests)
+            "django.request": {"handlers": [], "level": "CRITICAL", "propagate": False},
+            # Suppress expected warning logs from websub/subscribe tests
+            "microsub.views": {"handlers": [], "level": "CRITICAL", "propagate": False},
         }
     )

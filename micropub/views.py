@@ -1156,13 +1156,16 @@ class WebmentionView(View):
             status = Webmention.ACCEPTED if _is_trusted_domain(source) else Webmention.PENDING
             response_status = 202
 
-        Webmention.objects.create(
+        Webmention.objects.update_or_create(
             source=source,
             target=target,
-            mention_type=mention_type,
-            status=status,
-            target_post=target_post,
-            error=verify_error or "",
+            defaults={
+                "mention_type": mention_type,
+                "status": status,
+                "target_post": target_post,
+                "error": verify_error or "",
+                "is_incoming": True,
+            },
         )
 
         return HttpResponse(status=response_status)
@@ -1238,13 +1241,16 @@ class WebmentionSubmitView(View):
             status = Webmention.ACCEPTED if _is_trusted_domain(source) else Webmention.PENDING
 
         mention_type = mention_type if mention_type in dict(Webmention.MENTION_CHOICES) else Webmention.MENTION
-        Webmention.objects.create(
+        Webmention.objects.update_or_create(
             source=source,
             target=target,
-            mention_type=mention_type,
-            status=status,
-            target_post=target_post,
-            error=verify_error or "",
+            defaults={
+                "mention_type": mention_type,
+                "status": status,
+                "target_post": target_post,
+                "error": verify_error or "",
+                "is_incoming": True,
+            },
         )
 
         return redirect(next_url)

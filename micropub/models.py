@@ -8,11 +8,13 @@ class Webmention(models.Model):
     REPLY = "reply"
     REPOST = "repost"
     LIKE = "like"
+    BOOKMARK = "bookmark"
     MENTION_CHOICES = [
         (MENTION, "Mention"),
         (REPLY, "Reply"),
         (REPOST, "Repost"),
         (LIKE, "Like"),
+        (BOOKMARK, "Bookmark"),
     ]
 
     PENDING = "pending"
@@ -34,6 +36,7 @@ class Webmention(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     target_post = models.ForeignKey(Post, null=True, blank=True, on_delete=models.SET_NULL)
     error = models.TextField(blank=True)
+    is_incoming = models.BooleanField(default=True)
 
     class Meta:
         ordering = ["-created_at"]

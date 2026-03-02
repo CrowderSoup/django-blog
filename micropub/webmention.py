@@ -59,7 +59,8 @@ class _WebmentionLinkParser(HTMLParser):
 
 def _parse_link_header(header_value: str) -> Optional[str]:
     # Basic Link header parsing to find rel="webmention"
-    for part in header_value.split(","):
+    # Split only on commas followed by '<' to handle URLs with commas in query strings
+    for part in re.split(r",\s*(?=<)", header_value):
         segment = part.strip()
         if not segment.startswith("<") or ">" not in segment:
             continue
@@ -80,7 +81,7 @@ def _normalize_url_for_compare(url: str) -> str:
     scheme = parsed.scheme.lower()
     netloc = parsed.netloc.lower()
     path = parsed.path or "/"
-    if url.endswith("/") and not path.endswith("/"):
+    if not path.endswith("/"):
         path = f"{path}/"
     return urllib.parse.urlunparse((scheme, netloc, path, "", parsed.query, ""))
 
@@ -119,12 +120,14 @@ def verify_webmention_source(source_url: str, target_url: str) -> tuple[bool, st
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             content_type = response.headers.get("Content-Type", "")
-            if response.status != 200:
-                return False, f"Unexpected status {response.status}", True
             if "html" not in content_type:
                 return False, "Source is not HTML", False
             body = force_str(response.read(), errors="ignore")
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, socket.timeout, ValueError) as exc:
+    except urllib.error.HTTPError as exc:
+        if exc.code == 410:
+            return False, "Source is gone (410)", False  # REJECTED, not PENDING
+        return False, str(exc), True
+    except (urllib.error.URLError, TimeoutError, socket.timeout, ValueError) as exc:
         return False, str(exc), True
 
     parser = _WebmentionLinkParser()
@@ -247,11 +250,12 @@ def send_webmention(
         status=status,
         target_post=source_post,
         error=error,
+        is_incoming=False,
     )
 
 
 def resend_webmention(webmention: Webmention) -> Webmention:
-    status, error = _send_webmention_request(webmention.source, webmention.target)
+    status, error = _send_webmention_request(webmention.source, webmention.target, webmention.mention_type)
     webmention.status = status
     webmention.error = error
     webmention.save(update_fields=["status", "error", "updated_at"])
@@ -264,7 +268,9 @@ def send_webmentions_for_post(post: Post, source_url: str) -> None:
     existing_targets = set()
     if targets:
         existing_targets = set(
-            Webmention.objects.filter(source=source_url, target__in=targets).values_list("target", flat=True)
+            Webmention.objects.filter(source=source_url, target__in=targets)
+            .exclude(status__in=[Webmention.REJECTED, Webmention.TIMED_OUT])
+            .values_list("target", flat=True)
         )
 
     for target in targets:
@@ -277,6 +283,8 @@ def send_webmentions_for_post(post: Post, source_url: str) -> None:
             mention_type = Webmention.REPOST
         elif target == post.in_reply_to:
             mention_type = Webmention.REPLY
+        elif target == post.bookmark_of:
+            mention_type = Webmention.BOOKMARK
 
         send_webmention(
             source_url,

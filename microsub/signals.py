@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 def webmention_to_notifications(sender, instance, **kwargs):
     if instance.status != "accepted":
         return
+    if not instance.is_incoming:
+        return
 
     from .models import Channel, Entry
 

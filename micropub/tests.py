@@ -1,6 +1,7 @@
 import json
+import urllib.error
 from urllib.parse import parse_qs, urlparse
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from types import SimpleNamespace
 
 from django.test import TestCase
@@ -10,7 +11,13 @@ from django.urls import reverse
 from blog.models import Post, Tag
 from core.models import RequestErrorLog, SiteConfiguration
 from micropub.models import Webmention
-from micropub.webmention import send_bridgy_publish_webmentions
+from micropub.webmention import (
+    send_bridgy_publish_webmentions,
+    send_webmentions_for_post,
+    resend_webmention,
+    verify_webmention_source,
+    _normalize_url_for_compare,
+)
 
 
 MICROPUB_URL = "/micropub"
@@ -469,3 +476,206 @@ class BridgyPublishWebmentionTests(TestCase):
                 send_bridgy_publish_webmentions(post, source_url, settings_obj)
 
         send_webmention_mock.assert_not_called()
+
+
+class WebmentionDirectionTests(TestCase):
+    """Tests for the is_incoming direction guard."""
+
+    def test_outgoing_webmention_does_not_notify_microsub(self):
+        from microsub.models import Channel, Entry
+
+        channel = Channel.objects.get(uid="notifications")
+        post = Post.objects.create(title="Like", slug="like-post", content="", like_of="https://example.com/post")
+
+        # Simulate what send_webmention creates (is_incoming=False)
+        mention = Webmention.objects.create(
+            source="http://testserver/blog/post/like-post/",
+            target="https://example.com/post",
+            mention_type=Webmention.LIKE,
+            status=Webmention.ACCEPTED,
+            target_post=post,
+            is_incoming=False,
+        )
+
+        self.assertEqual(Entry.objects.filter(channel=channel).count(), 0)
+
+    def test_incoming_webmention_creates_microsub_notification(self):
+        from microsub.models import Channel, Entry
+
+        channel = Channel.objects.get(uid="notifications")
+        post = Post.objects.create(title="Hello", slug="hello-notify", content="Hello world")
+
+        Webmention.objects.create(
+            source="https://source.example/post",
+            target="http://testserver/blog/post/hello-notify/",
+            mention_type=Webmention.MENTION,
+            status=Webmention.ACCEPTED,
+            target_post=post,
+            is_incoming=True,
+        )
+
+        self.assertEqual(Entry.objects.filter(channel=channel).count(), 1)
+
+
+class WebmentionResendTests(TestCase):
+    """Tests for resend_webmention behaviour."""
+
+    @patch("micropub.webmention._send_webmention_request", return_value=(Webmention.ACCEPTED, ""))
+    def test_resend_preserves_mention_type(self, mock_send):
+        post = Post.objects.create(title="Like", slug="like-resend", content="", like_of="https://example.com/t")
+        mention = Webmention.objects.create(
+            source="http://testserver/blog/post/like-resend/",
+            target="https://example.com/t",
+            mention_type=Webmention.LIKE,
+            status=Webmention.TIMED_OUT,
+            is_incoming=False,
+        )
+
+        resend_webmention(mention)
+
+        mock_send.assert_called_once_with(mention.source, mention.target, Webmention.LIKE)
+
+
+class WebmentionDeduplicationTests(TestCase):
+    """Tests for incoming-webmention deduplication via update_or_create."""
+
+    @override_settings(ALLOWED_HOSTS=["testserver"], WEBMENTION_TRUSTED_DOMAINS=[])
+    @patch("micropub.views.verify_webmention_source", return_value=(True, "", False))
+    def test_duplicate_incoming_webmention_updates_not_duplicates(self, _verify):
+        post = Post.objects.create(title="Hello", slug="hello-dedup", content="Hello world")
+        endpoint = reverse("webmention-endpoint")
+        data = {
+            "source": "https://source.example/post",
+            "target": "http://testserver/blog/post/hello-dedup/",
+        }
+
+        self.client.post(endpoint, data=data)
+        self.client.post(endpoint, data=data)
+
+        self.assertEqual(Webmention.objects.count(), 1)
+
+
+class WebmentionRetryTests(TestCase):
+    """Tests for retrying failed/timed-out outgoing webmentions."""
+
+    @patch("micropub.webmention.send_webmention")
+    def test_rejected_outgoing_is_retried(self, mock_send):
+        post = Post.objects.create(
+            title="Reply",
+            slug="reply-retry",
+            content="",
+            in_reply_to="https://example.com/original",
+        )
+        source_url = "http://testserver/blog/post/reply-retry/"
+        # Pre-existing REJECTED record for the same source+target
+        Webmention.objects.create(
+            source=source_url,
+            target="https://example.com/original",
+            mention_type=Webmention.REPLY,
+            status=Webmention.REJECTED,
+            is_incoming=False,
+        )
+
+        send_webmentions_for_post(post, source_url)
+
+        mock_send.assert_called_once()
+
+    @patch("micropub.webmention.send_webmention")
+    def test_timed_out_outgoing_is_retried(self, mock_send):
+        post = Post.objects.create(
+            title="Reply TO",
+            slug="reply-timeout-retry",
+            content="",
+            in_reply_to="https://example.com/original2",
+        )
+        source_url = "http://testserver/blog/post/reply-timeout-retry/"
+        Webmention.objects.create(
+            source=source_url,
+            target="https://example.com/original2",
+            mention_type=Webmention.REPLY,
+            status=Webmention.TIMED_OUT,
+            is_incoming=False,
+        )
+
+        send_webmentions_for_post(post, source_url)
+
+        mock_send.assert_called_once()
+
+
+class WebmentionBookmarkTests(TestCase):
+    """Tests for bookmark_of mention type."""
+
+    @patch("micropub.webmention.send_webmention")
+    def test_bookmark_post_sends_bookmark_mention_type(self, mock_send):
+        post = Post.objects.create(
+            title="Bookmark",
+            slug="bookmark-test",
+            content="",
+            bookmark_of="https://example.com/bookmarked",
+        )
+        source_url = "http://testserver/blog/post/bookmark-test/"
+
+        send_webmentions_for_post(post, source_url)
+
+        mock_send.assert_called_once()
+        _, kwargs = mock_send.call_args
+        self.assertEqual(kwargs.get("mention_type"), Webmention.BOOKMARK)
+
+
+class NormalizeUrlTests(TestCase):
+    """Tests for _normalize_url_for_compare trailing-slash handling."""
+
+    def test_with_and_without_trailing_slash_match(self):
+        self.assertEqual(
+            _normalize_url_for_compare("https://example.com/post/hello"),
+            _normalize_url_for_compare("https://example.com/post/hello/"),
+        )
+
+    def test_scheme_and_netloc_lowercased(self):
+        self.assertEqual(
+            _normalize_url_for_compare("HTTPS://EXAMPLE.COM/post/"),
+            _normalize_url_for_compare("https://example.com/post/"),
+        )
+
+
+class VerifyWebmentionSourceTests(TestCase):
+    """Tests for verify_webmention_source edge cases."""
+
+    @patch("micropub.webmention.urllib.request.urlopen")
+    def test_410_gone_returns_rejected_not_pending(self, mock_urlopen):
+        exc = urllib.error.HTTPError(
+            url="https://source.example/gone",
+            code=410,
+            msg="Gone",
+            hdrs=MagicMock(),
+            fp=None,
+        )
+        mock_urlopen.side_effect = exc
+
+        verified, error, fetch_failed = verify_webmention_source(
+            "https://source.example/gone",
+            "https://target.example/post/",
+        )
+
+        self.assertFalse(verified)
+        self.assertIn("410", error)
+        self.assertFalse(fetch_failed)  # fetch_failed=False → REJECTED status
+
+    @patch("micropub.webmention.urllib.request.urlopen")
+    def test_non_410_http_error_returns_fetch_failed(self, mock_urlopen):
+        exc = urllib.error.HTTPError(
+            url="https://source.example/error",
+            code=500,
+            msg="Internal Server Error",
+            hdrs=MagicMock(),
+            fp=None,
+        )
+        mock_urlopen.side_effect = exc
+
+        verified, error, fetch_failed = verify_webmention_source(
+            "https://source.example/error",
+            "https://target.example/post/",
+        )
+
+        self.assertFalse(verified)
+        self.assertTrue(fetch_failed)  # fetch_failed=True → stays PENDING
