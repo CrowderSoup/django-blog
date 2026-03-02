@@ -258,7 +258,7 @@ class GetTimelineTests(TestCase):
             MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         )
         paging = response.json()["paging"]
-        self.assertIn("before", paging)
+        # "after" is always present when entries exist; "before" only when has_more=True.
         self.assertIn("after", paging)
 
     @authorized
@@ -280,13 +280,26 @@ class GetTimelineTests(TestCase):
         self.assertEqual(paging["after"], str(self.e2.pk))
 
     @authorized
-    def test_paging_before_is_oldest_entry_pk(self, _auth):
-        # "before" cursor should be the PK of the oldest entry so clients can fetch older entries.
+    def test_paging_before_is_oldest_entry_pk_on_nonfinal_page(self, _auth):
+        # "before" cursor should be the PK of the oldest entry on the page when has_more=True.
+        from microsub.views import PAGE_SIZE
+        now = timezone.now()
+        # Add enough entries to push e1/e2 off the first page entirely, ensuring has_more=True.
+        for i in range(PAGE_SIZE):
+            Entry.objects.create(
+                channel=self.channel,
+                uid=f"newer-{i}",
+                data={},
+                published=now + datetime.timedelta(hours=i + 1),
+            )
         response = self.client.get(
             MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         )
         paging = response.json()["paging"]
-        self.assertEqual(paging["before"], str(self.e1.pk))
+        self.assertIn("before", paging)
+        items = response.json()["items"]
+        # "before" must equal the PK of the last (oldest) item on the page.
+        self.assertEqual(paging["before"], items[-1]["_id"])
 
     @authorized
     def test_paging_before_cursor_fetches_next_older_page(self, _auth):
@@ -357,6 +370,13 @@ class GetMuteTests(TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["url"], "https://other.example.com/")
 
+    @authorized
+    def test_unknown_channel_returns_400(self, _auth):
+        response = self.client.get(
+            MICROSUB_URL, {"action": "mute", "channel": "nonexistent"}, HTTP_AUTHORIZATION="Bearer token"
+        )
+        self.assertEqual(response.status_code, 400)
+
 
 class GetBlockTests(TestCase):
     def setUp(self):
@@ -384,6 +404,13 @@ class GetBlockTests(TestCase):
             MICROSUB_URL, {"action": "block", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         )
         self.assertEqual(len(response.json()["items"]), 1)
+
+    @authorized
+    def test_unknown_channel_returns_400(self, _auth):
+        response = self.client.get(
+            MICROSUB_URL, {"action": "block", "channel": "nonexistent"}, HTTP_AUTHORIZATION="Bearer token"
+        )
+        self.assertEqual(response.status_code, 400)
 
 
 class GetSearchTests(TestCase):
@@ -608,3 +635,109 @@ class GetTimelineMuteDbLevelTests(TestCase):
         )
         items = response.json()["items"]
         self.assertEqual(len(items), PAGE_SIZE)
+
+
+class GetTimelineUnreadFilterTests(TestCase):
+    """filter=unread parameter only returns entries with is_read=False."""
+
+    def setUp(self):
+        self.channel = Channel.objects.create(uid="news", name="News")
+        now = timezone.now()
+        self.unread = Entry.objects.create(
+            channel=self.channel, uid="u1", data={}, published=now, is_read=False,
+        )
+        self.read = Entry.objects.create(
+            channel=self.channel, uid="r1", data={}, published=now + datetime.timedelta(seconds=1), is_read=True,
+        )
+
+    @authorized
+    def test_filter_unread_returns_only_unread_entries(self, _auth):
+        response = self.client.get(
+            MICROSUB_URL,
+            {"action": "timeline", "channel": "news", "filter": "unread"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+        ids = [item["_id"] for item in response.json()["items"]]
+        self.assertIn(str(self.unread.pk), ids)
+
+    @authorized
+    def test_filter_unread_excludes_read_entries(self, _auth):
+        response = self.client.get(
+            MICROSUB_URL,
+            {"action": "timeline", "channel": "news", "filter": "unread"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        ids = [item["_id"] for item in response.json()["items"]]
+        self.assertNotIn(str(self.read.pk), ids)
+
+    @authorized
+    def test_no_filter_returns_all_entries(self, _auth):
+        response = self.client.get(
+            MICROSUB_URL,
+            {"action": "timeline", "channel": "news"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        ids = [item["_id"] for item in response.json()["items"]]
+        self.assertIn(str(self.unread.pk), ids)
+        self.assertIn(str(self.read.pk), ids)
+
+
+class GetTimelinePagingBehaviorTests(TestCase):
+    """paging.before is only present when there are more older entries."""
+
+    def setUp(self):
+        self.channel = Channel.objects.create(uid="news", name="News")
+
+    @authorized
+    def test_paging_before_absent_on_last_page(self, _auth):
+        now = timezone.now()
+        Entry.objects.create(channel=self.channel, uid="only", data={}, published=now)
+        response = self.client.get(
+            MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
+        )
+        paging = response.json()["paging"]
+        self.assertNotIn("before", paging)
+
+    @authorized
+    def test_paging_before_present_on_nonfinal_page(self, _auth):
+        from microsub.views import PAGE_SIZE
+        now = timezone.now()
+        for i in range(PAGE_SIZE + 1):
+            Entry.objects.create(
+                channel=self.channel,
+                uid=f"e{i}",
+                data={},
+                published=now - datetime.timedelta(seconds=i),
+            )
+        response = self.client.get(
+            MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
+        )
+        paging = response.json()["paging"]
+        self.assertIn("before", paging)
+
+
+class EntryJsonWithoutSubscriptionTests(TestCase):
+    """_entry_json does not crash when entry has no subscription (e.g. Webmention entries)."""
+
+    def setUp(self):
+        self.channel, _ = Channel.objects.get_or_create(uid="notifications", defaults={"name": "Notifications"})
+
+    @authorized
+    def test_entry_without_subscription_has_no_source(self, _auth):
+        Entry.objects.create(
+            channel=self.channel,
+            uid="wm1",
+            data={"type": "entry", "name": "Someone mentioned you"},
+            published=timezone.now(),
+            subscription=None,
+        )
+        response = self.client.get(
+            MICROSUB_URL,
+            {"action": "timeline", "channel": "notifications"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+        items = response.json()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertNotIn("_source", items[0])

@@ -4045,9 +4045,9 @@ def microsub_channel_list(request):
     from django.db.models import Count, Q
 
     channels = Channel.objects.annotate(
-        entry_count=Count("entries"),
-        unread_count=Count("entries", filter=Q(entries__is_read=False, entries__is_removed=False)),
-        feed_count=Count("subscriptions", filter=Q(subscriptions__is_active=True)),
+        entry_count=Count("entries", distinct=True),
+        unread_count=Count("entries", filter=Q(entries__is_read=False, entries__is_removed=False), distinct=True),
+        feed_count=Count("subscriptions", filter=Q(subscriptions__is_active=True), distinct=True),
     ).order_by("order", "id")
 
     return render(request, "site_admin/microsub/channel_list.html", {"channels": channels})

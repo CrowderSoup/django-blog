@@ -45,6 +45,7 @@ def webmention_to_notifications(sender, instance, **kwargs):
                 "data": jf2,
                 "published": instance.created_at,
                 "subscription": None,
+                "author_url": instance.source,
             },
         )
     except Exception:

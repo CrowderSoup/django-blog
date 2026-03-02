@@ -166,6 +166,22 @@ def _hentry_to_jf2(item: dict, base_url: str) -> dict:
     return entry
 
 
+def _apply_feed_author_fallback(entries: list[dict], feed_meta: dict) -> None:
+    """Assign feed-level author to entries that lack an author URL."""
+    if not (feed_meta.get("url") or feed_meta.get("name")):
+        return
+    feed_author: dict = {"type": "card"}
+    if feed_meta.get("name"):
+        feed_author["name"] = feed_meta["name"]
+    if feed_meta.get("url"):
+        feed_author["url"] = feed_meta["url"]
+    if feed_meta.get("photo"):
+        feed_author["photo"] = feed_meta["photo"]
+    for e in entries:
+        if not e.get("author") or not e["author"].get("url"):
+            e["author"] = feed_author
+
+
 def _parse_hfeed(html: str, base_url: str) -> tuple[list[dict], dict]:
     """Return (entries, feed_meta) from an h-feed HTML document."""
     try:
@@ -176,10 +192,10 @@ def _parse_hfeed(html: str, base_url: str) -> tuple[list[dict], dict]:
 
     parsed = mf2py.parse(doc=html, url=base_url)
     items = parsed.get("items", [])
-    feed_meta: dict = {"name": "", "photo": ""}
+    feed_meta: dict = {"name": "", "photo": "", "url": ""}
 
     def _apply_hcard_meta(search_items: list) -> None:
-        """Populate feed_meta from an h-card if name/photo not yet found."""
+        """Populate feed_meta from an h-card if name/photo/url not yet found."""
         for i in search_items:
             if "h-card" in i.get("type", []):
                 if not feed_meta["name"]:
@@ -191,6 +207,10 @@ def _parse_hfeed(html: str, base_url: str) -> tuple[list[dict], dict]:
                     if card_photo:
                         p = card_photo[0]
                         feed_meta["photo"] = (p.get("value") or p) if isinstance(p, dict) else p
+                if not feed_meta["url"]:
+                    card_url = i.get("properties", {}).get("url", [])
+                    if card_url and isinstance(card_url[0], str):
+                        feed_meta["url"] = urljoin(base_url, card_url[0])
                 break
 
     def _apply_title_fallback() -> None:
@@ -221,6 +241,7 @@ def _parse_hfeed(html: str, base_url: str) -> tuple[list[dict], dict]:
             ]
             _apply_hcard_meta(items)
             _apply_title_fallback()
+            _apply_feed_author_fallback(entries, feed_meta)
             return entries, feed_meta
 
     # Bare h-entries — use h-card name as the feed name if present
@@ -232,6 +253,7 @@ def _parse_hfeed(html: str, base_url: str) -> tuple[list[dict], dict]:
         for item in items
         if "h-entry" in item.get("type", [])
     ]
+    _apply_feed_author_fallback(entries, feed_meta)
     return entries, feed_meta
 
 
@@ -366,7 +388,7 @@ def fetch_and_parse_feed(url: str) -> tuple[list[dict], str | None, dict]:
         with urlopen(req, timeout=FETCH_TIMEOUT) as response:
             content_type = response.headers.get("Content-Type", "").lower()
             link_header = response.headers.get("Link")
-            raw = response.read()
+            raw = response.read(10 * 1024 * 1024)  # 10 MB cap
     except (HTTPError, URLError, TimeoutError, OSError) as exc:
         raise RuntimeError(f"Failed to fetch {url}: {exc}") from exc
 

@@ -6,8 +6,10 @@ from django.test import SimpleTestCase
 
 from microsub.feed_parser import (
     _HubLinkParser,
+    _apply_feed_author_fallback,
     _author_from_mf2,
     _hentry_to_jf2,
+    _parse_hfeed,
     _parse_json_feed,
     _parse_link_header_for_rel,
     _parse_rss_atom,
@@ -173,6 +175,100 @@ class HentryToJf2Tests(SimpleTestCase):
         item = self._make_hentry({})
         result = _hentry_to_jf2(item, "https://example.com/")
         self.assertEqual(result["type"], "entry")
+
+
+class ApplyFeedAuthorFallbackTests(SimpleTestCase):
+    def _make_entry(self, author=None):
+        e = {"type": "entry"}
+        if author is not None:
+            e["author"] = author
+        return e
+
+    def test_assigns_feed_author_when_entry_has_no_author(self):
+        entry = self._make_entry()
+        _apply_feed_author_fallback([entry], {"name": "Alice", "url": "https://alice.example.com/", "photo": ""})
+        self.assertEqual(entry["author"]["name"], "Alice")
+        self.assertEqual(entry["author"]["url"], "https://alice.example.com/")
+
+    def test_assigns_feed_author_when_entry_author_lacks_url(self):
+        entry = self._make_entry(author={"type": "card", "name": "Unknown"})
+        _apply_feed_author_fallback([entry], {"name": "Alice", "url": "https://alice.example.com/", "photo": ""})
+        self.assertEqual(entry["author"]["url"], "https://alice.example.com/")
+
+    def test_does_not_overwrite_existing_author_url(self):
+        entry = self._make_entry(author={"type": "card", "url": "https://bob.example.com/"})
+        _apply_feed_author_fallback([entry], {"name": "Alice", "url": "https://alice.example.com/", "photo": ""})
+        self.assertEqual(entry["author"]["url"], "https://bob.example.com/")
+
+    def test_no_op_when_feed_meta_has_no_name_or_url(self):
+        entry = self._make_entry()
+        _apply_feed_author_fallback([entry], {"name": "", "url": "", "photo": ""})
+        self.assertNotIn("author", entry)
+
+    def test_includes_photo_when_present(self):
+        entry = self._make_entry()
+        _apply_feed_author_fallback([entry], {"name": "Alice", "url": "https://alice.example.com/", "photo": "https://alice.example.com/photo.jpg"})
+        self.assertEqual(entry["author"]["photo"], "https://alice.example.com/photo.jpg")
+
+
+class ParseHfeedTests(SimpleTestCase):
+    BASE_URL = "https://example.com/"
+
+    def _wrapped_hfeed(self, children, hcard=None):
+        """Build a minimal h-feed HTML document with optional h-card at page level."""
+        hcard_html = ""
+        if hcard:
+            name = hcard.get("name", "")
+            url = hcard.get("url", "")
+            photo = hcard.get("photo", "")
+            hcard_html = (
+                f'<div class="h-card">'
+                f'<a class="p-name u-url" href="{url}">{name}</a>'
+                + (f'<img class="u-photo" src="{photo}">' if photo else "")
+                + "</div>"
+            )
+        items_html = "".join(
+            f'<div class="h-entry"><a class="u-url" href="{c["url"]}"></a>'
+            + (f'<a class="p-author h-card u-url" href="{c["author_url"]}">{c["author_name"]}</a>' if c.get("author_url") else "")
+            + "</div>"
+            for c in children
+        )
+        # h-card lives at page level (sibling of h-feed), not nested inside it
+        return f'{hcard_html}<div class="h-feed">{items_html}</div>'
+
+    def test_entries_without_author_get_hcard_author(self):
+        html = self._wrapped_hfeed(
+            [{"url": "https://example.com/post1"}],
+            hcard={"name": "Alice", "url": "https://example.com/"},
+        )
+        entries, _ = _parse_hfeed(html, self.BASE_URL)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["author"]["name"], "Alice")
+        self.assertEqual(entries[0]["author"]["url"], "https://example.com/")
+
+    def test_entries_with_author_url_are_not_overwritten(self):
+        html = self._wrapped_hfeed(
+            [{"url": "https://example.com/post1", "author_url": "https://bob.example.com/", "author_name": "Bob"}],
+            hcard={"name": "Alice", "url": "https://example.com/"},
+        )
+        entries, _ = _parse_hfeed(html, self.BASE_URL)
+        self.assertEqual(entries[0]["author"]["url"], "https://bob.example.com/")
+
+    def test_bare_hentries_get_hcard_author_fallback(self):
+        """h-entries at top level (no wrapping h-feed) also get the h-card author."""
+        html = (
+            '<div class="h-card"><a class="p-name u-url" href="https://carol.example.com/">Carol</a></div>'
+            '<div class="h-entry"><a class="u-url" href="https://carol.example.com/post1"></a></div>'
+        )
+        entries, _ = _parse_hfeed(html, self.BASE_URL)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["author"]["name"], "Carol")
+        self.assertEqual(entries[0]["author"]["url"], "https://carol.example.com/")
+
+    def test_empty_html_returns_empty_entries(self):
+        entries, feed_meta = _parse_hfeed("<html></html>", self.BASE_URL)
+        self.assertEqual(entries, [])
+        self.assertEqual(feed_meta["name"], "")
 
 
 class ParseJsonFeedTests(SimpleTestCase):

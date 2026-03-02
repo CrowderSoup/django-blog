@@ -61,13 +61,22 @@ class WebSubChallengeTests(TestCase):
         self.sub.refresh_from_db()
         self.assertIsNone(self.sub.websub_expires_at)
 
-    def test_unsubscribe_challenge_returns_challenge_text(self):
+    def test_unsubscribe_challenge_confirmed_when_inactive(self):
+        self.sub.is_active = False
+        self.sub.save(update_fields=["is_active"])
         response = self.client.get(
             self._url(),
             {"hub.mode": "unsubscribe", "hub.challenge": "xyz789"},
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"xyz789")
+
+    def test_unsubscribe_challenge_rejected_when_still_active(self):
+        response = self.client.get(
+            self._url(),
+            {"hub.mode": "unsubscribe", "hub.challenge": "xyz789"},
+        )
+        self.assertEqual(response.status_code, 404)
 
     def test_get_with_no_mode_returns_400(self):
         response = self.client.get(self._url())

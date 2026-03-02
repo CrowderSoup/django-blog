@@ -379,6 +379,16 @@ class PostTimelineTests(TestCase):
         self.assertFalse(self.e1.is_read)
 
     @authorized
+    def test_mark_read_non_integer_entry_ids_returns_400(self, _auth):
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "timeline", "channel": "news", "method": "mark_read",
+             "entry[]": ["not-an-int"]},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    @authorized
     def test_mark_unread_entries(self, _auth):
         self.e1.is_read = True
         self.e1.save()
@@ -559,6 +569,7 @@ class PostBlockTests(TestCase):
             channel=self.channel,
             uid="e1",
             data={"type": "entry", "author": {"url": "https://troll.example.com/"}},
+            author_url="https://troll.example.com/",
             published=timezone.now(),
         )
         self.client.post(

@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from microsub.models import Subscription
 from microsub.feed_parser import fetch_and_parse_feed
-from microsub.views import _store_entries, _subscribe_to_websub
+from microsub.views import _store_entries
 
 logger = logging.getLogger(__name__)
 

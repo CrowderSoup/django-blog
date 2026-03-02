@@ -251,6 +251,10 @@ class MicrosubView(View):
 
         qs = channel.entries.filter(is_removed=False)
 
+        filter_param = request.GET.get("filter", "")
+        if filter_param == "unread":
+            qs = qs.filter(is_read=False)
+
         # Cursor-based paging using entry PKs as stable cursors.
         # We look up the cursor entry to get its (published, id) for a compound filter
         # that handles entries sharing the same published timestamp correctly.
@@ -305,7 +309,6 @@ class MicrosubView(View):
         paging = {}
         if entries_list:
             paging["after"] = str(entries_list[0].pk)
-            paging["before"] = str(entries_list[-1].pk)
         if has_more:
             paging["before"] = str(entries_list[-1].pk)
 
@@ -322,6 +325,8 @@ class MicrosubView(View):
         channel_uid = request.GET.get("channel")
         if channel_uid:
             channel = Channel.objects.filter(uid=channel_uid).first()
+            if channel is None:
+                return JsonResponse({"error": "invalid_request"}, status=400)
             qs = MutedUser.objects.filter(channel=channel)
         else:
             qs = MutedUser.objects.filter(channel__isnull=True)
@@ -333,6 +338,8 @@ class MicrosubView(View):
         channel_uid = request.GET.get("channel")
         if channel_uid:
             channel = Channel.objects.filter(uid=channel_uid).first()
+            if channel is None:
+                return JsonResponse({"error": "invalid_request"}, status=400)
             qs = BlockedUser.objects.filter(channel=channel)
         else:
             qs = BlockedUser.objects.filter(channel__isnull=True)
@@ -531,6 +538,12 @@ class MicrosubView(View):
         if not channel:
             return JsonResponse({"error": "invalid_request"}, status=400)
 
+        if entry_ids:
+            try:
+                entry_ids = [int(x) for x in entry_ids]
+            except (ValueError, TypeError):
+                return JsonResponse({"error": "invalid_request"}, status=400)
+
         if method in ("", "mark_read"):
             if last_read_entry:
                 try:
@@ -586,12 +599,7 @@ class MicrosubView(View):
         BlockedUser.objects.get_or_create(channel=channel, url=url)
         # Remove existing entries from this author
         if channel:
-            for entry in channel.entries.all():
-                if isinstance(entry.data, dict):
-                    author = entry.data.get("author", {})
-                    if isinstance(author, dict) and author.get("url") == url:
-                        entry.is_removed = True
-                        entry.save(update_fields=["is_removed"])
+            channel.entries.filter(author_url=url).update(is_removed=True)
         return JsonResponse({})
 
     def _post_unblock(self, request):
@@ -628,7 +636,9 @@ class WebSubCallbackView(View):
             sub.save(update_fields=["websub_subscribed_at", "websub_expires_at"])
             return HttpResponse(challenge, content_type="text/plain")
         if mode == "unsubscribe" and challenge:
-            return HttpResponse(challenge, content_type="text/plain")
+            if not sub.is_active:
+                return HttpResponse(challenge, content_type="text/plain")
+            return HttpResponse(status=404)
         return HttpResponse(status=400)
 
     def post(self, request, subscription_id):
@@ -674,5 +684,6 @@ class WebSubCallbackView(View):
             _store_entries(sub.channel, sub, entries)
         except Exception as exc:
             logger.exception("WebSub notification processing failed for sub %s: %s", subscription_id, exc)
+            return HttpResponse(status=500)
 
         return HttpResponse(status=200)
