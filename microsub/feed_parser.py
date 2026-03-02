@@ -83,24 +83,49 @@ def discover_websub_hub(url: str, link_header: str | None, html_body: str | None
     return None
 
 
+def _mf2_embedded_to_jf2(val, base_url: str) -> dict | None:
+    """Convert an embedded mf2 h-card/h-adr (or plain URL string) to a JF2 dict."""
+    if isinstance(val, str):
+        return {"type": "card", "url": urljoin(base_url, val)} if val else None
+    if not isinstance(val, dict):
+        return None
+    props = val.get("properties", {})
+    types = val.get("type", [])
+    kind = "adr" if "h-adr" in types and "h-card" not in types else "card"
+    out: dict = {"type": kind}
+
+    for mf2_key, jf2_key in [
+        ("name",           "name"),
+        ("locality",       "locality"),
+        ("region",         "region"),
+        ("country-name",   "country"),
+        ("postal-code",    "postal-code"),
+        ("street-address", "street-address"),
+        ("latitude",       "latitude"),
+        ("longitude",      "longitude"),
+        ("altitude",       "altitude"),
+        ("tel",            "tel"),
+        ("email",          "email"),
+    ]:
+        vals = props.get(mf2_key, [])
+        if vals and isinstance(vals[0], str):
+            out[jf2_key] = vals[0]
+
+    url_vals = props.get("url", [])
+    if url_vals and isinstance(url_vals[0], str):
+        out["url"] = urljoin(base_url, url_vals[0])
+
+    photo_vals = props.get("photo", [])
+    if photo_vals:
+        p = photo_vals[0]
+        out["photo"] = (p.get("value") or p) if isinstance(p, dict) else p
+
+    return out if len(out) > 1 else None
+
+
 def _author_from_mf2(author_val, base_url: str) -> dict:
-    if isinstance(author_val, str):
-        return {"type": "card", "url": author_val}
-    if isinstance(author_val, dict):
-        props = author_val.get("properties", {})
-        card: dict = {"type": "card"}
-        name = props.get("name", [])
-        if name:
-            card["name"] = name[0] if isinstance(name[0], str) else ""
-        url = props.get("url", [])
-        if url:
-            card["url"] = urljoin(base_url, url[0]) if isinstance(url[0], str) else ""
-        photo = props.get("photo", [])
-        if photo:
-            p = photo[0]
-            card["photo"] = (p.get("value") or p) if isinstance(p, dict) else p
-        return card  # was missing — caused all mf2 authors to return empty {"type": "card"}
-    return {"type": "card"}
+    result = _mf2_embedded_to_jf2(author_val, base_url)
+    return result if result else {"type": "card"}
 
 
 def _hentry_to_jf2(item: dict, base_url: str) -> dict:
@@ -147,11 +172,61 @@ def _hentry_to_jf2(item: dict, base_url: str) -> dict:
     if authors:
         entry["author"] = _author_from_mf2(authors[0], base_url)
 
+    # Simple scalar strings
+    for mf2_key, jf2_key in [("summary", "summary"), ("updated", "updated")]:
+        v = _first(mf2_key)
+        if v:
+            entry[jf2_key] = v
+
+    # RSVP — normalize to lowercase
+    rsvp = _first("rsvp")
+    if rsvp:
+        entry["rsvp"] = rsvp.lower()
+
+    # Embedded objects — checkin and location
+    for mf2_key, jf2_key in [("checkin", "checkin"), ("location", "location")]:
+        vals = props.get(mf2_key, [])
+        if vals:
+            card = _mf2_embedded_to_jf2(vals[0], base_url)
+            if card:
+                entry[jf2_key] = card
+
+    # Multi-value URL arrays
+    def _url_vals(key: str) -> list[str]:
+        out = []
+        for v in props.get(key, []):
+            if isinstance(v, str) and v:
+                out.append(urljoin(base_url, v))
+            elif isinstance(v, dict):
+                u = v.get("value") or v.get("url", "")
+                if u:
+                    out.append(urljoin(base_url, u))
+        return out
+
+    for mf2_key in ("photo", "video", "audio", "syndication"):
+        urls = _url_vals(mf2_key)
+        if urls:
+            entry[mf2_key] = urls
+
+    featured = _first("featured")
+    if featured:
+        entry["featured"] = urljoin(base_url, featured)
+
+    # Category — array of plain strings
+    cats = [v for v in props.get("category", []) if isinstance(v, str) and v]
+    if cats:
+        entry["category"] = cats
+
+    # Response types (URL references)
     for prop, jf2_key in [
-        ("in-reply-to", "in-reply-to"),
-        ("like-of", "like-of"),
-        ("repost-of", "repost-of"),
-        ("bookmark-of", "bookmark-of"),
+        ("in-reply-to",  "in-reply-to"),
+        ("like-of",      "like-of"),
+        ("repost-of",    "repost-of"),
+        ("bookmark-of",  "bookmark-of"),
+        ("listen-of",    "listen-of"),
+        ("watch-of",     "watch-of"),
+        ("read-of",      "read-of"),
+        ("checkin-of",   "checkin-of"),
     ]:
         vals = props.get(prop, [])
         if vals:

@@ -9,6 +9,7 @@ from microsub.feed_parser import (
     _apply_feed_author_fallback,
     _author_from_mf2,
     _hentry_to_jf2,
+    _mf2_embedded_to_jf2,
     _parse_hfeed,
     _parse_json_feed,
     _parse_link_header_for_rel,
@@ -175,6 +176,165 @@ class HentryToJf2Tests(SimpleTestCase):
         item = self._make_hentry({})
         result = _hentry_to_jf2(item, "https://example.com/")
         self.assertEqual(result["type"], "entry")
+
+    def test_checkin_embedded_hcard(self):
+        item = self._make_hentry({
+            "checkin": [{
+                "type": ["h-card"],
+                "properties": {
+                    "name": ["Coffee Shop"],
+                    "latitude": ["37.7749"],
+                    "longitude": ["-122.4194"],
+                },
+            }]
+        })
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertIn("checkin", result)
+        self.assertEqual(result["checkin"]["name"], "Coffee Shop")
+        self.assertEqual(result["checkin"]["latitude"], "37.7749")
+        self.assertEqual(result["checkin"]["longitude"], "-122.4194")
+
+    def test_checkin_string_url(self):
+        item = self._make_hentry({"checkin": ["https://venue.example.com/"]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["checkin"], {"type": "card", "url": "https://venue.example.com/"})
+
+    def test_location_embedded_hadr(self):
+        item = self._make_hentry({
+            "location": [{
+                "type": ["h-adr"],
+                "properties": {
+                    "locality": ["San Francisco"],
+                    "region": ["CA"],
+                },
+            }]
+        })
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertIn("location", result)
+        self.assertEqual(result["location"]["type"], "adr")
+        self.assertEqual(result["location"]["locality"], "San Francisco")
+        self.assertEqual(result["location"]["region"], "CA")
+
+    def test_photo_single(self):
+        item = self._make_hentry({"photo": ["https://example.com/photo.jpg"]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["photo"], ["https://example.com/photo.jpg"])
+
+    def test_photo_multiple(self):
+        item = self._make_hentry({"photo": [
+            "https://example.com/photo1.jpg",
+            "https://example.com/photo2.jpg",
+        ]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(len(result["photo"]), 2)
+
+    def test_photo_dict_value(self):
+        item = self._make_hentry({"photo": [{"value": "https://example.com/photo.jpg"}]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["photo"], ["https://example.com/photo.jpg"])
+
+    def test_video_included(self):
+        item = self._make_hentry({"video": ["https://example.com/video.mp4"]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["video"], ["https://example.com/video.mp4"])
+
+    def test_audio_included(self):
+        item = self._make_hentry({"audio": ["https://example.com/episode.mp3"]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["audio"], ["https://example.com/episode.mp3"])
+
+    def test_syndication_included(self):
+        item = self._make_hentry({"syndication": ["https://twitter.com/user/status/123"]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["syndication"], ["https://twitter.com/user/status/123"])
+
+    def test_category_included(self):
+        item = self._make_hentry({"category": ["IndieWeb", "python", "webdev"]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["category"], ["IndieWeb", "python", "webdev"])
+
+    def test_summary_included(self):
+        item = self._make_hentry({"summary": ["A brief summary of the post."]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["summary"], "A brief summary of the post.")
+
+    def test_updated_included(self):
+        item = self._make_hentry({"updated": ["2024-06-01T12:00:00Z"]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["updated"], "2024-06-01T12:00:00Z")
+
+    def test_rsvp_normalized(self):
+        item = self._make_hentry({"rsvp": ["YES"]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["rsvp"], "yes")
+
+    def test_listen_of_included(self):
+        item = self._make_hentry({"listen-of": ["https://podcast.example.com/episode/1"]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["listen-of"], "https://podcast.example.com/episode/1")
+
+    def test_watch_of_included(self):
+        item = self._make_hentry({"watch-of": ["https://video.example.com/watch?v=abc"]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["watch-of"], "https://video.example.com/watch?v=abc")
+
+    def test_read_of_included(self):
+        item = self._make_hentry({"read-of": ["https://book.example.com/isbn/9780000000000"]})
+        result = _hentry_to_jf2(item, "https://example.com/")
+        self.assertEqual(result["read-of"], "https://book.example.com/isbn/9780000000000")
+
+
+class Mf2EmbeddedToJf2Tests(SimpleTestCase):
+    def test_string_input_returns_minimal_card(self):
+        result = _mf2_embedded_to_jf2("https://venue.example.com/", "https://example.com/")
+        self.assertEqual(result, {"type": "card", "url": "https://venue.example.com/"})
+
+    def test_empty_string_returns_none(self):
+        result = _mf2_embedded_to_jf2("", "https://example.com/")
+        self.assertIsNone(result)
+
+    def test_hcard_dict_returns_full_card(self):
+        val = {
+            "type": ["h-card"],
+            "properties": {
+                "name": ["Alice"],
+                "url": ["https://alice.example.com/"],
+                "email": ["alice@example.com"],
+                "tel": ["+1-555-0100"],
+            },
+        }
+        result = _mf2_embedded_to_jf2(val, "https://example.com/")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["type"], "card")
+        self.assertEqual(result["name"], "Alice")
+        self.assertEqual(result["url"], "https://alice.example.com/")
+        self.assertEqual(result["email"], "alice@example.com")
+        self.assertEqual(result["tel"], "+1-555-0100")
+
+    def test_hadr_dict_returns_adr_type(self):
+        val = {
+            "type": ["h-adr"],
+            "properties": {
+                "locality": ["Portland"],
+                "region": ["OR"],
+                "country-name": ["US"],
+            },
+        }
+        result = _mf2_embedded_to_jf2(val, "https://example.com/")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["type"], "adr")
+        self.assertEqual(result["locality"], "Portland")
+        self.assertEqual(result["region"], "OR")
+        self.assertEqual(result["country"], "US")
+
+    def test_returns_none_for_empty_dict(self):
+        val = {"type": ["h-card"], "properties": {}}
+        result = _mf2_embedded_to_jf2(val, "https://example.com/")
+        self.assertIsNone(result)
+
+    def test_non_string_non_dict_returns_none(self):
+        result = _mf2_embedded_to_jf2(42, "https://example.com/")
+        self.assertIsNone(result)
 
 
 class ApplyFeedAuthorFallbackTests(SimpleTestCase):
