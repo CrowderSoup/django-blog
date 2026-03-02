@@ -217,30 +217,30 @@ class GetTimelineTests(TestCase):
         self.assertEqual(len(items), 1)
 
     @authorized
-    def test_before_cursor_filters_by_published_lt(self, _auth):
-        # "before" cursor is the entry PK of the oldest entry on the current page;
-        # the response should contain entries older than that entry.
+    def test_before_cursor_filters_by_published_gt(self, _auth):
+        # "before" cursor is the entry PK of the newest entry seen;
+        # the response should contain entries newer than that entry (for polling).
         response = self.client.get(
             MICROSUB_URL,
-            {"action": "timeline", "channel": "news", "before": str(self.e2.pk)},
-            HTTP_AUTHORIZATION="Bearer token",
-        )
-        items = response.json()["items"]
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["_id"], str(self.e1.pk))
-
-    @authorized
-    def test_after_cursor_filters_by_published_gt(self, _auth):
-        # "after" cursor is the entry PK of the newest entry on the current page;
-        # the response should contain entries newer than that entry.
-        response = self.client.get(
-            MICROSUB_URL,
-            {"action": "timeline", "channel": "news", "after": str(self.e1.pk)},
+            {"action": "timeline", "channel": "news", "before": str(self.e1.pk)},
             HTTP_AUTHORIZATION="Bearer token",
         )
         items = response.json()["items"]
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["_id"], str(self.e2.pk))
+
+    @authorized
+    def test_after_cursor_filters_by_published_lt(self, _auth):
+        # "after" cursor is the entry PK of the oldest entry on the current page;
+        # the response should contain entries older than that entry (next page).
+        response = self.client.get(
+            MICROSUB_URL,
+            {"action": "timeline", "channel": "news", "after": str(self.e2.pk)},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        items = response.json()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["_id"], str(self.e1.pk))
 
     @authorized
     def test_invalid_cursor_is_ignored(self, _auth):
@@ -258,8 +258,8 @@ class GetTimelineTests(TestCase):
             MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         )
         paging = response.json()["paging"]
-        # "after" is always present when entries exist; "before" only when has_more=True.
-        self.assertIn("after", paging)
+        # "before" is always present when entries exist; "after" only when has_more=True.
+        self.assertIn("before", paging)
 
     @authorized
     def test_paging_empty_when_no_entries(self, _auth):
@@ -270,18 +270,18 @@ class GetTimelineTests(TestCase):
         self.assertEqual(response.json()["paging"], {})
 
     @authorized
-    def test_paging_after_is_newest_entry_pk(self, _auth):
+    def test_paging_before_is_newest_entry_pk(self, _auth):
         # Items ordered newest-first: e2 (newer) then e1 (older).
-        # "after" cursor should be the PK of the newest entry so clients can poll for new entries.
+        # "before" cursor should be the PK of the newest entry so clients can poll for new entries.
         response = self.client.get(
             MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         )
         paging = response.json()["paging"]
-        self.assertEqual(paging["after"], str(self.e2.pk))
+        self.assertEqual(paging["before"], str(self.e2.pk))
 
     @authorized
-    def test_paging_before_is_oldest_entry_pk_on_nonfinal_page(self, _auth):
-        # "before" cursor should be the PK of the oldest entry on the page when has_more=True.
+    def test_paging_after_is_oldest_entry_pk_on_nonfinal_page(self, _auth):
+        # "after" cursor should be the PK of the oldest entry on the page when has_more=True.
         from microsub.views import PAGE_SIZE
         now = timezone.now()
         # Add enough entries to push e1/e2 off the first page entirely, ensuring has_more=True.
@@ -296,15 +296,14 @@ class GetTimelineTests(TestCase):
             MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         )
         paging = response.json()["paging"]
-        self.assertIn("before", paging)
+        self.assertIn("after", paging)
         items = response.json()["items"]
-        # "before" must equal the PK of the last (oldest) item on the page.
-        self.assertEqual(paging["before"], items[-1]["_id"])
+        # "after" must equal the PK of the last (oldest) item on the page.
+        self.assertEqual(paging["after"], items[-1]["_id"])
 
     @authorized
-    def test_paging_before_cursor_fetches_next_older_page(self, _auth):
-        # Regression: requesting ?before=<paging.before> must return entries
-        # OLDER than the current page, not overlap with it.
+    def test_paging_after_cursor_fetches_next_older_page(self, _auth):
+        # Requesting ?after=<paging.after> must return entries OLDER than the current page.
         now = timezone.now()
         # Create PAGE_SIZE + 2 entries so there are multiple pages.
         from microsub.views import PAGE_SIZE
@@ -322,13 +321,13 @@ class GetTimelineTests(TestCase):
         page1 = self.client.get(
             MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         ).json()
-        before_cursor = page1["paging"]["before"]
+        after_cursor = page1["paging"]["after"]
         page1_ids = {item["_id"] for item in page1["items"]}
 
-        # Get the second page using the before cursor.
+        # Get the second page using the after cursor.
         page2 = self.client.get(
             MICROSUB_URL,
-            {"action": "timeline", "channel": "news", "before": before_cursor},
+            {"action": "timeline", "channel": "news", "after": after_cursor},
             HTTP_AUTHORIZATION="Bearer token",
         ).json()
         page2_ids = {item["_id"] for item in page2["items"]}
@@ -684,23 +683,23 @@ class GetTimelineUnreadFilterTests(TestCase):
 
 
 class GetTimelinePagingBehaviorTests(TestCase):
-    """paging.before is only present when there are more older entries."""
+    """paging.after is only present when there are more older entries."""
 
     def setUp(self):
         self.channel = Channel.objects.create(uid="news", name="News")
 
     @authorized
-    def test_paging_before_absent_on_last_page(self, _auth):
+    def test_paging_after_absent_on_last_page(self, _auth):
         now = timezone.now()
         Entry.objects.create(channel=self.channel, uid="only", data={}, published=now)
         response = self.client.get(
             MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         )
         paging = response.json()["paging"]
-        self.assertNotIn("before", paging)
+        self.assertNotIn("after", paging)
 
     @authorized
-    def test_paging_before_present_on_nonfinal_page(self, _auth):
+    def test_paging_after_present_on_nonfinal_page(self, _auth):
         from microsub.views import PAGE_SIZE
         now = timezone.now()
         for i in range(PAGE_SIZE + 1):
@@ -714,7 +713,7 @@ class GetTimelinePagingBehaviorTests(TestCase):
             MICROSUB_URL, {"action": "timeline", "channel": "news"}, HTTP_AUTHORIZATION="Bearer token"
         )
         paging = response.json()["paging"]
-        self.assertIn("before", paging)
+        self.assertIn("after", paging)
 
 
 class EntryJsonWithoutSubscriptionTests(TestCase):

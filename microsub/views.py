@@ -293,12 +293,14 @@ class MicrosubView(View):
         # Cursor-based paging using entry PKs as stable cursors.
         # We look up the cursor entry to get its (published, id) for a compound filter
         # that handles entries sharing the same published timestamp correctly.
+        # after=X → entries older than X (next page of a newest-first feed)
+        # before=X → entries newer than X (polling for new entries)
         before_cursor = request.GET.get("before")
         after_cursor = request.GET.get("after")
 
-        if before_cursor:
+        if after_cursor:
             try:
-                cursor_id = int(before_cursor)
+                cursor_id = int(after_cursor)
                 cursor = channel.entries.filter(pk=cursor_id).values("published", "id").first()
                 if cursor:
                     qs = qs.filter(
@@ -308,9 +310,9 @@ class MicrosubView(View):
             except (ValueError, TypeError):
                 pass
 
-        if after_cursor:
+        if before_cursor:
             try:
-                cursor_id = int(after_cursor)
+                cursor_id = int(before_cursor)
                 cursor = channel.entries.filter(pk=cursor_id).values("published", "id").first()
                 if cursor:
                     qs = qs.filter(
@@ -343,9 +345,9 @@ class MicrosubView(View):
 
         paging = {}
         if entries_list:
-            paging["after"] = str(entries_list[0].pk)
+            paging["before"] = str(entries_list[0].pk)
         if has_more:
-            paging["before"] = str(entries_list[-1].pk)
+            paging["after"] = str(entries_list[-1].pk)
 
         return JsonResponse(
             {
