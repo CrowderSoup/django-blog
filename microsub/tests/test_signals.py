@@ -1,4 +1,6 @@
 """Tests for microsub/signals.py — webmention_to_notifications."""
+import hashlib
+
 from django.test import TestCase
 
 from micropub.models import Webmention
@@ -64,20 +66,28 @@ class WebmentionToNotificationsTests(TestCase):
         self.assertNotIn("in-reply-to", entry.data)
         self.assertNotIn("repost-of", entry.data)
 
-    def test_entry_uid_equals_source(self):
+    def test_entry_uid_is_hash_of_source_target_type(self):
         wm = _make_webmention(status="accepted")
         entry = Entry.objects.get(channel=self.notifications)
-        self.assertEqual(entry.uid, wm.source)
+        expected_uid = hashlib.sha256(
+            f"{wm.source}:{wm.target}:{wm.mention_type}".encode()
+        ).hexdigest()
+        self.assertEqual(entry.uid, expected_uid)
 
-    def test_duplicate_webmention_does_not_create_duplicate_entry(self):
+    def test_same_source_same_target_same_type_deduped(self):
+        """Identical webmentions (same source+target+type) do not create duplicates."""
         source = "https://source.example.com/post"
-        _make_webmention(status="accepted", source=source)
-        _make_webmention(
-            status="accepted",
-            source=source,
-            target="https://mysite.example.com/blog/other/",
-        )
-        self.assertEqual(Entry.objects.filter(channel=self.notifications, uid=source).count(), 1)
+        target = "https://mysite.example.com/blog/hello/"
+        _make_webmention(status="accepted", source=source, target=target, mention_type="like")
+        _make_webmention(status="accepted", source=source, target=target, mention_type="like")
+        self.assertEqual(Entry.objects.filter(channel=self.notifications).count(), 1)
+
+    def test_same_source_different_targets_both_stored(self):
+        """Same source with different targets creates separate entries."""
+        source = "https://source.example.com/post"
+        _make_webmention(status="accepted", source=source, target="https://mysite.example.com/blog/post1/", mention_type="like")
+        _make_webmention(status="accepted", source=source, target="https://mysite.example.com/blog/post2/", mention_type="like")
+        self.assertEqual(Entry.objects.filter(channel=self.notifications).count(), 2)
 
     def test_subscription_is_none(self):
         _make_webmention(status="accepted")

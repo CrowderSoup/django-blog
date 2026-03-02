@@ -88,6 +88,39 @@ def _subscribe_to_websub(subscription: Subscription, request) -> None:
         logger.warning("WebSub subscribe failed for %s: %s", subscription.url, exc)
 
 
+def _subscribe_to_websub_with_base_url(subscription: Subscription, base_url: str) -> None:
+    """Send a WebSub subscribe request using an explicit base URL (no request object needed)."""
+    if not subscription.websub_hub:
+        return
+    callback_path = reverse(
+        "microsub-websub-callback",
+        kwargs={"subscription_id": subscription.pk}
+    )
+    callback_url = base_url.rstrip("/") + callback_path
+    secret = secrets.token_hex(32)
+    body = urlencode({
+        "hub.mode": "subscribe",
+        "hub.topic": subscription.url,
+        "hub.callback": callback_url,
+        "hub.secret": secret,
+    }).encode()
+    try:
+        req = Request(
+            subscription.websub_hub,
+            data=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        with urlopen(req, timeout=10) as resp:
+            status = resp.status
+        if status in (200, 202):
+            subscription.websub_secret = secret
+            subscription.websub_subscribed_at = timezone.now()
+            subscription.save(update_fields=["websub_secret", "websub_subscribed_at"])
+    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+        logger.warning("WebSub subscribe failed for %s: %s", subscription.url, exc)
+
+
 def _store_entries(channel: Channel, subscription: Subscription | None, entries: list[dict]) -> int:
     """Store parsed JF2 entries into the DB. Returns count of new entries."""
     from dateutil.parser import parse as parse_dt
@@ -107,6 +140,11 @@ def _store_entries(channel: Channel, subscription: Subscription | None, entries:
                     published = tz.make_aware(published)
             except Exception:
                 pass
+        author_url = ""
+        author = entry_data.get("author", {})
+        if isinstance(author, dict):
+            author_url = author.get("url", "") or ""
+
         _, created = Entry.objects.get_or_create(
             channel=channel,
             uid=str(uid),
@@ -114,6 +152,7 @@ def _store_entries(channel: Channel, subscription: Subscription | None, entries:
                 "subscription": subscription,
                 "data": entry_data,
                 "published": published,
+                "author_url": author_url,
             },
         )
         if created:
@@ -212,13 +251,6 @@ class MicrosubView(View):
 
         qs = channel.entries.filter(is_removed=False)
 
-        # Apply mute/block filters
-        muted_urls = set(MutedUser.objects.filter(channel__isnull=True).values_list("url", flat=True))
-        muted_urls.update(MutedUser.objects.filter(channel=channel).values_list("url", flat=True))
-        blocked_urls = set(BlockedUser.objects.filter(channel__isnull=True).values_list("url", flat=True))
-        blocked_urls.update(BlockedUser.objects.filter(channel=channel).values_list("url", flat=True))
-        excluded = muted_urls | blocked_urls
-
         # Cursor-based paging using entry PKs as stable cursors.
         # We look up the cursor entry to get its (published, id) for a compound filter
         # that handles entries sharing the same published timestamp correctly.
@@ -249,36 +281,37 @@ class MicrosubView(View):
             except (ValueError, TypeError):
                 pass
 
+        # Filter by source subscription URL if provided
+        source_url = request.GET.get("source", "").strip()
+        if source_url:
+            qs = qs.filter(subscription__url=source_url)
+
+        # Apply mute/block filters at DB level
+        muted_urls = set(MutedUser.objects.filter(
+            Q(channel__isnull=True) | Q(channel=channel)
+        ).values_list("url", flat=True))
+        blocked_urls = set(BlockedUser.objects.filter(
+            Q(channel__isnull=True) | Q(channel=channel)
+        ).values_list("url", flat=True))
+        excluded = muted_urls | blocked_urls
+        if excluded:
+            qs = qs.exclude(author_url__in=excluded)
+
         qs = qs.select_related("subscription").order_by("-published", "-id")[:PAGE_SIZE + 1]
         entries_list = list(qs)
         has_more = len(entries_list) > PAGE_SIZE
         entries_list = entries_list[:PAGE_SIZE]
 
-        # Filter excluded after fetching (avoids complex DB query on JSONField)
-        filtered = []
-        for e in entries_list:
-            author_url = ""
-            if isinstance(e.data, dict):
-                author = e.data.get("author", {})
-                if isinstance(author, dict):
-                    author_url = author.get("url", "")
-                entry_url = e.data.get("url", "")
-            else:
-                entry_url = ""
-            if author_url in excluded or entry_url in excluded:
-                continue
-            filtered.append(e)
-
         paging = {}
-        if filtered:
-            paging["after"] = str(filtered[0].pk)
-            paging["before"] = str(filtered[-1].pk)
+        if entries_list:
+            paging["after"] = str(entries_list[0].pk)
+            paging["before"] = str(entries_list[-1].pk)
         if has_more:
             paging["before"] = str(entries_list[-1].pk)
 
         return JsonResponse(
             {
-                "items": [_entry_json(e) for e in filtered],
+                "items": [_entry_json(e) for e in entries_list],
                 "paging": paging,
             }
         )
@@ -360,7 +393,7 @@ class MicrosubView(View):
         if not url:
             return JsonResponse({"error": "invalid_request"}, status=400)
         try:
-            entries, _ = fetch_and_parse_feed(url)
+            entries, _, _ = fetch_and_parse_feed(url)
         except Exception as exc:
             return JsonResponse(
                 {"error": "fetch_error", "error_description": str(exc)}, status=502
@@ -379,6 +412,13 @@ class MicrosubView(View):
         channel_uid = request.POST.get("channel", "")
         name = request.POST.get("name", "").strip()
 
+        # Check for reorder first (spec sends channels[] with no method=order)
+        channels_order = request.POST.getlist("channels[]") or request.POST.getlist("channels")
+        if channels_order:
+            for i, uid in enumerate(channels_order):
+                Channel.objects.filter(uid=uid).update(order=i)
+            return JsonResponse({})
+
         if method == "delete":
             channel = Channel.objects.filter(uid=channel_uid).first()
             if not channel:
@@ -389,12 +429,6 @@ class MicrosubView(View):
                     status=403,
                 )
             channel.delete()
-            return JsonResponse({})
-
-        if method == "order":
-            channels = request.POST.getlist("channels[]") or request.POST.getlist("channels")
-            for i, uid in enumerate(channels):
-                Channel.objects.filter(uid=uid).update(order=i)
             return JsonResponse({})
 
         if channel_uid and name:
@@ -454,6 +488,8 @@ class MicrosubView(View):
                     update_fields.append("websub_hub")
                 if update_fields:
                     sub.save(update_fields=update_fields)
+                if entries:
+                    _store_entries(sub.channel, sub, entries)
                 if hub_url:
                     _subscribe_to_websub(sub, request)
             except Exception as exc:
@@ -478,7 +514,7 @@ class MicrosubView(View):
         channel = Channel.objects.filter(uid=channel_uid).first()
         if not channel:
             return JsonResponse({"error": "invalid_request"}, status=400)
-        Subscription.objects.filter(channel=channel, url=url).delete()
+        Subscription.objects.filter(channel=channel, url=url).update(is_active=False)
         return JsonResponse({})
 
     def _post_timeline(self, request):
@@ -495,7 +531,7 @@ class MicrosubView(View):
         if not channel:
             return JsonResponse({"error": "invalid_request"}, status=400)
 
-        if method == "mark_read":
+        if method in ("", "mark_read"):
             if last_read_entry:
                 try:
                     channel.entries.filter(id__lte=int(last_read_entry)).update(is_read=True)
@@ -506,18 +542,16 @@ class MicrosubView(View):
             else:
                 channel.entries.all().update(is_read=True)
             return JsonResponse({})
-
-        if method == "mark_unread":
+        elif method == "mark_unread":
             if entry_ids:
                 channel.entries.filter(pk__in=entry_ids).update(is_read=False)
             return JsonResponse({})
-
-        if method == "remove":
+        elif method == "remove":
             if entry_ids:
                 channel.entries.filter(pk__in=entry_ids).update(is_removed=True)
             return JsonResponse({})
-
-        return JsonResponse({"error": "invalid_request"}, status=400)
+        else:
+            return JsonResponse({"error": "invalid_request"}, status=400)
 
     def _post_mute(self, request):
         if not _require_scope(request.microsub_scopes, "mute"):
@@ -611,8 +645,9 @@ class WebSubCallbackView(View):
             if not sig_header:
                 return HttpResponse(status=401)
             body = request.body
-            expected = hmac.new(
-                sub.websub_secret.encode(), body, hashlib.sha256  # type: ignore[attr-defined]
+            # hmac.new is the correct stdlib API; type checkers sometimes incorrectly flag it
+            expected = hmac.new(  # type: ignore[attr-defined]
+                sub.websub_secret.encode(), body, hashlib.sha256
             ).hexdigest()
             # Strip "sha256=" prefix if present
             provided = sig_header.split("=", 1)[-1]
@@ -636,7 +671,6 @@ class WebSubCallbackView(View):
             else:
                 entries, _ = _parse_rss_atom(request.body, sub.url)
 
-            from .views import _store_entries
             _store_entries(sub.channel, sub, entries)
         except Exception as exc:
             logger.exception("WebSub notification processing failed for sub %s: %s", subscription_id, exc)

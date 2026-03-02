@@ -1,3 +1,4 @@
+import hashlib
 import logging
 
 from django.db.models.signals import post_save
@@ -32,10 +33,14 @@ def webmention_to_notifications(sender, instance, **kwargs):
     elif instance.mention_type == "repost":
         jf2["repost-of"] = instance.target
 
+    uid = hashlib.sha256(
+        f"{instance.source}:{instance.target}:{instance.mention_type}".encode()
+    ).hexdigest()
+
     try:
         Entry.objects.get_or_create(
             channel=channel,
-            uid=instance.source,
+            uid=uid,
             defaults={
                 "data": jf2,
                 "published": instance.created_at,

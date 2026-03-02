@@ -268,14 +268,15 @@ class PostUnfollowTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     @authorized
-    def test_deletes_subscription(self, _auth):
+    def test_deactivates_subscription(self, _auth):
         response = self.client.post(
             MICROSUB_URL,
             {"action": "unfollow", "channel": "news", "url": "https://example.com/feed"},
             HTTP_AUTHORIZATION="Bearer token",
         )
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(Subscription.objects.filter(url="https://example.com/feed").exists())
+        sub = Subscription.objects.get(url="https://example.com/feed")
+        self.assertFalse(sub.is_active)
 
     @authorized
     def test_nonexistent_subscription_is_ok(self, _auth):
@@ -624,3 +625,69 @@ class PostUnblockTests(TestCase):
             HTTP_AUTHORIZATION="Bearer token",
         )
         self.assertEqual(response.status_code, 200)
+
+
+class PostTimelineDefaultMethodTests(TestCase):
+    """Fix 3 — omitting method defaults to mark_read per the spec."""
+
+    def setUp(self):
+        self.channel = Channel.objects.create(uid="news", name="News")
+        now = timezone.now()
+        self.e1 = Entry.objects.create(channel=self.channel, uid="e1", data={}, published=now)
+
+    @authorized
+    def test_mark_read_without_method_param(self, _auth):
+        """Omitting 'method' should default to mark_read per the spec."""
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "timeline", "channel": "news", "entry[]": [str(self.e1.pk)]},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.e1.refresh_from_db()
+        self.assertTrue(self.e1.is_read)
+
+
+class PostChannelsReorderTests(TestCase):
+    """Fix 4 — reorder channels via channels[] without method=order."""
+
+    def setUp(self):
+        self.channel = Channel.objects.create(uid="news", name="News", order=1)
+
+    @authorized
+    def test_order_reorders_channels_without_method_param(self, _auth):
+        """Spec-compliant reorder: channels[] with no method param."""
+        ch2 = Channel.objects.create(uid="tech", name="Tech", order=2)
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "channels", "channels[]": ["tech", "news"]},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.channel.refresh_from_db()
+        ch2.refresh_from_db()
+        self.assertEqual(ch2.order, 0)
+        self.assertEqual(self.channel.order, 1)
+
+
+class PostFollowInitialEntriesTests(TestCase):
+    """Fix 10 — initial entries stored immediately on follow."""
+
+    def setUp(self):
+        self.channel = Channel.objects.create(uid="news", name="News")
+
+    @authorized
+    @patch("microsub.views.fetch_and_parse_feed", return_value=(
+        [{"type": "entry", "url": "https://example.com/post/1",
+          "_uid": "https://example.com/post/1", "published": "2024-01-01T00:00:00Z"}],
+        None,
+        {"name": "Example Feed", "photo": ""},
+    ))
+    def test_initial_entries_stored_on_follow(self, mock_fetch, _auth):
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "follow", "channel": "news", "url": "https://example.com/feed"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Entry.objects.filter(channel=self.channel).exists())

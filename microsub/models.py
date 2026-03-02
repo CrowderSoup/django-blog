@@ -45,6 +45,7 @@ class Entry(models.Model):
     uid = models.TextField()
     data = models.JSONField()
     published = models.DateTimeField()
+    author_url = models.URLField(max_length=2000, blank=True, db_index=True)
     is_read = models.BooleanField(default=False, db_index=True)
     is_removed = models.BooleanField(default=False, db_index=True)
     fetched_at = models.DateTimeField(auto_now_add=True)
