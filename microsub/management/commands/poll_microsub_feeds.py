@@ -73,9 +73,16 @@ class Command(BaseCommand):
 
             # Subscribe to WebSub hub if we haven't yet
             if sub.websub_hub and not sub.websub_subscribed_at:
-                # Build a fake request-like object for URL building
-                # We skip websub subscribe during management command since we have no request
-                pass
+                from django.conf import settings
+                base_url = getattr(settings, "MICROSUB_BASE_URL", "").rstrip("/")
+                if base_url:
+                    from microsub.views import _subscribe_to_websub_with_base_url
+                    _subscribe_to_websub_with_base_url(sub, base_url)
+                else:
+                    logger.debug(
+                        "MICROSUB_BASE_URL not set; skipping WebSub subscription for %s",
+                        sub.url,
+                    )
 
             new_count = _store_entries(sub.channel, sub, entries)
             sub.fetch_error = ""

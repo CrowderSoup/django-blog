@@ -141,6 +141,7 @@ class GetTimelineTests(TestCase):
         self.e1 = Entry.objects.create(
             channel=self.channel, uid="e1",
             data={"type": "entry", "author": {"url": "https://author.example.com/"}},
+            author_url="https://author.example.com/",
             published=now,
         )
         self.e2 = Entry.objects.create(
@@ -486,7 +487,7 @@ class GetPreviewTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     @authorized
-    @patch("microsub.views.fetch_and_parse_feed", return_value=([{"type": "entry"}], None))
+    @patch("microsub.views.fetch_and_parse_feed", return_value=([{"type": "entry"}], None, {}))
     def test_returns_items_on_success(self, mock_fetch, _auth):
         response = self.client.get(
             MICROSUB_URL,
@@ -497,7 +498,7 @@ class GetPreviewTests(TestCase):
         self.assertIn("items", response.json())
 
     @authorized
-    @patch("microsub.views.fetch_and_parse_feed", return_value=([{"type": "entry"}] * 25, None))
+    @patch("microsub.views.fetch_and_parse_feed", return_value=([{"type": "entry"}] * 25, None, {}))
     def test_returns_at_most_20_items(self, mock_fetch, _auth):
         response = self.client.get(
             MICROSUB_URL,
@@ -516,3 +517,94 @@ class GetPreviewTests(TestCase):
         )
         self.assertEqual(response.status_code, 502)
         self.assertEqual(response.json()["error"], "fetch_error")
+
+
+class DiscoveryTests(TestCase):
+    """Fix 2 — Endpoint discovery via HTML link tag and HTTP Link header."""
+
+    def test_homepage_contains_microsub_link_tag(self):
+        response = self.client.get("/")
+        self.assertContains(response, 'rel="microsub"')
+
+    def test_homepage_link_header_contains_microsub_rel(self):
+        response = self.client.get("/")
+        link_header = response.get("Link", "")
+        self.assertIn('rel="microsub"', link_header)
+
+
+class GetTimelineSourceFilterTests(TestCase):
+    """Fix 5 — source parameter filtering on timeline."""
+
+    def setUp(self):
+        self.channel = Channel.objects.create(uid="news", name="News")
+
+    @authorized
+    def test_source_filter_returns_only_matching_entries(self, _auth):
+        sub_a = Subscription.objects.create(channel=self.channel, url="https://a.example.com/")
+        sub_b = Subscription.objects.create(channel=self.channel, url="https://b.example.com/")
+        now = timezone.now()
+        Entry.objects.create(
+            channel=self.channel, uid="sa1", data={}, published=now,
+            subscription=sub_a,
+        )
+        Entry.objects.create(
+            channel=self.channel, uid="sb1", data={}, published=now,
+            subscription=sub_b,
+        )
+        response = self.client.get(
+            MICROSUB_URL,
+            {"action": "timeline", "channel": "news", "source": "https://a.example.com/"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+        items = response.json()["items"]
+        self.assertEqual(len(items), 1)
+
+    @authorized
+    def test_source_filter_unknown_source_returns_empty(self, _auth):
+        response = self.client.get(
+            MICROSUB_URL,
+            {"action": "timeline", "channel": "news", "source": "https://unknown.example.com/"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["items"], [])
+
+
+class GetTimelineMuteDbLevelTests(TestCase):
+    """Fix 7 — mute/block filtering at DB level does not truncate pages."""
+
+    def setUp(self):
+        self.channel = Channel.objects.create(uid="news", name="News")
+
+    @authorized
+    def test_muted_author_exclusion_does_not_truncate_page(self, _auth):
+        """Muted entries should be excluded at DB level, not shrink the page."""
+        from microsub.views import PAGE_SIZE
+        MutedUser.objects.create(channel=None, url="https://muted.example.com/")
+        now = timezone.now()
+        # Create PAGE_SIZE entries from an innocent author
+        for i in range(PAGE_SIZE):
+            Entry.objects.create(
+                channel=self.channel,
+                uid=f"innocent-{i}",
+                data={"author": {"url": "https://innocent.example.com/"}},
+                author_url="https://innocent.example.com/",
+                published=now - datetime.timedelta(seconds=i),
+            )
+        # Create some entries from the muted author
+        for i in range(5):
+            Entry.objects.create(
+                channel=self.channel,
+                uid=f"muted-{i}",
+                data={"author": {"url": "https://muted.example.com/"}},
+                author_url="https://muted.example.com/",
+                published=now - datetime.timedelta(seconds=i + 100),
+            )
+        response = self.client.get(
+            MICROSUB_URL,
+            {"action": "timeline", "channel": "news"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        items = response.json()["items"]
+        self.assertEqual(len(items), PAGE_SIZE)

@@ -162,3 +162,18 @@ class PollMicrosubFeedsCommandTests(TestCase):
         _make_sub(self.channel)
         output = self._call()
         self.assertIn("Done", output)
+
+    @patch("microsub.views._subscribe_to_websub_with_base_url")
+    @patch("microsub.management.commands.poll_microsub_feeds.fetch_and_parse_feed",
+           return_value=([], "https://hub.example.com/", {}))
+    def test_websub_subscription_attempted_when_base_url_set(self, mock_fetch, mock_sub):
+        from django.test import override_settings
+        Subscription.objects.create(
+            channel=self.channel,
+            url="https://example.com/feed",
+            is_active=True,
+            websub_hub="https://hub.example.com/",
+        )
+        with override_settings(MICROSUB_BASE_URL="https://mysite.example.com"):
+            self._call()
+        mock_sub.assert_called_once()
