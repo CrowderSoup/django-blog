@@ -5,7 +5,7 @@ from django.utils import timezone
 
 from microsub.models import Subscription
 from microsub.feed_parser import fetch_and_parse_feed
-from microsub.views import _store_entries
+from microsub.views import _store_entries, _doctor_entries
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +28,17 @@ class Command(BaseCommand):
             default=False,
             help="Re-poll even recently-fetched feeds.",
         )
+        parser.add_argument(
+            "--doctor",
+            action="store_true",
+            default=False,
+            help="Re-parse feeds and update existing entries with corrected data.",
+        )
 
     def handle(self, *args, **options):
         channel_uid = options["channel"]
         force = options["force"]
+        doctor = options["doctor"]
 
         qs = Subscription.objects.filter(is_active=True).select_related("channel")
         if channel_uid:
@@ -39,6 +46,7 @@ class Command(BaseCommand):
 
         now = timezone.now()
         total_new = 0
+        total_updated = 0
         total_subs = 0
 
         for sub in qs:
@@ -85,15 +93,19 @@ class Command(BaseCommand):
                     )
 
             new_count = _store_entries(sub.channel, sub, entries)
+            if doctor:
+                updated_count = _doctor_entries(sub.channel, entries)
+                total_updated += updated_count
+                self.stdout.write(f"  {new_count} new, {updated_count} updated")
+            else:
+                self.stdout.write(f"  {new_count} new entries")
             sub.fetch_error = ""
             sub.last_fetched_at = now
             sub.save(update_fields=["fetch_error", "last_fetched_at"])
             total_new += new_count
             total_subs += 1
-            self.stdout.write(f"  {new_count} new entries")
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Done. Polled {total_subs} subscriptions, {total_new} total new entries."
-            )
-        )
+        summary = f"Done. Polled {total_subs} subscriptions, {total_new} new entries."
+        if doctor:
+            summary += f" {total_updated} existing entries updated."
+        self.stdout.write(self.style.SUCCESS(summary))

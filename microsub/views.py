@@ -121,6 +121,41 @@ def _subscribe_to_websub_with_base_url(subscription: Subscription, base_url: str
         logger.warning("WebSub subscribe failed for %s: %s", subscription.url, exc)
 
 
+def _doctor_entries(channel: Channel, entries: list[dict]) -> int:
+    """Re-process already-stored entries with fresh parsed data. Returns update count."""
+    from dateutil.parser import parse as parse_dt
+    from django.utils import timezone as tz
+
+    updated = 0
+    for entry_data in entries:
+        uid = entry_data.get("_uid") or entry_data.get("url") or entry_data.get("uid")
+        if not uid:
+            continue
+
+        published_str = entry_data.get("published")
+        published = None
+        if published_str:
+            try:
+                published = parse_dt(published_str)
+                if published.tzinfo is None:
+                    published = tz.make_aware(published)
+            except Exception:
+                pass
+
+        author_url = ""
+        author = entry_data.get("author", {})
+        if isinstance(author, dict):
+            author_url = author.get("url", "") or ""
+
+        update_fields = {"data": entry_data, "author_url": author_url}
+        if published:
+            update_fields["published"] = published
+
+        count = Entry.objects.filter(channel=channel, uid=str(uid)).update(**update_fields)
+        updated += count
+    return updated
+
+
 def _store_entries(channel: Channel, subscription: Subscription | None, entries: list[dict]) -> int:
     """Store parsed JF2 entries into the DB. Returns count of new entries."""
     from dateutil.parser import parse as parse_dt
