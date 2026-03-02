@@ -286,9 +286,11 @@ class MicrosubView(View):
 
         qs = channel.entries.filter(is_removed=False)
 
-        filter_param = request.GET.get("filter", "")
-        if filter_param == "unread":
+        is_read_param = request.GET.get("is_read", "")
+        if is_read_param == "false":
             qs = qs.filter(is_read=False)
+        elif is_read_param == "true":
+            qs = qs.filter(is_read=True)
 
         # Cursor-based paging using entry PKs as stable cursors.
         # We look up the cursor entry to get its (published, id) for a compound filter
