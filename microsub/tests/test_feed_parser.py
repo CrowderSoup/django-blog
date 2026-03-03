@@ -121,6 +121,11 @@ class AuthorFromMf2Tests(SimpleTestCase):
         self.assertEqual(result["name"], "Alice")
         self.assertEqual(result["url"], "https://alice.example.com/")
 
+    def test_empty_hcard_returns_none(self):
+        author = {"type": ["h-card"], "properties": {}}
+        result = _author_from_mf2(author, "https://example.com/")
+        self.assertIsNone(result)
+
 
 class HentryToJf2Tests(SimpleTestCase):
     def _make_hentry(self, props):
@@ -494,6 +499,34 @@ class ParseJsonFeedTests(SimpleTestCase):
         entries, _ = _parse_json_feed(data, "https://example.com/")
         self.assertEqual(entries, [])
 
+    def test_tags_mapped_to_category(self):
+        data = self._make_data([{
+            "id": "https://example.com/1",
+            "content_text": "At the coffee shop.",
+            "tags": ["checkin"],
+        }])
+        entries, _ = _parse_json_feed(data, "https://example.com/")
+        self.assertEqual(entries[0]["category"], ["checkin"])
+
+    def test_empty_tags_not_included(self):
+        data = self._make_data([{
+            "id": "https://example.com/1",
+            "tags": [],
+        }])
+        entries, _ = _parse_json_feed(data, "https://example.com/")
+        self.assertNotIn("category", entries[0])
+
+    def test_feed_author_fallback_applied_when_no_entry_author(self):
+        data = {
+            "version": "https://jsonfeed.org/version/1",
+            "title": "My Blog",
+            "items": [{"id": "https://example.com/1", "title": "A Post"}],
+        }
+        entries, _ = _parse_json_feed(data, "https://example.com/")
+        self.assertEqual(len(entries), 1)
+        self.assertIn("author", entries[0])
+        self.assertEqual(entries[0]["author"]["name"], "My Blog")
+
 
 class ParseRssAtomTests(SimpleTestCase):
     RSS_FEED = b"""<?xml version="1.0"?>
@@ -509,6 +542,28 @@ class ParseRssAtomTests(SimpleTestCase):
   </channel>
 </rss>"""
 
+    RSS_NO_AUTHOR_FEED = b"""<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <title>Blog Feed</title>
+    <item>
+      <title>Post One</title>
+      <link>https://example.com/1</link>
+      <guid>https://example.com/1</guid>
+    </item>
+  </channel>
+</rss>"""
+
+    ATOM_TEXT_CONTENT_FEED = b"""<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test</title>
+  <entry>
+    <id>https://example.com/1</id>
+    <link href="https://example.com/1"/>
+    <content type="text">&lt;b&gt;bold&lt;/b&gt; text</content>
+  </entry>
+</feed>"""
+
     def test_parses_rss_item(self):
         entries, meta = _parse_rss_atom(self.RSS_FEED, "https://example.com/")
         self.assertEqual(len(entries), 1)
@@ -523,6 +578,19 @@ class ParseRssAtomTests(SimpleTestCase):
         empty_rss = b"<?xml version='1.0'?><rss version='2.0'><channel></channel></rss>"
         entries, _ = _parse_rss_atom(empty_rss, "https://example.com/")
         self.assertEqual(entries, [])
+
+    def test_feed_author_fallback_applied_when_no_entry_author(self):
+        entries, _ = _parse_rss_atom(self.RSS_NO_AUTHOR_FEED, "https://example.com/")
+        self.assertEqual(len(entries), 1)
+        self.assertIn("author", entries[0])
+        self.assertEqual(entries[0]["author"]["name"], "Blog Feed")
+
+    def test_content_text_stripped_for_non_html_content_type(self):
+        entries, _ = _parse_rss_atom(self.ATOM_TEXT_CONTENT_FEED, "https://example.com/")
+        self.assertEqual(len(entries), 1)
+        # The raw value contains HTML tags; text should be stripped
+        self.assertNotIn("<b>", entries[0]["content"]["text"])
+        self.assertIn("bold", entries[0]["content"]["text"])
 
 
 class FetchAndParseFeedTests(SimpleTestCase):
