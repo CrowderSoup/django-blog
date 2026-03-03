@@ -83,7 +83,7 @@ def _normalize_url_for_compare(url: str) -> str:
     path = parsed.path or "/"
     if not path.endswith("/"):
         path = f"{path}/"
-    return urllib.parse.urlunparse((scheme, netloc, path, "", parsed.query, ""))
+    return urllib.parse.urlunparse((scheme, netloc, path, "", "", ""))
 
 
 def discover_webmention_endpoint(target_url: str) -> Optional[str]:
@@ -166,21 +166,26 @@ def _post_from_url(url: str) -> Optional[Post]:
     if not slug:
         return None
     try:
-        return Post.objects.get(slug=slug)
+        return Post.objects.get(slug=slug, deleted=False)
     except Post.DoesNotExist:
         return None
 
 
 def _send_webmention_request(
-    source_url: str, target_url: str, mention_type: str = Webmention.MENTION
+    source_url: str,
+    target_url: str,
+    mention_type: str = Webmention.MENTION,
+    *,
+    include_wm_property: bool = True,
 ) -> tuple[str, str]:
     endpoint = discover_webmention_endpoint(target_url)
     if not endpoint:
         return Webmention.REJECTED, "No webmention endpoint found"
 
-    data = urllib.parse.urlencode(
-        {"source": source_url, "target": target_url, "wm-property": mention_type}
-    ).encode()
+    params = {"source": source_url, "target": target_url}
+    if include_wm_property:
+        params["wm-property"] = mention_type
+    data = urllib.parse.urlencode(params).encode()
     send_request = urllib.request.Request(
         endpoint,
         data=data,
@@ -237,18 +242,25 @@ def send_webmention(
     target_url: str,
     *,
     mention_type: str = Webmention.MENTION,
-    source_post: Optional[Post] = None,
+    local_post: Optional[Post] = None,
 ) -> Webmention:
     status, error = _send_webmention_request(source_url, target_url, mention_type)
-    if not source_post:
-        source_post = _post_from_url(source_url)
+    if status == Webmention.REJECTED and "No webmention endpoint" not in error:
+        retry_status, retry_error = _send_webmention_request(
+            source_url, target_url, mention_type, include_wm_property=False
+        )
+        if retry_status in (Webmention.ACCEPTED, Webmention.PENDING):
+            status, error = retry_status, retry_error
+    if not local_post:
+        local_post = _post_from_url(source_url)
     mention_type = mention_type if mention_type in dict(Webmention.MENTION_CHOICES) else Webmention.MENTION
     return Webmention.objects.create(
         source=source_url,
         target=target_url,
         mention_type=mention_type,
         status=status,
-        target_post=source_post,
+        # For outgoing webmentions, target_post is the local post that sent the mention.
+        target_post=local_post,
         error=error,
         is_incoming=False,
     )
@@ -256,6 +268,12 @@ def send_webmention(
 
 def resend_webmention(webmention: Webmention) -> Webmention:
     status, error = _send_webmention_request(webmention.source, webmention.target, webmention.mention_type)
+    if status == Webmention.REJECTED and "No webmention endpoint" not in error:
+        retry_status, retry_error = _send_webmention_request(
+            webmention.source, webmention.target, webmention.mention_type, include_wm_property=False
+        )
+        if retry_status in (Webmention.ACCEPTED, Webmention.PENDING):
+            status, error = retry_status, retry_error
     webmention.status = status
     webmention.error = error
     webmention.save(update_fields=["status", "error", "updated_at"])
@@ -290,7 +308,7 @@ def send_webmentions_for_post(post: Post, source_url: str) -> None:
             source_url,
             target,
             mention_type=mention_type,
-            source_post=post,
+            local_post=post,
         )
 
 
@@ -320,7 +338,7 @@ def send_bridgy_publish_webmentions(post: Post, source_url: str, settings_obj) -
             source_url,
             target,
             mention_type=Webmention.MENTION,
-            source_post=post,
+            local_post=post,
         )
 
 
