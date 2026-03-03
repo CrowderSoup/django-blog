@@ -538,28 +538,11 @@ class MicrosubView(View):
             sub.is_active = True
             sub.save(update_fields=["is_active"])
 
-        # Try to discover feed name, photo, and WebSub hub
         if created:
-            try:
-                entries, hub_url, feed_meta = fetch_and_parse_feed(url)
-                update_fields = []
-                if feed_meta.get("name") and (not sub.name or sub.name == sub.url):
-                    sub.name = feed_meta["name"]
-                    update_fields.append("name")
-                if feed_meta.get("photo") and not sub.photo:
-                    sub.photo = feed_meta["photo"]
-                    update_fields.append("photo")
-                if hub_url and not sub.websub_hub:
-                    sub.websub_hub = hub_url
-                    update_fields.append("websub_hub")
-                if update_fields:
-                    sub.save(update_fields=update_fields)
-                if entries:
-                    _store_entries(sub.channel, sub, entries)
-                if hub_url:
-                    _subscribe_to_websub(sub, request)
-            except Exception as exc:
-                logger.debug("Feed discovery failed for %s: %s", url, exc)
+            from django.db import transaction
+            from microsub.tasks import populate_subscription_metadata
+            base_url = request.build_absolute_uri("/")
+            transaction.on_commit(lambda: populate_subscription_metadata.delay(sub.id, base_url))
 
         return JsonResponse(
             {

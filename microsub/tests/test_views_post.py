@@ -176,8 +176,7 @@ class PostFollowTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     @authorized
-    @patch("microsub.views.fetch_and_parse_feed", return_value=([], None, {}))
-    def test_creates_new_subscription(self, mock_fetch, _auth):
+    def test_creates_new_subscription(self, _auth):
         response = self.client.post(
             MICROSUB_URL,
             {"action": "follow", "channel": "news", "url": "https://example.com/feed"},
@@ -187,8 +186,7 @@ class PostFollowTests(TestCase):
         self.assertTrue(Subscription.objects.filter(url="https://example.com/feed").exists())
 
     @authorized
-    @patch("microsub.views.fetch_and_parse_feed", return_value=([], None, {}))
-    def test_reactivates_inactive_subscription(self, mock_fetch, _auth):
+    def test_reactivates_inactive_subscription(self, _auth):
         Subscription.objects.create(channel=self.channel, url="https://example.com/feed", is_active=False)
         self.client.post(
             MICROSUB_URL,
@@ -199,21 +197,21 @@ class PostFollowTests(TestCase):
         self.assertTrue(sub.is_active)
 
     @authorized
-    @patch("microsub.views._subscribe_to_websub")
-    @patch("microsub.views.fetch_and_parse_feed", return_value=([], "https://hub.example.com/", {}))
+    @patch("microsub.views._subscribe_to_websub_with_base_url")
+    @patch("microsub.feed_parser.fetch_and_parse_feed", return_value=([], "https://hub.example.com/", {}))
     def test_hub_discovered_and_stored(self, mock_fetch, mock_websub, _auth):
-        self.client.post(
-            MICROSUB_URL,
-            {"action": "follow", "channel": "news", "url": "https://example.com/feed"},
-            HTTP_AUTHORIZATION="Bearer token",
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(
+                MICROSUB_URL,
+                {"action": "follow", "channel": "news", "url": "https://example.com/feed"},
+                HTTP_AUTHORIZATION="Bearer token",
+            )
         sub = Subscription.objects.get(url="https://example.com/feed")
         self.assertEqual(sub.websub_hub, "https://hub.example.com/")
         mock_websub.assert_called_once()
 
     @authorized
-    @patch("microsub.views.fetch_and_parse_feed", side_effect=RuntimeError("unreachable"))
-    def test_feed_discovery_error_still_creates_subscription(self, mock_fetch, _auth):
+    def test_feed_discovery_error_still_creates_subscription(self, _auth):
         response = self.client.post(
             MICROSUB_URL,
             {"action": "follow", "channel": "news", "url": "https://example.com/feed"},
@@ -223,8 +221,7 @@ class PostFollowTests(TestCase):
         self.assertTrue(Subscription.objects.filter(url="https://example.com/feed").exists())
 
     @authorized
-    @patch("microsub.views.fetch_and_parse_feed", return_value=([], None, {}))
-    def test_response_has_feed_shape(self, mock_fetch, _auth):
+    def test_response_has_feed_shape(self, _auth):
         response = self.client.post(
             MICROSUB_URL,
             {"action": "follow", "channel": "news", "url": "https://example.com/feed"},
@@ -688,17 +685,18 @@ class PostFollowInitialEntriesTests(TestCase):
         self.channel = Channel.objects.create(uid="news", name="News")
 
     @authorized
-    @patch("microsub.views.fetch_and_parse_feed", return_value=(
+    @patch("microsub.feed_parser.fetch_and_parse_feed", return_value=(
         [{"type": "entry", "url": "https://example.com/post/1",
           "_uid": "https://example.com/post/1", "published": "2024-01-01T00:00:00Z"}],
         None,
         {"name": "Example Feed", "photo": ""},
     ))
     def test_initial_entries_stored_on_follow(self, mock_fetch, _auth):
-        response = self.client.post(
-            MICROSUB_URL,
-            {"action": "follow", "channel": "news", "url": "https://example.com/feed"},
-            HTTP_AUTHORIZATION="Bearer token",
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                MICROSUB_URL,
+                {"action": "follow", "channel": "news", "url": "https://example.com/feed"},
+                HTTP_AUTHORIZATION="Bearer token",
+            )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(Entry.objects.filter(channel=self.channel).exists())

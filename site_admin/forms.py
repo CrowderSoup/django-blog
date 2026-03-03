@@ -325,6 +325,44 @@ class ErrorLogFilterForm(forms.Form):
             )
 
 
+class TaskLogFilterForm(forms.Form):
+    task = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("", "All tasks"),
+            ("analytics.tasks.lookup_user_agent", "analytics.tasks.lookup_user_agent"),
+            ("core.tasks.reconcile_themes", "core.tasks.reconcile_themes"),
+            ("core.tasks.sync_themes", "core.tasks.sync_themes"),
+            ("micropub.tasks.dispatch_webmentions", "micropub.tasks.dispatch_webmentions"),
+            ("microsub.tasks.poll_microsub_feeds", "microsub.tasks.poll_microsub_feeds"),
+        ],
+        label="Task",
+    )
+    worker = forms.CharField(required=False, label="Worker")
+    status = forms.ChoiceField(
+        required=False,
+        choices=[
+            ("", "All statuses"),
+            ("SUCCESS", "Success"),
+            ("FAILURE", "Failure"),
+            ("STARTED", "Started"),
+            ("RETRY", "Retry"),
+            ("REVOKED", "Revoked"),
+        ],
+        label="Status",
+    )
+    date_from = forms.DateField(required=False, label="From", widget=forms.DateInput(attrs={"type": "date"}))
+    date_to = forms.DateField(required=False, label="To", widget=forms.DateInput(attrs={"type": "date"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault(
+                "class",
+                "mt-1 w-full rounded-2xl border border-[color:var(--admin-border)] bg-white px-3 py-2 text-sm shadow-sm focus:border-[color:var(--admin-accent)] focus:ring-[color:var(--admin-accent)]",
+            )
+
+
 class IndieAuthFilterForm(forms.Form):
     q = forms.CharField(required=False, label="Search")
     client_id = forms.CharField(required=False, label="Client")

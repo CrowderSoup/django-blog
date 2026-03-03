@@ -64,3 +64,6 @@ uploads/
 /themes/*
 !/themes/webstead-default-2026/
 !/themes/webstead-default-2026/**
+
+# Celery beat scheduler state files
+celerybeat-schedule*

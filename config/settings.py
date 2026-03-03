@@ -92,6 +92,8 @@ INSTALLED_APPS = [
     # Third party apps
     "solo",
     "storages",
+    "django_celery_beat",
+    "django_celery_results",
 ]
 
 if DEBUG:
@@ -209,6 +211,33 @@ LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
+
+# ---------------------------------------------------------------------------
+# Celery
+# ---------------------------------------------------------------------------
+
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = "django-db"
+CELERY_RESULT_EXTENDED = True  # stores task_name, worker, date_created, etc.
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+
+if RUNNING_TESTS:
+    # These use the CELERY_ namespace prefix, which config/celery.py strips and
+    # lowercases via app.config_from_object(namespace="CELERY"), mapping them to
+    # the Celery 5 lowercase keys task_always_eager / task_eager_propagates.
+    # If that namespace argument is ever removed, rename to the lowercase forms.
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
+
+CELERY_BEAT_SCHEDULE = {
+    "poll-microsub-feeds": {
+        "task": "microsub.tasks.poll_microsub_feeds",
+        "schedule": 900,  # every 15 min (matches REFETCH_INTERVAL_SECONDS)
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Storage and files
