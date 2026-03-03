@@ -1,0 +1,9 @@
+<div class="widget widget--profile h-card">
+  {% if hcard %}
+    {% if show_photo and hcard.primary_photo_url %}
+    <img class="u-photo widget__photo" src="{{ hcard.primary_photo_url }}" alt="{{ hcard.name }}" />
+    {% endif %}
+    {% if hcard.name %}<p class="p-name widget__name">{{ hcard.name }}</p>{% endif %}
+    {% if note_html %}<div class="p-note widget__note">{{ note_html }}</div>{% endif %}
+  {% endif %}
+</div>

@@ -27,6 +27,19 @@ THEME_STARTUP_SYNC_ENABLED = env.bool("THEME_STARTUP_SYNC_ENABLED", default=True
 THEMES_STARTUP_RECONCILE = env.bool("THEMES_STARTUP_RECONCILE", default=True)
 THEMES_STARTUP_UPLOAD_MISSING = env.bool("THEMES_STARTUP_UPLOAD_MISSING", default=False)
 
+# Plugins
+PLUGINS_ROOT = env("PLUGINS_ROOT", default=str(BASE_DIR / "plugins"))
+
+# Add plugins directory to sys.path so plugin packages are importable
+if PLUGINS_ROOT not in sys.path:
+    sys.path.insert(0, PLUGINS_ROOT)
+
+# Load third-party plugin apps
+try:
+    from config.installed_plugins import INSTALLED_PLUGIN_APPS
+except ImportError:
+    INSTALLED_PLUGIN_APPS = []
+
 # ---------------------------------------------------------------------------
 # Hosts and security
 # ---------------------------------------------------------------------------
@@ -63,6 +76,11 @@ INSTALLED_APPS = [
     "indieauth.apps.IndieauthConfig",
     "analytics.apps.AnalyticsConfig",
     "site_admin.apps.SiteAdminConfig",
+    "widgets.apps.WidgetsConfig",
+    "microsub.apps.MicrosubConfig",
+
+    # Third-party plugins from config/installed_plugins.py
+    *INSTALLED_PLUGIN_APPS,
 
     # Django apps
     "django.contrib.auth",
@@ -268,6 +286,11 @@ LOGGING = {
         "console": {"class": "logging.StreamHandler"},
     },
     "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
         "micropub.webmention": {
             "handlers": ["console"],
             "level": "INFO",
@@ -286,5 +309,9 @@ if RUNNING_TESTS:
         {
             "core.themes": {"handlers": [], "level": "ERROR", "propagate": False},
             "core.theme_sync": {"handlers": [], "level": "ERROR", "propagate": False},
+            # Suppress 5xx request logs (e.g. intentional 502 in preview tests)
+            "django.request": {"handlers": [], "level": "CRITICAL", "propagate": False},
+            # Suppress expected warning logs from websub/subscribe tests
+            "microsub.views": {"handlers": [], "level": "CRITICAL", "propagate": False},
         }
     )

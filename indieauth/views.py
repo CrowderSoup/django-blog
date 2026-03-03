@@ -7,6 +7,7 @@ import secrets
 import socket
 from datetime import timedelta
 from html.parser import HTMLParser
+import http.client
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -336,7 +337,7 @@ def _get_or_fetch_client(client_id: str) -> IndieAuthClient | None:
             client.name = metadata.get("client_name") or client.name
             client.logo_url = metadata.get("logo_url") or client.logo_url
             client.fetch_error = ""
-        except (HTTPError, URLError, TimeoutError, ValueError) as exc:
+        except (HTTPError, URLError, TimeoutError, ValueError, http.client.HTTPException) as exc:
             client.fetch_error = str(exc)
         client.last_fetched_at = timezone.now()
         client.save()
@@ -360,12 +361,18 @@ def _redirect_uri_allowed(client_id: str, redirect_uri: str, client: IndieAuthCl
     if client_parsed.scheme != parsed.scheme or client_parsed.netloc != parsed.netloc:
         return False
     if client_parsed.path:
-        if not parsed.path.startswith(client_parsed.path):
+        # For directory-style client_ids (ending in /), require the redirect to
+        # be under that directory.  For file-style client_ids (e.g. /client.json),
+        # use the parent directory as the prefix — otherwise the path-prefix check
+        # would never pass for any redirect that doesn't literally start with the
+        # filename (e.g. /client.json/...).
+        if client_parsed.path.endswith("/"):
+            prefix = client_parsed.path
+        else:
+            parent = client_parsed.path.rsplit("/", 1)[0]
+            prefix = (parent + "/") if parent else "/"
+        if prefix != "/" and not parsed.path.startswith(prefix):
             return False
-        if parsed.path != client_parsed.path:
-            boundary = client_parsed.path.rstrip("/") + "/"
-            if not parsed.path.startswith(boundary):
-                return False
     return True
 
 
@@ -379,7 +386,7 @@ def _build_metadata_payload(request) -> dict:
         "revocation_endpoint": request.build_absolute_uri(reverse("indieauth-token")),
         "userinfo_endpoint": request.build_absolute_uri(reverse("indieauth-userinfo")),
         "code_challenge_methods_supported": ["S256"],
-        "scopes_supported": ["create", "update", "delete", "undelete", "read", "media"],
+        "scopes_supported": ["create", "update", "delete", "undelete", "read", "media", "channels", "follow", "mute", "block"],
     }
 
 
@@ -387,6 +394,7 @@ def metadata(request):
     return JsonResponse(_build_metadata_payload(request))
 
 
+@csrf_exempt
 def authorize(request):
     if request.method == "POST":
         return _authorize_post(request)
@@ -464,7 +472,68 @@ def _authorize_get(request):
     return render(request, "indieauth/authorize.html", context)
 
 
+def _verify_code_at_authorization_endpoint(request):
+    """Handle server-to-server code verification POSTs at the authorization endpoint.
+
+    Per IndieAuth spec §5.3, clients that only need identity (no access token)
+    exchange the authorization code here and receive {"me": "..."} in return.
+    """
+    code = request.POST.get("code", "")
+    client_id = request.POST.get("client_id", "")
+    redirect_uri = request.POST.get("redirect_uri", "")
+    code_verifier = request.POST.get("code_verifier", "")
+
+    if not code or not client_id or not redirect_uri or not code_verifier:
+        response = JsonResponse({"error": "invalid_request"}, status=400)
+        _log_indieauth_error(request, response)
+        return response
+
+    with transaction.atomic():
+        code_hash = _hash_token(code)
+        auth_code = (
+            IndieAuthAuthorizationCode.objects.select_for_update()
+            .filter(code_hash=code_hash, used_at__isnull=True)
+            .first()
+        )
+        if not auth_code:
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
+        if auth_code.expires_at <= timezone.now():
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
+        if auth_code.client_id != client_id or auth_code.redirect_uri != redirect_uri:
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
+        if auth_code.code_challenge_method != "S256":
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
+
+        computed = _base64url_sha256(code_verifier)
+        if computed != auth_code.code_challenge:
+            response = JsonResponse({"error": "invalid_grant"}, status=400)
+            _log_indieauth_error(request, response)
+            return response
+
+        auth_code.used_at = timezone.now()
+        auth_code.save(update_fields=["used_at"])
+
+    return JsonResponse({"me": auth_code.me})
+
+
 def _authorize_post(request):
+    # Server-to-server code verification (IndieAuth spec §5.3).
+    # Clients that only need identity (no token) POST the code here instead of
+    # the token endpoint.  These requests come without a browser session or CSRF
+    # token, so they must be handled before the user-auth check.
+    code = request.POST.get("code", "")
+    code_verifier = request.POST.get("code_verifier", "")
+    if code and code_verifier:
+        return _verify_code_at_authorization_endpoint(request)
+
     if not request.user.is_authenticated:
         login_url = reverse("site_admin:login")
         return redirect(f"{login_url}?{urlencode({'next': request.get_full_path()})}")

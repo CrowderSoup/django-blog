@@ -178,6 +178,13 @@
       return;
     }
 
+    const iconBase = "https://unpkg.com/leaflet@1.9.4/dist/images/";
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: `${iconBase}marker-icon-2x.png`,
+      iconUrl: `${iconBase}marker-icon.png`,
+      shadowUrl: `${iconBase}marker-shadow.png`,
+    });
+
     document.querySelectorAll("[data-checkin-map]").forEach((el) => {
       if (el.dataset.mapReady === "true") {
         return;

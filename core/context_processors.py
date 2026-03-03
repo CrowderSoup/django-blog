@@ -6,7 +6,7 @@ from django.db.models import Q
 
 from .models import HCard, SiteConfiguration
 from .og import default_image_url
-from .themes import get_active_theme, resolve_theme_settings, get_active_theme_settings, get_posts_index_url
+from .themes import get_active_theme, resolve_theme_settings, get_active_theme_settings, get_posts_index_url, get_active_theme_widget_areas
 from blog.models import Comment
 from micropub.models import Webmention
 
@@ -88,6 +88,7 @@ def theme(request):
             "settings_schema": theme_settings_schema,
             "template_prefix": active_theme.template_prefix if active_theme else "",
             "static_prefix": active_theme.static_prefix if active_theme else "",
+            "widget_areas": active_theme.widget_areas if active_theme else [],
         },
     }
 

@@ -42,6 +42,7 @@ class ThemeDefinition:
     version: Optional[str] = None
     description: Optional[str] = None
     settings_schema: dict = field(default_factory=dict)
+    widget_areas: list = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
 
     @property
@@ -1022,6 +1023,11 @@ def discover_themes(base_dir: Optional[Path] = None) -> list[ThemeDefinition]:
         slug = theme_dir.name
         label = metadata.get("label") or slug.replace("-", " ").title()
         settings_schema = _normalize_theme_settings_schema(metadata)
+        raw_areas = metadata.get("widget_areas", [])
+        widget_areas = [
+            a for a in raw_areas
+            if isinstance(a, dict) and a.get("slug") and a.get("label")
+        ]
         themes.append(
             ThemeDefinition(
                 slug=slug,
@@ -1031,6 +1037,7 @@ def discover_themes(base_dir: Optional[Path] = None) -> list[ThemeDefinition]:
                 version=metadata.get("version"),
                 description=metadata.get("description"),
                 settings_schema=settings_schema,
+                widget_areas=widget_areas,
                 metadata=metadata,
             )
         )
@@ -1105,6 +1112,12 @@ def get_active_theme() -> Optional[ThemeDefinition]:
     if not slug:
         return None
     return get_theme(slug)
+
+
+def get_active_theme_widget_areas() -> list[dict]:
+    """Return the widget_areas declared by the active theme."""
+    theme = get_active_theme()
+    return theme.widget_areas if theme else []
 
 
 def clear_template_caches() -> None:

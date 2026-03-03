@@ -42,6 +42,7 @@ from core.models import (
     Menu,
     MenuItem,
     Page,
+    PluginInstall,
     Redirect,
     RequestErrorLog,
     SiteConfiguration,
@@ -90,6 +91,7 @@ from .forms import (
     MenuItemForm,
     PageFilterForm,
     PageForm,
+    PluginGitInstallForm,
     PostFilterForm,
     PostForm,
     RedirectForm,
@@ -98,6 +100,7 @@ from .forms import (
     ThemeGitInstallForm,
     ThemeFileForm,
     ThemeSettingsForm,
+    WidgetInstanceForm,
     ThemeUploadForm,
     UserAgentBotRuleForm,
     WebmentionCreateForm,
@@ -2173,8 +2176,8 @@ def webmention_delete(request, mention_id):
         return guard
 
     mention = get_object_or_404(Webmention, pk=mention_id)
-    if mention.status != Webmention.REJECTED:
-        messages.error(request, "Only rejected webmentions can be deleted.")
+    if mention.is_incoming and mention.status != Webmention.REJECTED:
+        messages.error(request, "Only rejected incoming webmentions can be deleted.")
         return redirect("site_admin:webmention_detail", mention_id=mention.id)
     mention.delete()
     messages.success(request, "Webmention deleted.")
@@ -2188,6 +2191,9 @@ def webmention_approve(request, mention_id):
         return guard
 
     mention = get_object_or_404(Webmention, pk=mention_id)
+    if not mention.is_incoming:
+        messages.error(request, "Cannot approve outgoing webmentions.")
+        return redirect("site_admin:webmention_detail", mention_id=mention.id)
     if mention.status != Webmention.PENDING:
         messages.error(request, "Only pending webmentions can be approved.")
         return redirect("site_admin:webmention_detail", mention_id=mention.id)
@@ -3825,3 +3831,501 @@ def nearby_checkin_places(request):
 
     places.sort(key=lambda p: p["distance_km"])
     return JsonResponse({"places": places[:10]})
+
+
+# ---------------------------------------------------------------------------
+# Plugin management views
+# ---------------------------------------------------------------------------
+
+
+@require_http_methods(["GET"])
+def plugin_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from core.plugin_loader import discover_plugins
+    from core.plugins import registry
+
+    db_installs = {inst.name: inst for inst in PluginInstall.objects.all()}
+    fs_plugins = {p.name: p for p in discover_plugins()}
+
+    plugins = []
+    for name, install in db_installs.items():
+        fs = fs_plugins.get(name)
+        manage_url = None
+        plugin_instance = registry.get_plugin(name)
+        if plugin_instance:
+            nav_items = plugin_instance.get_admin_nav_items()
+            if nav_items:
+                try:
+                    manage_url = reverse(nav_items[0]["url_name"])
+                except Exception:
+                    pass
+        plugins.append({"install": install, "definition": fs, "manage_url": manage_url})
+
+    return render(request, "site_admin/plugins/index.html", {"plugins": plugins})
+
+
+@require_http_methods(["GET", "POST"])
+def plugin_install(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    form = PluginGitInstallForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        from core.plugin_loader import PluginInstallError, install_plugin_from_git
+
+        try:
+            plugin = install_plugin_from_git(
+                form.cleaned_data["git_url"],
+                form.cleaned_data["slug"],
+                ref=form.cleaned_data.get("ref", ""),
+            )
+            messages.success(
+                request,
+                f"Plugin '{plugin.label}' installed. The server is restarting to load it.",
+            )
+            return redirect("site_admin:plugin_list")
+        except PluginInstallError as exc:
+            messages.error(request, str(exc))
+        except Exception as exc:
+            logger.exception("Unexpected error installing plugin")
+            messages.error(request, f"Unexpected error: {exc}")
+
+    return render(request, "site_admin/plugins/install.html", {"form": form})
+
+
+@require_POST
+def plugin_update(request, slug):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from core.plugin_loader import PluginInstallError, update_plugin_from_git
+
+    install = get_object_or_404(PluginInstall, name=slug)
+    try:
+        update_plugin_from_git(install)
+        messages.success(request, f"Plugin '{install.label or install.name}' updated successfully.")
+    except PluginInstallError as exc:
+        messages.error(request, str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected error updating plugin %s", slug)
+        messages.error(request, f"Unexpected error: {exc}")
+
+    return redirect("site_admin:plugin_list")
+
+
+@require_POST
+def plugin_remove(request, slug):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from core.plugin_loader import remove_plugin
+
+    try:
+        remove_plugin(slug)
+        messages.success(request, f"Plugin '{slug}' removed. Restart required for changes to take effect.")
+    except Exception as exc:
+        logger.exception("Unexpected error removing plugin %s", slug)
+        messages.error(request, f"Unexpected error: {exc}")
+
+    return redirect("site_admin:plugin_list")
+
+
+@require_GET
+def plugin_restart_status(request):
+    """Lightweight health check endpoint polled during server restart."""
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+    return JsonResponse({"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
+# Widget management views
+# ---------------------------------------------------------------------------
+
+
+@require_http_methods(["GET"])
+def widget_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from widgets.models import WidgetInstance
+    from core.themes import get_active_theme_widget_areas
+
+    widgets = WidgetInstance.objects.all()
+    areas = get_active_theme_widget_areas()
+
+    return render(request, "site_admin/widgets/index.html", {
+        "widgets": widgets,
+        "areas": areas,
+    })
+
+
+@require_http_methods(["GET", "POST"])
+def widget_add(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    form = WidgetInstanceForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        obj = form.save_instance()
+        messages.success(request, "Widget added successfully.")
+        return redirect("site_admin:widget_list")
+
+    return render(request, "site_admin/widgets/edit.html", {"form": form, "widget": None})
+
+
+@require_http_methods(["GET", "POST"])
+def widget_edit(request, pk):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from widgets.models import WidgetInstance
+
+    widget = get_object_or_404(WidgetInstance, pk=pk)
+    form = WidgetInstanceForm(request.POST or None, instance=widget)
+    if request.method == "POST" and form.is_valid():
+        form.save_instance()
+        messages.success(request, "Widget updated successfully.")
+        return redirect("site_admin:widget_list")
+
+    return render(request, "site_admin/widgets/edit.html", {"form": form, "widget": widget})
+
+
+@require_POST
+def widget_delete(request, pk):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from widgets.models import WidgetInstance
+
+    widget = get_object_or_404(WidgetInstance, pk=pk)
+    widget.delete()
+    messages.success(request, "Widget deleted.")
+    return redirect("site_admin:widget_list")
+
+
+@require_POST
+def widget_reorder(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from widgets.models import WidgetInstance
+
+    try:
+        data = json.loads(request.body)
+        order_map = data.get("order", {})
+        for pk_str, order_val in order_map.items():
+            WidgetInstance.objects.filter(pk=int(pk_str)).update(order=int(order_val))
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    return JsonResponse({"status": "ok"})
+
+
+# ---------------------------------------------------------------------------
+# Microsub admin views
+# ---------------------------------------------------------------------------
+
+@require_http_methods(["GET"])
+def microsub_channel_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+    from django.db.models import Count, Q
+
+    channels = Channel.objects.annotate(
+        entry_count=Count("entries", distinct=True),
+        unread_count=Count("entries", filter=Q(entries__is_read=False, entries__is_removed=False), distinct=True),
+        feed_count=Count("subscriptions", filter=Q(subscriptions__is_active=True), distinct=True),
+    ).order_by("order", "id")
+
+    return render(request, "site_admin/microsub/channel_list.html", {"channels": channels})
+
+
+@require_http_methods(["GET", "POST"])
+def microsub_channel_create(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+    from site_admin.forms import ChannelForm
+    from django.utils.text import slugify
+
+    if request.method == "POST":
+        form = ChannelForm(request.POST)
+        if form.is_valid():
+            name = form.cleaned_data["name"]
+            base_slug = slugify(name) or "channel"
+            uid = base_slug
+            suffix = 1
+            while Channel.objects.filter(uid=uid).exists():
+                uid = f"{base_slug}-{suffix}"
+                suffix += 1
+            max_order = Channel.objects.order_by("-order").values_list("order", flat=True).first() or 0
+            channel = Channel.objects.create(uid=uid, name=name, order=max_order + 1)
+            messages.success(request, f'Channel "{channel.name}" created.')
+            return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
+    else:
+        form = ChannelForm()
+
+    return render(request, "site_admin/microsub/channel_form.html", {"form": form, "channel": None})
+
+
+@require_http_methods(["GET"])
+def microsub_channel_detail(request, uid):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+
+    channel = get_object_or_404(Channel, uid=uid)
+    subscriptions = channel.subscriptions.filter(is_active=True).order_by("name", "url")
+    entry_count = channel.entries.filter(is_removed=False).count()
+    unread_count = channel.entries.filter(is_read=False, is_removed=False).count()
+
+    return render(
+        request,
+        "site_admin/microsub/channel_detail.html",
+        {
+            "channel": channel,
+            "subscriptions": subscriptions,
+            "entry_count": entry_count,
+            "unread_count": unread_count,
+        },
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def microsub_channel_edit(request, uid):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+    from site_admin.forms import ChannelForm
+
+    channel = get_object_or_404(Channel, uid=uid)
+
+    if request.method == "POST":
+        form = ChannelForm(request.POST)
+        if form.is_valid():
+            channel.name = form.cleaned_data["name"]
+            channel.save(update_fields=["name"])
+            messages.success(request, "Channel renamed.")
+            return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
+    else:
+        form = ChannelForm(initial={"name": channel.name})
+
+    return render(
+        request,
+        "site_admin/microsub/channel_form.html",
+        {"form": form, "channel": channel},
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def microsub_channel_delete(request, uid):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+
+    channel = get_object_or_404(Channel, uid=uid)
+
+    if channel.uid == "notifications":
+        messages.error(request, "The notifications channel cannot be deleted.")
+        return redirect("site_admin:microsub_channel_detail", uid=uid)
+
+    if request.method == "POST":
+        channel.delete()
+        messages.success(request, "Channel deleted.")
+        return redirect("site_admin:microsub_channel_list")
+
+    return render(
+        request,
+        "site_admin/microsub/channel_confirm_delete.html",
+        {"channel": channel},
+    )
+
+
+@require_http_methods(["GET", "POST"])
+def microsub_feed_add(request, uid):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel, Subscription
+    from site_admin.forms import SubscriptionForm
+
+    channel = get_object_or_404(Channel, uid=uid)
+
+    if request.method == "POST":
+        form = SubscriptionForm(request.POST)
+        if form.is_valid():
+            feed_url = form.cleaned_data["url"]
+            sub, created = Subscription.objects.get_or_create(
+                channel=channel,
+                url=feed_url,
+                defaults={"is_active": True},
+            )
+            if not created:
+                sub.is_active = True
+                sub.save(update_fields=["is_active"])
+                messages.info(request, "Feed already subscribed (reactivated).")
+            else:
+                messages.success(request, f"Subscribed to {feed_url}.")
+            return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
+    else:
+        form = SubscriptionForm(initial={"channel": uid})
+
+    return render(
+        request,
+        "site_admin/microsub/feed_add.html",
+        {"form": form, "channel": channel},
+    )
+
+
+@require_POST
+def microsub_feed_remove(request, uid, feed_id):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel, Subscription
+
+    channel = get_object_or_404(Channel, uid=uid)
+    sub = get_object_or_404(Subscription, pk=feed_id, channel=channel)
+    sub.delete()
+    messages.success(request, "Feed removed.")
+    return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
+
+
+@require_POST
+def microsub_channel_mark_read(request, uid):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel, Entry
+
+    channel = get_object_or_404(Channel, uid=uid)
+    updated = Entry.objects.filter(channel=channel, is_read=False).update(is_read=True)
+    messages.success(request, f"Marked {updated} entr{'y' if updated == 1 else 'ies'} as read.")
+    return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
+
+
+@require_POST
+def microsub_channel_reorder(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+
+    try:
+        data = json.loads(request.body)
+        order_list = data.get("channels", [])
+        for i, uid in enumerate(order_list):
+            Channel.objects.filter(uid=uid).update(order=i)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    return JsonResponse({"status": "ok"})
+
+
+@require_http_methods(["GET", "POST"])
+def microsub_import_opml(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel, Subscription
+    from microsub.opml import parse_opml
+    from site_admin.forms import OPMLImportForm
+    from django.utils.text import slugify
+
+    results = None
+    form = OPMLImportForm()
+
+    if request.method == "POST":
+        form = OPMLImportForm(request.POST, request.FILES)
+        if form.is_valid():
+            try:
+                content = request.FILES["opml_file"].read()
+                parsed = parse_opml(content)
+            except ValueError as exc:
+                form.add_error("opml_file", str(exc))
+                parsed = None
+
+            if parsed is not None:
+                max_order = (
+                    Channel.objects.order_by("-order").values_list("order", flat=True).first() or 0
+                )
+                results = {"channels": [], "total_feeds": 0, "new_feeds": 0}
+
+                for group in parsed:
+                    channel_name = group["name"]
+                    base_slug = slugify(channel_name) or "channel"
+                    uid = base_slug
+                    suffix = 1
+                    while Channel.objects.filter(uid=uid).exists():
+                        # If a channel with this uid already has the same name, use it.
+                        if Channel.objects.filter(uid=uid, name=channel_name).exists():
+                            break
+                        uid = f"{base_slug}-{suffix}"
+                        suffix += 1
+
+                    channel, channel_created = Channel.objects.get_or_create(
+                        uid=uid,
+                        defaults={"name": channel_name, "order": max_order + 1},
+                    )
+                    if channel_created:
+                        max_order += 1
+
+                    channel_result = {
+                        "channel": channel,
+                        "created": channel_created,
+                        "feeds_total": len(group["feeds"]),
+                        "feeds_new": 0,
+                    }
+
+                    for feed in group["feeds"]:
+                        sub, created = Subscription.objects.get_or_create(
+                            channel=channel,
+                            url=feed["url"],
+                            defaults={"name": feed["name"], "is_active": True},
+                        )
+                        if not created and not sub.is_active:
+                            sub.is_active = True
+                            sub.save(update_fields=["is_active"])
+                        if created:
+                            channel_result["feeds_new"] += 1
+
+                    results["channels"].append(channel_result)
+                    results["total_feeds"] += channel_result["feeds_total"]
+                    results["new_feeds"] += channel_result["feeds_new"]
+
+                messages.success(
+                    request,
+                    f"Imported {results['new_feeds']} new feed(s) across "
+                    f"{len(results['channels'])} channel(s).",
+                )
+
+    return render(request, "site_admin/microsub/import_opml.html", {"form": form, "results": results})

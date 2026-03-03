@@ -25,7 +25,7 @@ from django.urls import reverse, resolve
 from django.core.files.base import ContentFile
 from django.conf import settings
 from django.shortcuts import redirect, render
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from markdownify import markdownify as html_to_markdown
 
@@ -630,8 +630,14 @@ def _handle_update_action(request, data):
 
     post.save()
     source_url = request.build_absolute_uri(post.get_absolute_url())
+    settings_obj = SiteConfiguration.get_solo()
     transaction.on_commit(
-        lambda: queue_webmentions_for_post(post, source_url)
+        lambda: queue_webmentions_for_post(
+            post,
+            source_url,
+            include_bridgy=True,
+            settings_obj=settings_obj,
+        )
     )
     return HttpResponse(status=204)
 
@@ -1156,14 +1162,17 @@ class WebmentionView(View):
             status = Webmention.ACCEPTED if _is_trusted_domain(source) else Webmention.PENDING
             response_status = 202
 
-        Webmention.objects.create(
-            source=source,
-            target=target,
-            mention_type=mention_type,
-            status=status,
-            target_post=target_post,
-            error=verify_error or "",
-        )
+        defaults = {
+            "mention_type": mention_type,
+            "status": status,
+            "target_post": target_post,
+            "error": verify_error or "",
+            "is_incoming": True,
+        }
+        try:
+            Webmention.objects.update_or_create(source=source, target=target, defaults=defaults)
+        except IntegrityError:
+            Webmention.objects.filter(source=source, target=target).update(**defaults)
 
         return HttpResponse(status=response_status)
 
@@ -1238,13 +1247,16 @@ class WebmentionSubmitView(View):
             status = Webmention.ACCEPTED if _is_trusted_domain(source) else Webmention.PENDING
 
         mention_type = mention_type if mention_type in dict(Webmention.MENTION_CHOICES) else Webmention.MENTION
-        Webmention.objects.create(
-            source=source,
-            target=target,
-            mention_type=mention_type,
-            status=status,
-            target_post=target_post,
-            error=verify_error or "",
-        )
+        defaults = {
+            "mention_type": mention_type,
+            "status": status,
+            "target_post": target_post,
+            "error": verify_error or "",
+            "is_incoming": True,
+        }
+        try:
+            Webmention.objects.update_or_create(source=source, target=target, defaults=defaults)
+        except IntegrityError:
+            Webmention.objects.filter(source=source, target=target).update(**defaults)
 
         return redirect(next_url)

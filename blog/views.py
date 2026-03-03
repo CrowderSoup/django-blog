@@ -164,7 +164,7 @@ def _webmentions_for_post(post, request=None):
         target_urls.add(request.build_absolute_uri(post.get_absolute_url()))
 
     mentions = (
-        Webmention.objects.filter(status=Webmention.ACCEPTED)
+        Webmention.objects.filter(status=Webmention.ACCEPTED, is_incoming=True)
         .filter(Q(target_post=post) | Q(target__in=target_urls))
         .only("source", "mention_type", "created_at")
     )
@@ -182,7 +182,7 @@ def _webmentions_for_post(post, request=None):
             replies.append(_normalize_webmention_reply(mention.source, mention.created_at, payload))
         elif mention.mention_type == Webmention.REPOST:
             reposts.append(mention)
-        else:
+        elif mention.mention_type in (Webmention.LIKE, Webmention.MENTION, Webmention.BOOKMARK):
             likes.append(mention)
 
     replies.sort(key=lambda item: item["created_at"], reverse=True)

@@ -25,7 +25,7 @@ def index(request):
     if home_feed_mode == "home":
         feed_context = build_posts_listing_context(request, include_og=False)
 
-    return render(
+    response = render(
         request,
         "core/index.html",
         {
@@ -34,6 +34,11 @@ def index(request):
             **feed_context,
         },
     )
+    microsub_url = request.build_absolute_uri(reverse("microsub-endpoint"))
+    existing_link = response.get("Link", "")
+    microsub_link = f'<{microsub_url}>; rel="microsub"'
+    response["Link"] = f"{existing_link}, {microsub_link}" if existing_link else microsub_link
+    return response
 
 def page(request, slug):
     page = get_object_or_404(

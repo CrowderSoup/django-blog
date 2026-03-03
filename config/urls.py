@@ -8,6 +8,7 @@ urlpatterns = [
     path('blog/', include('blog.urls')),
     path('admin/', include('site_admin.urls')),
     path('', include('micropub.urls')),
+    path('', include('microsub.urls')),
     path("analytics/", include("analytics.urls")),
 ]
 
