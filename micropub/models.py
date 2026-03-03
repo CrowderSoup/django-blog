@@ -40,6 +40,9 @@ class Webmention(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["source", "target"], name="unique_webmention_source_target"),
+        ]
 
     def __str__(self):
         return f"{self.source} -> {self.target}"

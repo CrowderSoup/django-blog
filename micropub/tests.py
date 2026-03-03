@@ -14,6 +14,7 @@ from micropub.models import Webmention
 from micropub.webmention import (
     send_bridgy_publish_webmentions,
     send_webmentions_for_post,
+    send_webmention,
     resend_webmention,
     verify_webmention_source,
     _normalize_url_for_compare,
@@ -679,3 +680,49 @@ class VerifyWebmentionSourceTests(TestCase):
 
         self.assertFalse(verified)
         self.assertTrue(fetch_failed)  # fetch_failed=True → stays PENDING
+
+
+class WmPropertyRetryTests(TestCase):
+    """Tests for the wm-property retry logic in send_webmention / resend_webmention."""
+
+    @patch("micropub.webmention._send_webmention_request")
+    def test_wm_property_rejection_retries_without_wm_property(self, mock_req):
+        # First call: REJECTED (endpoint exists but rejects wm-property)
+        # Second call: ACCEPTED without wm-property
+        mock_req.side_effect = [
+            (Webmention.REJECTED, "Bad request"),
+            (Webmention.ACCEPTED, ""),
+        ]
+        wm = send_webmention("https://example.com/source/", "https://remote.example/post/")
+
+        self.assertEqual(mock_req.call_count, 2)
+        # Second call should pass include_wm_property=False
+        _, kwargs = mock_req.call_args
+        self.assertFalse(kwargs.get("include_wm_property", True))
+        self.assertEqual(wm.status, Webmention.ACCEPTED)
+
+    @patch("micropub.webmention._send_webmention_request")
+    def test_no_endpoint_rejection_does_not_retry(self, mock_req):
+        mock_req.return_value = (Webmention.REJECTED, "No webmention endpoint found")
+        wm = send_webmention("https://example.com/source/", "https://remote.example/post/")
+
+        self.assertEqual(mock_req.call_count, 1)
+        self.assertEqual(wm.status, Webmention.REJECTED)
+
+    @patch("micropub.webmention._send_webmention_request")
+    def test_resend_retries_without_wm_property(self, mock_req):
+        mock_req.side_effect = [
+            (Webmention.REJECTED, "Bad request"),
+            (Webmention.ACCEPTED, ""),
+        ]
+        wm = Webmention.objects.create(
+            source="https://example.com/source/",
+            target="https://remote.example/post/",
+            mention_type=Webmention.MENTION,
+            status=Webmention.REJECTED,
+            is_incoming=False,
+        )
+        result = resend_webmention(wm)
+
+        self.assertEqual(mock_req.call_count, 2)
+        self.assertEqual(result.status, Webmention.ACCEPTED)

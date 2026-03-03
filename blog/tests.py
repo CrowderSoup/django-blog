@@ -224,6 +224,22 @@ class WebmentionDisplayTests(TestCase):
         self.assertContains(response, "https://example.com/like-1")
         self.assertContains(response, "https://example.com/repost-1")
 
+    def test_outgoing_webmentions_not_shown_on_post(self):
+        # Outgoing webmentions (is_incoming=False) stored with target_post set to
+        # the local post must not appear in the post's display.
+        Webmention.objects.create(
+            source="https://testserver/blog/post/webmention-post",
+            target="https://example.com/their-post",
+            mention_type=Webmention.LIKE,
+            status=Webmention.ACCEPTED,
+            target_post=self.post,
+            is_incoming=False,
+        )
+
+        response = self.client.get(reverse("post", kwargs={"slug": self.post.slug}))
+
+        self.assertNotContains(response, "https://example.com/their-post")
+
 
 class Mf2ParsingTests(TestCase):
     def test_parse_target_from_html_prefers_entry_content(self):
