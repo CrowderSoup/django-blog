@@ -123,9 +123,8 @@ def _mf2_embedded_to_jf2(val, base_url: str) -> dict | None:
     return out if len(out) > 1 else None
 
 
-def _author_from_mf2(author_val, base_url: str) -> dict:
-    result = _mf2_embedded_to_jf2(author_val, base_url)
-    return result if result else {"type": "card"}
+def _author_from_mf2(author_val, base_url: str) -> dict | None:
+    return _mf2_embedded_to_jf2(author_val, base_url)
 
 
 def _hentry_to_jf2(item: dict, base_url: str) -> dict:
@@ -170,7 +169,9 @@ def _hentry_to_jf2(item: dict, base_url: str) -> dict:
 
     authors = props.get("author", [])
     if authors:
-        entry["author"] = _author_from_mf2(authors[0], base_url)
+        author = _author_from_mf2(authors[0], base_url)
+        if author:
+            entry["author"] = author
 
     # Simple scalar strings
     for mf2_key, jf2_key in [("summary", "summary"), ("updated", "updated")]:
@@ -372,8 +373,7 @@ def _parse_rss_atom(content: bytes, url: str) -> tuple[list[dict], dict]:
         if content_list:
             c = content_list[0]
             html_val = c.get("value", "")
-            ct = c.get("type", "text/html")
-            text_val = _strip_html(html_val) if "html" in ct else html_val
+            text_val = _strip_html(html_val)
             entry["content"] = {"html": html_val, "text": text_val}
         elif summary:
             entry["content"] = {"text": _strip_html(summary), "html": summary}
@@ -408,6 +408,7 @@ def _parse_rss_atom(content: bytes, url: str) -> tuple[list[dict], dict]:
                     card["url"] = author.href
                 entry["author"] = card
         entries.append(entry)
+    _apply_feed_author_fallback(entries, feed_meta)
     return entries, feed_meta
 
 
@@ -449,7 +450,11 @@ def _parse_json_feed(data: dict, base_url: str) -> tuple[list[dict], dict]:
             if author_data.get("avatar"):
                 card["photo"] = author_data["avatar"]
             entry["author"] = card
+        tags = [t for t in item.get("tags", []) if isinstance(t, str) and t]
+        if tags:
+            entry["category"] = tags
         entries.append(entry)
+    _apply_feed_author_fallback(entries, feed_meta)
     return entries, feed_meta
 
 

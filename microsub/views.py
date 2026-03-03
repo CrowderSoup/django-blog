@@ -139,6 +139,7 @@ def _doctor_entries(channel: Channel, entries: list[dict]) -> int:
                 published = parse_dt(published_str)
                 if published.tzinfo is None:
                     published = tz.make_aware(published)
+                entry_data["published"] = published.isoformat()
             except Exception:
                 pass
 
@@ -161,6 +162,20 @@ def _store_entries(channel: Channel, subscription: Subscription | None, entries:
     from dateutil.parser import parse as parse_dt
     from django.utils import timezone as tz
 
+    # Supplement missing or URL-less authors using subscription metadata
+    if subscription and subscription.url:
+        for ed in entries:
+            author = ed.get("author")
+            if author and not author.get("url"):
+                ed["author"] = {**author, "url": subscription.url}
+            elif not author:
+                card: dict = {"type": "card", "url": subscription.url}
+                if subscription.name:
+                    card["name"] = subscription.name
+                if subscription.photo:
+                    card["photo"] = subscription.photo
+                ed["author"] = card
+
     new_count = 0
     for entry_data in entries:
         uid = entry_data.get("_uid") or entry_data.get("url") or entry_data.get("uid")
@@ -173,6 +188,7 @@ def _store_entries(channel: Channel, subscription: Subscription | None, entries:
                 published = parse_dt(published_str)
                 if published.tzinfo is None:
                     published = tz.make_aware(published)
+                entry_data["published"] = published.isoformat()
             except Exception:
                 pass
         author_url = ""
