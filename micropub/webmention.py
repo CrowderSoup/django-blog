@@ -323,8 +323,6 @@ def _bridgy_publish_targets(settings_obj) -> list[str]:
 
 
 def send_bridgy_publish_webmentions(post: Post, source_url: str, settings_obj) -> None:
-    if post.kind in (Post.LIKE, Post.REPLY, Post.REPOST):
-        return
     targets = _bridgy_publish_targets(settings_obj)
     if not targets:
         return
