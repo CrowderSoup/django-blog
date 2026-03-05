@@ -106,6 +106,7 @@ from .forms import (
     WebmentionCreateForm,
     WebmentionFilterForm,
     ErrorLogFilterForm,
+    TaskLogFilterForm,
     IndieAuthFilterForm,
     IndieAuthClientForm,
 )
@@ -1715,6 +1716,82 @@ def error_log_detail(request, log_id):
             "query_text": query_text,
         },
     )
+
+
+def _filtered_tasks(request):
+    from django_celery_results.models import TaskResult
+
+    form = TaskLogFilterForm(request.GET or None)
+    tasks = TaskResult.objects.order_by("-date_created")
+    if form.is_valid():
+        task = form.cleaned_data.get("task")
+        worker = form.cleaned_data.get("worker")
+        status = form.cleaned_data.get("status")
+        date_from = form.cleaned_data.get("date_from")
+        date_to = form.cleaned_data.get("date_to")
+        if task:
+            tasks = tasks.filter(task_name=task)
+        if worker:
+            tasks = tasks.filter(worker__icontains=worker)
+        if status:
+            tasks = tasks.filter(status=status)
+        if date_from:
+            tasks = tasks.filter(date_created__date__gte=date_from)
+        if date_to:
+            tasks = tasks.filter(date_created__date__lte=date_to)
+    return form, tasks
+
+
+@require_http_methods(["GET"])
+def task_log_list(request):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    settings_obj = SiteConfiguration.get_solo()
+    if not settings_obj.developer_tools_enabled:
+        messages.warning(request, "Enable developer tools to access task logs.")
+        return redirect("site_admin:site_settings")
+
+    filter_form, tasks = _filtered_tasks(request)
+
+    paginator = Paginator(tasks, 20)
+    page_number = request.GET.get("page")
+    try:
+        page_obj = paginator.page(page_number)
+    except PageNotAnInteger:
+        page_obj = paginator.page(1)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+
+    context = {
+        "page_obj": page_obj,
+        "paginator": paginator,
+        "base_query": _strip_page_query(request),
+        "filter_form": filter_form,
+    }
+
+    if request.headers.get("HX-Request"):
+        return render(request, "site_admin/settings/tasks/_list.html", context)
+
+    return render(request, "site_admin/settings/tasks/index.html", context)
+
+
+@require_http_methods(["GET"])
+def task_log_detail(request, task_id):
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    settings_obj = SiteConfiguration.get_solo()
+    if not settings_obj.developer_tools_enabled:
+        messages.warning(request, "Enable developer tools to access task logs.")
+        return redirect("site_admin:site_settings")
+
+    from django_celery_results.models import TaskResult
+
+    task = get_object_or_404(TaskResult, task_id=task_id)
+    return render(request, "site_admin/settings/tasks/detail.html", {"task": task})
 
 
 @require_http_methods(["GET"])

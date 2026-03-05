@@ -58,6 +58,12 @@
         >
           Error logs
         </a>
+        <a
+          href="{% url 'site_admin:task_log_list' %}"
+          class="rounded-2xl px-4 py-2 transition {% if current == 'task_log_list' or current == 'task_log_detail' %}bg-[color:var(--admin-bg)] text-[color:var(--admin-ink)]{% else %}text-[color:var(--admin-muted)] hover:bg-[color:var(--admin-bg)] hover:text-[color:var(--admin-ink)]{% endif %}"
+        >
+          Task log
+        </a>
       {% endif %}
     </nav>
   </aside>

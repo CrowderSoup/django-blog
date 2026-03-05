@@ -1,5 +1,4 @@
 import logging
-import threading
 import re
 import socket
 import urllib.error
@@ -280,6 +279,18 @@ def resend_webmention(webmention: Webmention) -> Webmention:
     return webmention
 
 
+def _resolve_mention_type(post: Post, target: str) -> str:
+    if target == post.like_of:
+        return Webmention.LIKE
+    if target == post.repost_of:
+        return Webmention.REPOST
+    if target == post.in_reply_to:
+        return Webmention.REPLY
+    if target == post.bookmark_of:
+        return Webmention.BOOKMARK
+    return Webmention.MENTION
+
+
 def send_webmentions_for_post(post: Post, source_url: str) -> None:
     source_host = urllib.parse.urlparse(source_url).netloc
     targets = [url for url in _extract_targets(post) if urllib.parse.urlparse(url).netloc != source_host]
@@ -347,28 +358,6 @@ def queue_webmentions_for_post(
     include_bridgy: bool = False,
     settings_obj=None,
 ) -> None:
-    if settings.RUNNING_TESTS:
-        send_webmentions_for_post(post, source_url)
-        if include_bridgy:
-            send_bridgy_publish_webmentions(post, source_url, settings_obj)
-        return
+    from micropub.tasks import dispatch_webmentions
 
-    def _runner():
-        try:
-            send_webmentions_for_post(post, source_url)
-        except Exception:
-            logger.exception(
-                "Webmention dispatch failed",
-                extra={"webmention_source": source_url},
-            )
-        if include_bridgy:
-            try:
-                send_bridgy_publish_webmentions(post, source_url, settings_obj)
-            except Exception:
-                logger.exception(
-                    "Bridgy publish webmention dispatch failed",
-                    extra={"webmention_source": source_url},
-                )
-
-    thread = threading.Thread(target=_runner, name="webmention-dispatch", daemon=True)
-    thread.start()
+    dispatch_webmentions.delay(post.id, source_url, include_bridgy=include_bridgy)
