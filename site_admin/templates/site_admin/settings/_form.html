@@ -1,10 +1,5 @@
 <form method="post" class="flex flex-col gap-6">
   {% csrf_token %}
-  {% if saved %}
-    <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-      Settings saved.
-    </div>
-  {% endif %}
   {% if form.non_field_errors %}
     <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
       {{ form.non_field_errors }}
@@ -178,7 +173,7 @@
   <div class="flex flex-wrap items-center gap-3">
     <button
       type="submit"
-      class="rounded-full bg-[color:var(--admin-accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
+      class="rounded-xl bg-[color:var(--admin-accent)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[color:var(--admin-accent-strong)]"
     >
       Save settings
     </button>

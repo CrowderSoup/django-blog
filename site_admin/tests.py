@@ -20,7 +20,15 @@ from analytics.models import (
     Visit,
 )
 from blog.models import Comment, Post
-from core.models import HCard, HCardPhoto, Page, RequestErrorLog, SiteConfiguration, ThemeInstall
+from core.models import (
+    HCard,
+    HCardPhoto,
+    Menu,
+    Page,
+    RequestErrorLog,
+    SiteConfiguration,
+    ThemeInstall,
+)
 from core.themes import ThemeDefinition, ThemeUpdateResult
 from core.test_utils import build_test_theme
 from files.models import Attachment, File
@@ -92,6 +100,30 @@ class SiteAdminAccessTests(TestCase):
             content,
         )
         self.assertEqual(len(matches), 1)
+
+    def test_dashboard_includes_global_toast_container(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("site_admin:dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="site-admin-toast-stack"')
+        self.assertContains(response, 'id="site-admin-messages-data"')
+
+    def test_dashboard_mobile_menu_includes_analytics_and_settings_links(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("site_admin:dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="{reverse("site_admin:analytics_dashboard")}" class="site-admin-bar__mobile-link">Analytics</a>',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            f'href="{reverse("site_admin:site_settings")}" class="site-admin-bar__mobile-link">Site settings</a>',
+            html=False,
+        )
 
 
 class SiteAdminPageTests(TestCase):
@@ -561,6 +593,20 @@ class SiteAdminAnalyticsTests(TestCase):
         visit.refresh_from_db()
         self.assertTrue(visit.is_suspected_bot)
 
+    def test_htmx_redirect_does_not_consume_messages(self):
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            reverse("site_admin:analytics_unignore_user_agent"),
+            {},
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertNotIn("HX-Trigger", response.headers)
+
+        follow_response = self.client.get(reverse("site_admin:analytics_ignored_user_agents"))
+        self.assertContains(follow_response, "Provide a user agent to unignore.")
+
 
 class SiteAdminPostTests(TestCase):
     def setUp(self):
@@ -788,12 +834,29 @@ class SiteAdminProfileEditTests(TestCase):
                 }
                 response = self.client.post(reverse("site_admin:profile_edit"), data)
 
-                self.assertEqual(response.status_code, 200)
-                self.assertTrue(response.context["saved"])
+                self.assertRedirects(response, reverse("site_admin:profile_edit"))
                 hcard = HCard.objects.get(user=self.staff)
                 self.assertTrue(
                     HCardPhoto.objects.filter(hcard=hcard, asset=asset).exists()
                 )
+
+    def test_site_settings_success_uses_django_messages(self):
+        self.client.force_login(self.staff)
+        main_menu = Menu.objects.create(title="Main")
+        footer_menu = Menu.objects.create(title="Footer")
+        response = self.client.post(
+            reverse("site_admin:site_settings"),
+            {
+                "title": "Updated title",
+                "main_menu": str(main_menu.id),
+                "footer_menu": str(footer_menu.id),
+                "default_feed_kinds": "article,note",
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Settings saved.")
 
     def test_profile_edit_reports_photo_sync_errors(self):
         self.client.force_login(self.staff)
@@ -813,7 +876,6 @@ class SiteAdminProfileEditTests(TestCase):
             response = self.client.post(reverse("site_admin:profile_edit"), data)
 
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.context["saved"])
         logger_mock.exception.assert_called_once()
         self.assertIn(
             "Unable to save your profile right now. Please try again.",
@@ -1189,6 +1251,22 @@ class SiteAdminWebmentionModerationTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["can_moderate"])
+
+    def test_delete_webmention_message_bootstraps_on_list_page(self):
+        mention = Webmention.objects.create(
+            source="https://source.example/post",
+            target="https://testserver/blog/post/hello/",
+            status=Webmention.REJECTED,
+            is_incoming=True,
+        )
+        response = self.client.post(
+            reverse("site_admin:webmention_delete", kwargs={"mention_id": mention.id}),
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.request["PATH_INFO"], reverse("site_admin:webmention_list"))
+        self.assertContains(response, "Webmention deleted.")
 
 
 class SiteAdminCommentModerationTests(TestCase):
