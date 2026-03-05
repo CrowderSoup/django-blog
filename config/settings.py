@@ -223,6 +223,8 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_WORKER_POOL = env("CELERY_WORKER_POOL", default="prefork")
+CELERY_WORKER_CONCURRENCY = env.int("CELERY_WORKER_CONCURRENCY", default=None)
 
 if RUNNING_TESTS:
     # These use the CELERY_ namespace prefix, which config/celery.py strips and
