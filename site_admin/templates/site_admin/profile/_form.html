@@ -6,11 +6,6 @@
   data-profile-photo-delete-url="{{ photo_delete_url }}"
 >
   {% csrf_token %}
-  {% if saved %}
-    <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-      Profile saved.
-    </div>
-  {% endif %}
   {% if form.non_field_errors %}
     <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
       {{ form.non_field_errors }}

@@ -1180,7 +1180,6 @@ def menu_edit(request, menu_id=None):
     if menu_id is not None:
         menu = get_object_or_404(Menu, pk=menu_id)
 
-    saved = False
     if request.method == "POST":
         form = MenuForm(request.POST, instance=menu)
         formset = MenuItemFormSet(request.POST, instance=menu, prefix="items")
@@ -1188,7 +1187,8 @@ def menu_edit(request, menu_id=None):
             menu = form.save()
             formset.instance = menu
             formset.save()
-            saved = True
+            messages.success(request, "Menu saved.")
+            return redirect("site_admin:menu_edit", menu_id=menu.id)
     else:
         form = MenuForm(instance=menu)
         formset = MenuItemFormSet(instance=menu, prefix="items")
@@ -1200,7 +1200,6 @@ def menu_edit(request, menu_id=None):
             "form": form,
             "formset": formset,
             "menu": menu,
-            "saved": saved,
         },
     )
 
@@ -1242,7 +1241,6 @@ def redirect_edit(request, redirect_id=None):
     if redirect_id is not None:
         redirect_obj = get_object_or_404(Redirect, pk=redirect_id)
 
-    saved = False
     initial = {}
     if redirect_obj is None:
         from_path = request.GET.get("from")
@@ -1255,7 +1253,8 @@ def redirect_edit(request, redirect_id=None):
         form = RedirectForm(request.POST, instance=redirect_obj)
         if form.is_valid():
             redirect_obj = form.save()
-            saved = True
+            messages.success(request, "Redirect saved.")
+            return redirect("site_admin:redirect_edit", redirect_id=redirect_obj.id)
     else:
         form = RedirectForm(instance=redirect_obj, initial=initial)
     form.fields["to_path"].widget.attrs["list"] = "redirect-path-options"
@@ -1267,7 +1266,6 @@ def redirect_edit(request, redirect_id=None):
         {
             "form": form,
             "redirect_obj": redirect_obj,
-            "saved": saved,
             "path_suggestions": path_suggestions,
         },
     )
@@ -2447,7 +2445,6 @@ def file_create(request):
     if guard:
         return guard
 
-    saved = False
     if request.method == "POST":
         form = FileForm(request.POST, request.FILES)
         if form.is_valid():
@@ -2455,8 +2452,8 @@ def file_create(request):
             if not asset.owner_id:
                 asset.owner = request.user
             asset.save()
-            form = FileForm(instance=asset)
-            saved = True
+            messages.success(request, "File uploaded.")
+            return redirect("site_admin:file_edit", file_id=asset.id)
     else:
         form = FileForm(initial={"owner": request.user})
 
@@ -2465,7 +2462,6 @@ def file_create(request):
         "site_admin/files/new.html",
         {
             "form": form,
-            "saved": saved,
         },
     )
 
@@ -2477,13 +2473,13 @@ def file_edit(request, file_id):
         return guard
 
     asset = get_object_or_404(File, pk=file_id)
-    saved = False
 
     if request.method == "POST":
         form = FileForm(request.POST, request.FILES, instance=asset)
         if form.is_valid():
             form.save()
-            saved = True
+            messages.success(request, "File updated.")
+            return redirect("site_admin:file_edit", file_id=asset.id)
     else:
         form = FileForm(instance=asset)
 
@@ -2493,7 +2489,6 @@ def file_edit(request, file_id):
         {
             "form": form,
             "asset": asset,
-            "saved": saved,
         },
     )
 
@@ -3492,12 +3487,12 @@ def site_settings(request):
         return guard
 
     settings_obj = SiteConfiguration.get_solo()
-    saved = False
     if request.method == "POST":
         form = SiteConfigurationForm(request.POST, instance=settings_obj)
         if form.is_valid():
             form.save()
-            saved = True
+            messages.success(request, "Settings saved.")
+            return redirect("site_admin:site_settings")
     else:
         form = SiteConfigurationForm(instance=settings_obj)
 
@@ -3506,7 +3501,6 @@ def site_settings(request):
         "site_admin/settings/edit.html",
         {
             "form": form,
-            "saved": saved,
         },
     )
 
@@ -3519,7 +3513,6 @@ def profile_edit(request):
 
     hcard = HCard.objects.filter(user=request.user).order_by("pk").first()
     parent_instance = hcard or HCard(user=request.user)
-    saved = False
     existing_meta = None
     uploaded_meta = None
     existing_remove_ids = None
@@ -3576,10 +3569,8 @@ def profile_edit(request):
                     "Unable to save your profile right now. Please try again.",
                 )
             else:
-                saved = True
-                existing_meta = None
-                uploaded_meta = None
-                existing_remove_ids = set()
+                messages.success(request, "Profile saved.")
+                return redirect("site_admin:profile_edit")
         elif not form.non_field_errors():
             form.add_error(None, "Please correct the errors below and try again.")
     else:
@@ -3608,7 +3599,6 @@ def profile_edit(request):
             ),
             "photo_upload_url": reverse("site_admin:profile_upload_photo"),
             "photo_delete_url": reverse("site_admin:profile_delete_photo"),
-            "saved": saved,
         },
     )
 
