@@ -33,10 +33,12 @@
         <li class="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
           <div>
             <p class="font-semibold">
-              {{ widget.widget_type }}
+              {{ widget.display_title }}
               {% if not widget.is_active %}<span class="ml-2 rounded-xl bg-[color:var(--admin-border)] px-2 py-0.5 text-xs text-[color:var(--admin-muted)]">Inactive</span>{% endif %}
             </p>
-            <p class="text-sm text-[color:var(--admin-muted)]">Area: {{ widget.area }} &middot; Order: {{ widget.order }}</p>
+            <p class="text-sm text-[color:var(--admin-muted)]">
+              {% if widget.configured_title %}{{ widget.widget_type_label }} &middot; {% endif %}Area: {{ widget.area }} &middot; Order: {{ widget.order }}
+            </p>
           </div>
           <div class="flex gap-2">
             <a

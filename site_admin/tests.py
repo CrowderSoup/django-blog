@@ -39,6 +39,7 @@ from indieauth.models import (
     IndieAuthConsent,
 )
 from micropub.models import Webmention
+from widgets.models import WidgetInstance
 
 
 class SiteAdminAccessTests(TestCase):
@@ -518,7 +519,6 @@ class SiteAdminAnalyticsTests(TestCase):
         self._create_visit(user_agent="BotA/1.0", started_at=in_range)
         self._create_visit(user_agent="BotB/1.0", started_at=in_range)
         self._create_visit(user_agent="Mozilla/5.0", started_at=in_range)
-
         response = self.client.post(
             reverse("site_admin:analytics_ignore_user_agents_bulk"),
             {
@@ -606,6 +606,48 @@ class SiteAdminAnalyticsTests(TestCase):
 
         follow_response = self.client.get(reverse("site_admin:analytics_ignored_user_agents"))
         self.assertContains(follow_response, "Provide a user agent to unignore.")
+
+
+class SiteAdminWidgetTests(TestCase):
+    def setUp(self):
+        super().setUp()
+        self.staff = get_user_model().objects.create_user(
+            username="widget-editor",
+            email="widgets@example.com",
+            password="password",
+            is_staff=True,
+        )
+
+    def test_widget_list_prefers_configured_title(self):
+        self.client.force_login(self.staff)
+        WidgetInstance.objects.create(
+            widget_type="text",
+            area="footer",
+            order=1,
+            config={"title": "IndieWeb WebRing"},
+        )
+
+        response = self.client.get(reverse("site_admin:widget_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "IndieWeb WebRing")
+        self.assertContains(response, "Text / HTML Block")
+        self.assertNotContains(response, ">text<", html=False)
+
+    def test_widget_list_falls_back_to_widget_label_without_title(self):
+        self.client.force_login(self.staff)
+        WidgetInstance.objects.create(
+            widget_type="recent_posts",
+            area="footer",
+            order=2,
+            config={},
+        )
+
+        response = self.client.get(reverse("site_admin:widget_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Recent Posts")
+        self.assertNotContains(response, ">recent_posts<", html=False)
 
 
 class SiteAdminPostTests(TestCase):
