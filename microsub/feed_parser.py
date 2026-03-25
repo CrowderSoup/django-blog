@@ -1,4 +1,6 @@
 import logging
+import re
+from html import escape
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
@@ -26,6 +28,69 @@ def _strip_html(html_str: str) -> str:
         return " ".join("".join(s._parts).split())
     except Exception:
         return html_str
+
+
+def _normalize_text(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def _looks_like_html(value: str) -> bool:
+    return bool(re.search(r"<[A-Za-z!/][^>]*>", value))
+
+
+def _plain_text_to_html(text: str) -> str:
+    text = _normalize_text(text)
+    if not text:
+        return ""
+    paragraphs = []
+    for block in text.split("\n\n"):
+        block = block.strip()
+        if not block:
+            continue
+        paragraphs.append(f"<p>{escape(block).replace(chr(10), '<br>')}</p>")
+    if paragraphs:
+        return "".join(paragraphs)
+    return f"<p>{escape(text).replace(chr(10), '<br>')}</p>"
+
+
+def _feedparser_content_to_jf2(value: str, content_type: str | None = None) -> dict | None:
+    """Convert feedparser content/summary fields into a JF2 content block."""
+    if not value:
+        return None
+
+    normalized = _normalize_text(value)
+    if not normalized:
+        return None
+
+    content_type = (content_type or "").lower()
+    if "html" in content_type or "xhtml" in content_type:
+        is_html = _looks_like_html(value)
+    elif "text" in content_type or "plain" in content_type:
+        is_html = False
+    else:
+        is_html = _looks_like_html(value)
+
+    if is_html:
+        return {"html": value, "text": _strip_html(value)}
+    text_value = _strip_html(normalized) if _looks_like_html(value) else normalized
+    return {"html": _plain_text_to_html(normalized), "text": text_value}
+
+
+def _feedparser_media_urls(values, *, allowed_types: tuple[str, ...] | None = None) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for item in values or []:
+        if not isinstance(item, dict):
+            continue
+        media_url = item.get("url")
+        if not media_url or media_url in seen:
+            continue
+        media_type = str(item.get("type", "")).lower()
+        if allowed_types and not any(media_type.startswith(prefix) for prefix in allowed_types):
+            continue
+        seen.add(media_url)
+        urls.append(media_url)
+    return urls
 
 
 class _HubLinkParser(HTMLParser):
@@ -342,13 +407,18 @@ def _parse_rss_atom(content: bytes, url: str) -> tuple[list[dict], dict]:
         return [], {}
 
     feed = feedparser.parse(content)
-    feed_meta: dict = {"name": "", "photo": ""}
+    feed_meta: dict = {"name": "", "photo": "", "url": ""}
 
     # Feed-level metadata
     feed_info = getattr(feed, "feed", None)
     if feed_info:
         title = getattr(feed_info, "title", "") or ""
         feed_meta["name"] = title
+        feed_meta["url"] = (
+            getattr(feed_info, "link", None)
+            or getattr(feed_info, "href", None)
+            or ""
+        )
         image = getattr(feed_info, "image", None)
         if image and getattr(image, "href", None):
             feed_meta["photo"] = image.href
@@ -370,13 +440,46 @@ def _parse_rss_atom(content: bytes, url: str) -> tuple[list[dict], dict]:
         # content
         content_list = getattr(e, "content", None)
         summary = getattr(e, "summary", None)
+        summary_detail = getattr(e, "summary_detail", None)
+        summary_block = _feedparser_content_to_jf2(
+            summary,
+            summary_detail.get("type") if hasattr(summary_detail, "get") else getattr(summary_detail, "type", None),
+        )
+        if summary_block:
+            entry["summary"] = summary_block["text"]
         if content_list:
             c = content_list[0]
-            html_val = c.get("value", "")
-            text_val = _strip_html(html_val)
-            entry["content"] = {"html": html_val, "text": text_val}
-        elif summary:
-            entry["content"] = {"text": _strip_html(summary), "html": summary}
+            content_block = _feedparser_content_to_jf2(c.get("value", ""), c.get("type"))
+            if content_block:
+                entry["content"] = content_block
+        elif summary_block:
+            entry["content"] = summary_block
+
+        photos = _feedparser_media_urls(getattr(e, "media_thumbnail", None))
+        photos.extend(
+            media_url
+            for media_url in _feedparser_media_urls(
+                getattr(e, "media_content", None),
+                allowed_types=("image/",),
+            )
+            if media_url not in photos
+        )
+        if photos:
+            entry["photo"] = photos
+
+        videos = _feedparser_media_urls(
+            getattr(e, "media_content", None),
+            allowed_types=("video/",),
+        )
+        if videos:
+            entry["video"] = videos
+
+        audio = _feedparser_media_urls(
+            getattr(e, "media_content", None),
+            allowed_types=("audio/",),
+        )
+        if audio:
+            entry["audio"] = audio
         # published / updated — use the parsed time.struct_time to produce a
         # stable ISO 8601 string regardless of what format the feed used.
         pub_parsed = getattr(e, "published_parsed", None) or getattr(e, "updated_parsed", None)
@@ -387,6 +490,14 @@ def _parse_rss_atom(content: bytes, url: str) -> tuple[list[dict], dict]:
             pub = getattr(e, "published", None) or getattr(e, "updated", None)
             if pub:
                 entry["published"] = pub
+        updated_parsed = getattr(e, "updated_parsed", None)
+        if updated_parsed:
+            from datetime import datetime, timezone as _tz
+            entry["updated"] = datetime(*updated_parsed[:6], tzinfo=_tz.utc).isoformat()
+        else:
+            updated = getattr(e, "updated", None)
+            if updated:
+                entry["updated"] = updated
         # author
         author = getattr(e, "author_detail", None) or getattr(e, "author", None)
         if author:
