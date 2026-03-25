@@ -615,7 +615,12 @@ class MicrosubView(View):
         channel_uid = request.POST.get("channel")
         if not url:
             return JsonResponse({"error": "invalid_request"}, status=400)
-        channel = Channel.objects.filter(uid=channel_uid).first() if channel_uid else None
+        if channel_uid:
+            channel = Channel.objects.filter(uid=channel_uid).first()
+            if channel is None:
+                return JsonResponse({"error": "invalid_request", "error_description": "Channel not found"}, status=400)
+        else:
+            channel = None
         MutedUser.objects.get_or_create(channel=channel, url=url)
         return JsonResponse({})
 
@@ -626,7 +631,12 @@ class MicrosubView(View):
         channel_uid = request.POST.get("channel")
         if not url:
             return JsonResponse({"error": "invalid_request"}, status=400)
-        channel = Channel.objects.filter(uid=channel_uid).first() if channel_uid else None
+        if channel_uid:
+            channel = Channel.objects.filter(uid=channel_uid).first()
+            if channel is None:
+                return JsonResponse({"error": "invalid_request", "error_description": "Channel not found"}, status=400)
+        else:
+            channel = None
         MutedUser.objects.filter(channel=channel, url=url).delete()
         return JsonResponse({})
 
@@ -637,11 +647,18 @@ class MicrosubView(View):
         channel_uid = request.POST.get("channel")
         if not url:
             return JsonResponse({"error": "invalid_request"}, status=400)
-        channel = Channel.objects.filter(uid=channel_uid).first() if channel_uid else None
+        if channel_uid:
+            channel = Channel.objects.filter(uid=channel_uid).first()
+            if channel is None:
+                return JsonResponse({"error": "invalid_request", "error_description": "Channel not found"}, status=400)
+        else:
+            channel = None
         BlockedUser.objects.get_or_create(channel=channel, url=url)
-        # Remove existing entries from this author
+        # Remove existing entries from this author in the relevant scope.
         if channel:
             channel.entries.filter(author_url=url).update(is_removed=True)
+        else:
+            Entry.objects.filter(author_url=url).update(is_removed=True)
         return JsonResponse({})
 
     def _post_unblock(self, request):
@@ -651,7 +668,12 @@ class MicrosubView(View):
         channel_uid = request.POST.get("channel")
         if not url:
             return JsonResponse({"error": "invalid_request"}, status=400)
-        channel = Channel.objects.filter(uid=channel_uid).first() if channel_uid else None
+        if channel_uid:
+            channel = Channel.objects.filter(uid=channel_uid).first()
+            if channel is None:
+                return JsonResponse({"error": "invalid_request", "error_description": "Channel not found"}, status=400)
+        else:
+            channel = None
         BlockedUser.objects.filter(channel=channel, url=url).delete()
         return JsonResponse({})
 

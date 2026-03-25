@@ -464,14 +464,14 @@ class PostMuteTests(TestCase):
         self.assertEqual(m.channel, self.channel)
 
     @authorized
-    def test_unknown_channel_creates_site_wide_mute(self, _auth):
-        self.client.post(
+    def test_unknown_channel_returns_400(self, _auth):
+        response = self.client.post(
             MICROSUB_URL,
             {"action": "mute", "url": "https://spammer.example.com/", "channel": "nonexistent"},
             HTTP_AUTHORIZATION="Bearer token",
         )
-        m = MutedUser.objects.get(url="https://spammer.example.com/")
-        self.assertIsNone(m.channel)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(MutedUser.objects.filter(url="https://spammer.example.com/").exists())
 
     @authorized
     def test_duplicate_mute_is_idempotent(self, _auth):
@@ -528,6 +528,26 @@ class PostUnmuteTests(TestCase):
             HTTP_AUTHORIZATION="Bearer token",
         )
         self.assertEqual(response.status_code, 200)
+
+    @authorized
+    def test_unknown_channel_returns_400(self, _auth):
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "unmute", "url": "https://spammer.example.com/", "channel": "nonexistent"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    @authorized
+    def test_unknown_channel_does_not_delete_site_wide_mute(self, _auth):
+        MutedUser.objects.create(channel=None, url="https://spammer.example.com/")
+        self.client.post(
+            MICROSUB_URL,
+            {"action": "unmute", "url": "https://spammer.example.com/", "channel": "nonexistent"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        # The site-wide mute must survive; bad channel uid must not fall through to site-wide.
+        self.assertEqual(MutedUser.objects.filter(url="https://spammer.example.com/").count(), 1)
 
 
 class PostBlockTests(TestCase):
@@ -593,6 +613,41 @@ class PostBlockTests(TestCase):
         entry = Entry.objects.get(uid="e1")
         self.assertFalse(entry.is_removed)
 
+    @authorized
+    def test_unknown_channel_returns_400(self, _auth):
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "block", "url": "https://troll.example.com/", "channel": "nonexistent"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(BlockedUser.objects.filter(url="https://troll.example.com/").exists())
+
+    @authorized
+    def test_site_wide_block_removes_entries_from_all_channels(self, _auth):
+        ch2 = Channel.objects.create(uid="tech", name="Tech")
+        Entry.objects.create(
+            channel=self.channel,
+            uid="e_news",
+            data={},
+            author_url="https://troll.example.com/",
+            published=timezone.now(),
+        )
+        Entry.objects.create(
+            channel=ch2,
+            uid="e_tech",
+            data={},
+            author_url="https://troll.example.com/",
+            published=timezone.now(),
+        )
+        self.client.post(
+            MICROSUB_URL,
+            {"action": "block", "url": "https://troll.example.com/"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertTrue(Entry.objects.get(uid="e_news").is_removed)
+        self.assertTrue(Entry.objects.get(uid="e_tech").is_removed)
+
 
 class PostUnblockTests(TestCase):
     def setUp(self):
@@ -633,6 +688,25 @@ class PostUnblockTests(TestCase):
             HTTP_AUTHORIZATION="Bearer token",
         )
         self.assertEqual(response.status_code, 200)
+
+    @authorized
+    def test_unknown_channel_returns_400(self, _auth):
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "unblock", "url": "https://troll.example.com/", "channel": "nonexistent"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    @authorized
+    def test_unknown_channel_does_not_delete_site_wide_block(self, _auth):
+        BlockedUser.objects.create(channel=None, url="https://troll.example.com/")
+        self.client.post(
+            MICROSUB_URL,
+            {"action": "unblock", "url": "https://troll.example.com/", "channel": "nonexistent"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(BlockedUser.objects.filter(url="https://troll.example.com/").count(), 1)
 
 
 class PostTimelineDefaultMethodTests(TestCase):

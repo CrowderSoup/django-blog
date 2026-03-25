@@ -69,7 +69,22 @@ class MutedUser(models.Model):
     url = models.URLField(max_length=2000)
 
     class Meta:
-        unique_together = [["channel", "url"]]
+        # unique_together cannot enforce uniqueness when channel is NULL because
+        # databases treat NULL != NULL in unique constraints.  Two partial indexes
+        # are used instead: one for site-wide (channel IS NULL) and one for
+        # channel-specific records.
+        constraints = [
+            models.UniqueConstraint(
+                fields=["url"],
+                condition=models.Q(channel__isnull=True),
+                name="microsub_muteduser_sitewide_unique",
+            ),
+            models.UniqueConstraint(
+                fields=["channel", "url"],
+                condition=models.Q(channel__isnull=False),
+                name="microsub_muteduser_channel_unique",
+            ),
+        ]
 
     def __str__(self):
         return f"Muted {self.url}"
@@ -86,7 +101,18 @@ class BlockedUser(models.Model):
     url = models.URLField(max_length=2000)
 
     class Meta:
-        unique_together = [["channel", "url"]]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["url"],
+                condition=models.Q(channel__isnull=True),
+                name="microsub_blockeduser_sitewide_unique",
+            ),
+            models.UniqueConstraint(
+                fields=["channel", "url"],
+                condition=models.Q(channel__isnull=False),
+                name="microsub_blockeduser_channel_unique",
+            ),
+        ]
 
     def __str__(self):
         return f"Blocked {self.url}"
