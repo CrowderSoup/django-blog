@@ -136,6 +136,7 @@ class PostForm(forms.ModelForm):
             "repost_of",
             "in_reply_to",
             "bookmark_of",
+            "mastodon_syndicate",
         ]
         widgets = {
             "content": EasyMDETextarea(),
@@ -143,6 +144,13 @@ class PostForm(forms.ModelForm):
             "repost_of": forms.URLInput(attrs={"placeholder": "https://"}),
             "in_reply_to": forms.URLInput(attrs={"placeholder": "https://"}),
             "bookmark_of": forms.URLInput(attrs={"placeholder": "https://"}),
+            "mastodon_syndicate": forms.Select(
+                choices=[
+                    ("", "Default (use per-kind setting)"),
+                    ("true", "Publish to Mastodon"),
+                    ("false", "Don't publish to Mastodon"),
+                ]
+            ),
         }
 
     def __init__(self, *args, **kwargs):
@@ -197,6 +205,15 @@ class PostForm(forms.ModelForm):
                 self.fields["checkin_name"].initial = checkin_data.get("name", "")
                 self.fields["checkin_latitude"].initial = checkin_data.get("latitude")
                 self.fields["checkin_longitude"].initial = checkin_data.get("longitude")
+        # Mastodon syndicate select: map bool/None model value to string choice
+        if self.instance.pk:
+            ms = self.instance.mastodon_syndicate
+            if ms is True:
+                self.fields["mastodon_syndicate"].initial = "true"
+            elif ms is False:
+                self.fields["mastodon_syndicate"].initial = "false"
+            else:
+                self.fields["mastodon_syndicate"].initial = ""
         if self.instance.pk and self.instance.published_on:
             local_time = timezone.localtime(self.instance.published_on)
             self.fields["published_on"].initial = local_time.strftime("%Y-%m-%dT%H:%M")
@@ -205,6 +222,15 @@ class PostForm(forms.ModelForm):
             # browser's local time (server TIME_ZONE is UTC which is
             # unlikely to match the author).
             self.fields["published_on"].widget.attrs["data-default-now"] = "true"
+
+    def clean_mastodon_syndicate(self):
+        """Convert the Select string value back to True / False / None."""
+        value = self.cleaned_data.get("mastodon_syndicate")
+        if value == "true":
+            return True
+        if value == "false":
+            return False
+        return None
 
     def clean_published_on(self):
         value = self.cleaned_data.get("published_on")
@@ -532,12 +558,12 @@ class SiteConfigurationForm(forms.ModelForm):
             "main_menu",
             "footer_menu",
             "default_feed_kinds",
+            "microsub_unfollow_removes_entries",
             "comments_enabled",
             "developer_tools_enabled",
             "bridgy_publish_bluesky",
             "bridgy_publish_flickr",
             "bridgy_publish_github",
-            "bridgy_publish_mastodon",
             "robots_txt",
         ]
         widgets = {

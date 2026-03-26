@@ -163,7 +163,6 @@ class MicropubViewTests(TestCase):
         settings_obj.bridgy_publish_bluesky = False
         settings_obj.bridgy_publish_flickr = True
         settings_obj.bridgy_publish_github = False
-        settings_obj.bridgy_publish_mastodon = False
         settings_obj.save()
 
         response = self.client.get(
@@ -188,7 +187,6 @@ class MicropubViewTests(TestCase):
         settings_obj.bridgy_publish_bluesky = True
         settings_obj.bridgy_publish_flickr = False
         settings_obj.bridgy_publish_github = False
-        settings_obj.bridgy_publish_mastodon = False
         settings_obj.save()
 
         response = self.client.get(
@@ -475,7 +473,6 @@ class BridgyPublishWebmentionTests(TestCase):
         config.bridgy_publish_bluesky = True
         config.bridgy_publish_flickr = False
         config.bridgy_publish_github = False
-        config.bridgy_publish_mastodon = False
         config.save()
 
         source_url = "http://testserver/blog/post/hello/"
@@ -536,6 +533,35 @@ class WebmentionDirectionTests(TestCase):
         )
 
         self.assertEqual(Entry.objects.filter(channel=channel).count(), 1)
+
+
+class GlobalBlockWebmentionTests(TestCase):
+    @patch("micropub.tasks.send_single_webmention")
+    def test_dispatch_webmentions_skips_globally_blocked_targets(self, mock_task):
+        from microsub.models import BlockedUser
+        from micropub.tasks import dispatch_webmentions
+
+        BlockedUser.objects.create(channel=None, url="https://blocked.example/")
+        post = Post.objects.create(
+            title="Blocked target",
+            slug="blocked-target",
+            content="A link to https://blocked.example/post/",
+        )
+
+        dispatch_webmentions(post.id, "http://testserver/blog/post/blocked-target/", include_bridgy=False)
+
+        mock_task.delay.assert_not_called()
+
+    @patch("micropub.webmention._send_webmention_request")
+    def test_send_webmention_does_not_send_to_globally_blocked_target(self, mock_send):
+        from microsub.models import BlockedUser
+
+        BlockedUser.objects.create(channel=None, url="https://blocked.example/")
+        wm = send_webmention("https://example.com/source/", "https://blocked.example/post/")
+
+        self.assertEqual(wm.status, Webmention.REJECTED)
+        self.assertIn("blocked", wm.error.lower())
+        mock_send.assert_not_called()
 
 
 class WebmentionResendTests(TestCase):

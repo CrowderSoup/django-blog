@@ -339,6 +339,18 @@
             <span>Save as draft</span>
           </label>
         </div>
+        {% if mastodon_connected %}
+        <div class="mt-4">
+          <label
+            for="{{ form.mastodon_syndicate.id_for_label }}"
+            class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]"
+          >
+            Mastodon
+          </label>
+          {{ form.mastodon_syndicate }}
+          {{ form.mastodon_syndicate.errors }}
+        </div>
+        {% endif %}
       </div>
 
       <div class="rounded-3xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface)] p-5 shadow-sm">

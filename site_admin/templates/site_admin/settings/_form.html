@@ -126,6 +126,19 @@
         </label>
         {{ form.developer_tools_enabled.errors }}
       </div>
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wide text-[color:var(--admin-muted)]">
+          Microsub
+        </p>
+        <label for="{{ form.microsub_unfollow_removes_entries.id_for_label }}" class="mt-2 flex items-center gap-2 text-sm">
+          {{ form.microsub_unfollow_removes_entries }}
+          <span>Remove previously fetched entries when a feed is unfollowed</span>
+        </label>
+        {% if form.microsub_unfollow_removes_entries.help_text %}
+          <p class="mt-1 text-xs text-[color:var(--admin-muted)]">{{ form.microsub_unfollow_removes_entries.help_text }}</p>
+        {% endif %}
+        {{ form.microsub_unfollow_removes_entries.errors }}
+      </div>
     </div>
     <div class="space-y-5">
       <div>
@@ -161,11 +174,6 @@
             <span>GitHub</span>
           </label>
           {{ form.bridgy_publish_github.errors }}
-          <label for="{{ form.bridgy_publish_mastodon.id_for_label }}" class="flex items-center gap-2">
-            {{ form.bridgy_publish_mastodon }}
-            <span>Mastodon</span>
-          </label>
-          {{ form.bridgy_publish_mastodon.errors }}
         </div>
       </div>
     </div>

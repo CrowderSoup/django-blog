@@ -64,10 +64,10 @@ class PostChannelsTests(TestCase):
             HTTP_AUTHORIZATION="Bearer token",
         )
         self.assertEqual(response.status_code, 200)
-        self.channel.refresh_from_db()
-        ch2.refresh_from_db()
-        self.assertEqual(ch2.order, 0)
-        self.assertEqual(self.channel.order, 1)
+        ordered = list(Channel.objects.order_by("order", "id").values_list("uid", flat=True))
+        self.assertEqual(ordered[0], "notifications")
+        self.assertEqual(ordered[1], "home")
+        self.assertLess(ordered.index("tech"), ordered.index("news"))
 
     @authorized
     def test_rename_channel(self, _auth):
@@ -135,6 +135,26 @@ class PostChannelsTests(TestCase):
             MICROSUB_URL, {"action": "channels"}, HTTP_AUTHORIZATION="Bearer token"
         )
         self.assertEqual(response.status_code, 400)
+
+    @authorized
+    def test_create_reserved_global_channel_returns_400(self, _auth):
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "channels", "name": "Global"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    @authorized
+    def test_delete_last_non_notifications_channel_returns_403(self, _auth):
+        Channel.objects.exclude(uid__in=["notifications", "home", "news"]).delete()
+        Channel.objects.filter(uid="home").delete()
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "channels", "method": "delete", "channel": "news"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 403)
 
 
 class PostFollowTests(TestCase):
@@ -284,6 +304,41 @@ class PostUnfollowTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    @authorized
+    @patch("microsub.views._unsubscribe_from_websub")
+    def test_unfollow_attempts_websub_unsubscribe(self, mock_unsubscribe, _auth):
+        self.sub.websub_hub = "https://hub.example/"
+        self.sub.websub_subscribed_at = timezone.now()
+        self.sub.save(update_fields=["websub_hub", "websub_subscribed_at"])
+        self.client.post(
+            MICROSUB_URL,
+            {"action": "unfollow", "channel": "news", "url": "https://example.com/feed"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        mock_unsubscribe.assert_called_once()
+
+    @authorized
+    def test_unfollow_removes_entries_when_configured(self, _auth):
+        from core.models import SiteConfiguration
+
+        Entry.objects.create(
+            channel=self.channel,
+            subscription=self.sub,
+            uid="entry-1",
+            data={"type": "entry"},
+            published=timezone.now(),
+        )
+        config = SiteConfiguration.get_solo()
+        config.microsub_unfollow_removes_entries = True
+        config.save(update_fields=["microsub_unfollow_removes_entries"])
+
+        self.client.post(
+            MICROSUB_URL,
+            {"action": "unfollow", "channel": "news", "url": "https://example.com/feed"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertTrue(Entry.objects.get(uid="entry-1").is_removed)
+
 
 class PostTimelineTests(TestCase):
     def setUp(self):
@@ -334,7 +389,7 @@ class PostTimelineTests(TestCase):
         self.e1.refresh_from_db()
         self.assertTrue(self.e1.is_read)
         self.e2.refresh_from_db()
-        self.assertFalse(self.e2.is_read)
+        self.assertTrue(self.e2.is_read)
 
     @authorized
     def test_mark_read_with_entry_ids(self, _auth):
@@ -549,6 +604,17 @@ class PostUnmuteTests(TestCase):
         # The site-wide mute must survive; bad channel uid must not fall through to site-wide.
         self.assertEqual(MutedUser.objects.filter(url="https://spammer.example.com/").count(), 1)
 
+    @authorized
+    def test_channel_global_targets_sitewide_mute(self, _auth):
+        MutedUser.objects.create(channel=None, url="https://spammer.example.com/")
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "unmute", "url": "https://spammer.example.com/", "channel": "global"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(MutedUser.objects.filter(url="https://spammer.example.com/").exists())
+
 
 class PostBlockTests(TestCase):
     def setUp(self):
@@ -648,6 +714,16 @@ class PostBlockTests(TestCase):
         self.assertTrue(Entry.objects.get(uid="e_news").is_removed)
         self.assertTrue(Entry.objects.get(uid="e_tech").is_removed)
 
+    @authorized
+    def test_channel_global_creates_sitewide_block(self, _auth):
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "block", "url": "https://troll.example.com/", "channel": "global"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(BlockedUser.objects.filter(channel=None, url="https://troll.example.com/").exists())
+
 
 class PostUnblockTests(TestCase):
     def setUp(self):
@@ -708,6 +784,17 @@ class PostUnblockTests(TestCase):
         )
         self.assertEqual(BlockedUser.objects.filter(url="https://troll.example.com/").count(), 1)
 
+    @authorized
+    def test_channel_global_deletes_sitewide_block(self, _auth):
+        BlockedUser.objects.create(channel=None, url="https://troll.example.com/")
+        response = self.client.post(
+            MICROSUB_URL,
+            {"action": "unblock", "url": "https://troll.example.com/", "channel": "global"},
+            HTTP_AUTHORIZATION="Bearer token",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(BlockedUser.objects.filter(url="https://troll.example.com/").exists())
+
 
 class PostTimelineDefaultMethodTests(TestCase):
     """Fix 3 — omitting method defaults to mark_read per the spec."""
@@ -746,10 +833,10 @@ class PostChannelsReorderTests(TestCase):
             HTTP_AUTHORIZATION="Bearer token",
         )
         self.assertEqual(response.status_code, 200)
-        self.channel.refresh_from_db()
-        ch2.refresh_from_db()
-        self.assertEqual(ch2.order, 0)
-        self.assertEqual(self.channel.order, 1)
+        ordered = list(Channel.objects.order_by("order", "id").values_list("uid", flat=True))
+        self.assertEqual(ordered[0], "notifications")
+        self.assertEqual(ordered[1], "home")
+        self.assertLess(ordered.index("tech"), ordered.index("news"))
 
 
 class PostFollowInitialEntriesTests(TestCase):

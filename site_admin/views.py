@@ -33,6 +33,8 @@ from analytics.models import (
 
 from files.models import Attachment, File
 from files.gpx import GpxAnonymizeError, GpxAnonymizeOptions, anonymize_gpx
+from mastodon_integration.models import MastodonAccount, MastodonSyndicationDefault
+from mastodon_integration.tasks import poll_mastodon_timeline, poll_mastodon_notifications
 
 from core.models import (
     HCard,
@@ -3799,6 +3801,7 @@ def _build_post_form_context(
         "gpx_trim_distance": gpx_defaults["gpx_trim_distance"],
         "gpx_blur_enabled": gpx_defaults["gpx_blur_enabled"],
         "gpx_remove_timestamps": gpx_defaults["gpx_remove_timestamps"],
+        "mastodon_connected": MastodonAccount.get_active() is not None,
     }
 
 
@@ -4130,6 +4133,7 @@ def microsub_channel_create(request):
         return guard
 
     from microsub.models import Channel
+    from microsub.views import CHANNEL_GLOBAL, CHANNEL_NOTIFICATIONS
     from site_admin.forms import ChannelForm
     from django.utils.text import slugify
 
@@ -4138,6 +4142,9 @@ def microsub_channel_create(request):
         if form.is_valid():
             name = form.cleaned_data["name"]
             base_slug = slugify(name) or "channel"
+            if base_slug in {CHANNEL_NOTIFICATIONS, CHANNEL_GLOBAL}:
+                form.add_error("name", "That channel name is reserved.")
+                return render(request, "site_admin/microsub/channel_form.html", {"form": form, "channel": None})
             uid = base_slug
             suffix = 1
             while Channel.objects.filter(uid=uid).exists():
@@ -4219,6 +4226,9 @@ def microsub_channel_delete(request, uid):
     if channel.uid == "notifications":
         messages.error(request, "The notifications channel cannot be deleted.")
         return redirect("site_admin:microsub_channel_detail", uid=uid)
+    if Channel.objects.exclude(uid="notifications").count() <= 1:
+        messages.error(request, "At least one non-notifications channel is required.")
+        return redirect("site_admin:microsub_channel_detail", uid=uid)
 
     if request.method == "POST":
         channel.delete()
@@ -4239,6 +4249,7 @@ def microsub_feed_add(request, uid):
         return guard
 
     from microsub.models import Channel, Subscription
+    from microsub.tasks import populate_subscription_metadata
     from site_admin.forms import SubscriptionForm
 
     channel = get_object_or_404(Channel, uid=uid)
@@ -4257,6 +4268,8 @@ def microsub_feed_add(request, uid):
                 sub.save(update_fields=["is_active"])
                 messages.info(request, "Feed already subscribed (reactivated).")
             else:
+                base_url = request.build_absolute_uri("/")
+                transaction.on_commit(lambda: populate_subscription_metadata.delay(sub.id, base_url))
                 messages.success(request, f"Subscribed to {feed_url}.")
             return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
     else:
@@ -4275,12 +4288,24 @@ def microsub_feed_remove(request, uid, feed_id):
     if guard:
         return guard
 
+    from django.conf import settings
+    from core.models import SiteConfiguration
     from microsub.models import Channel, Subscription
+    from microsub.views import _unsubscribe_from_websub
 
     channel = get_object_or_404(Channel, uid=uid)
     sub = get_object_or_404(Subscription, pk=feed_id, channel=channel)
-    sub.delete()
-    messages.success(request, "Feed removed.")
+    sub.is_active = False
+    sub.websub_subscribed_at = None
+    sub.websub_requested_at = None
+    sub.websub_expires_at = None
+    sub.save(update_fields=["is_active", "websub_subscribed_at", "websub_requested_at", "websub_expires_at"])
+    if sub.websub_hub:
+        base_url = getattr(settings, "MICROSUB_BASE_URL", "").rstrip("/") or request.build_absolute_uri("/").rstrip("/")
+        _unsubscribe_from_websub(sub, base_url)
+    if SiteConfiguration.get_solo().microsub_unfollow_removes_entries:
+        channel.entries.filter(subscription=sub).update(is_removed=True)
+    messages.success(request, "Feed unfollowed.")
     return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
 
 
@@ -4304,13 +4329,12 @@ def microsub_channel_reorder(request):
     if guard:
         return guard
 
-    from microsub.models import Channel
+    from microsub.views import _apply_channel_order
 
     try:
         data = json.loads(request.body)
         order_list = data.get("channels", [])
-        for i, uid in enumerate(order_list):
-            Channel.objects.filter(uid=uid).update(order=i)
+        _apply_channel_order(order_list)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
@@ -4324,6 +4348,8 @@ def microsub_import_opml(request):
         return guard
 
     from microsub.models import Channel, Subscription
+    from microsub.tasks import populate_subscription_metadata
+    from microsub.views import CHANNEL_GLOBAL, CHANNEL_NOTIFICATIONS
     from microsub.opml import parse_opml
     from site_admin.forms import OPMLImportForm
     from django.utils.text import slugify
@@ -4350,6 +4376,8 @@ def microsub_import_opml(request):
                 for group in parsed:
                     channel_name = group["name"]
                     base_slug = slugify(channel_name) or "channel"
+                    if base_slug in {CHANNEL_NOTIFICATIONS, CHANNEL_GLOBAL}:
+                        base_slug = f"{base_slug}-channel"
                     uid = base_slug
                     suffix = 1
                     while Channel.objects.filter(uid=uid).exists():
@@ -4383,6 +4411,8 @@ def microsub_import_opml(request):
                             sub.is_active = True
                             sub.save(update_fields=["is_active"])
                         if created:
+                            base_url = request.build_absolute_uri("/")
+                            transaction.on_commit(lambda sub_id=sub.id, root=base_url: populate_subscription_metadata.delay(sub_id, root))
                             channel_result["feeds_new"] += 1
 
                     results["channels"].append(channel_result)
@@ -4396,3 +4426,93 @@ def microsub_import_opml(request):
                 )
 
     return render(request, "site_admin/microsub/import_opml.html", {"form": form, "results": results})
+
+
+# ---------------------------------------------------------------------------
+# Mastodon
+# ---------------------------------------------------------------------------
+
+@require_http_methods(["GET", "POST"])
+def mastodon_settings(request):
+    """
+    Mastodon settings page. Shows connection status, per-kind syndication
+    defaults, and channel selectors for timeline and notifications.
+    """
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+
+    account = MastodonAccount.get_active()
+    defaults = {d.post_kind: d for d in MastodonSyndicationDefault.objects.all()}
+    channels = Channel.objects.order_by("order", "name")
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+
+        if action == "save_defaults":
+            for kind, obj in defaults.items():
+                obj.publish = request.POST.get(f"publish_{kind}") == "on"
+                obj.save(update_fields=["publish"])
+            if account:
+                tl_channel_id = request.POST.get("timeline_channel") or None
+                notif_channel_id = request.POST.get("notifications_channel") or None
+                timeline_reply_filter = request.POST.get("timeline_reply_filter") or MastodonAccount.TIMELINE_REPLIES_ALL
+                valid_reply_filters = {value for value, _label in MastodonAccount.TIMELINE_REPLY_FILTER_CHOICES}
+                if timeline_reply_filter not in valid_reply_filters:
+                    timeline_reply_filter = MastodonAccount.TIMELINE_REPLIES_ALL
+                account.timeline_channel_id = int(tl_channel_id) if tl_channel_id else None
+                account.notifications_channel_id = int(notif_channel_id) if notif_channel_id else None
+                account.timeline_reply_filter = timeline_reply_filter
+                account.save(update_fields=["timeline_channel", "notifications_channel", "timeline_reply_filter"])
+            messages.success(request, "Mastodon settings saved.")
+            return redirect("site_admin:mastodon_settings")
+
+    return render(
+        request,
+        "site_admin/mastodon/settings.html",
+        {
+            "account": account,
+            "defaults": defaults,
+            "channels": channels,
+            "post_kind_choices": Post.KIND_CHOICES,
+            "timeline_reply_filter_choices": MastodonAccount.TIMELINE_REPLY_FILTER_CHOICES,
+        },
+    )
+
+
+@require_POST
+def mastodon_disconnect(request):
+    """Revoke access token and remove the active MastodonAccount."""
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    account = MastodonAccount.get_active()
+    if account:
+        try:
+            from mastodon_integration.client import get_client
+            client = get_client(account)
+            client.revoke_access_token()
+        except Exception:
+            pass  # Revocation is best-effort; always remove the local record
+        account.delete()
+        messages.success(request, "Mastodon account disconnected.")
+    else:
+        messages.info(request, "No active Mastodon account to disconnect.")
+
+    return redirect("site_admin:mastodon_settings")
+
+
+@require_POST
+def mastodon_manual_sync(request):
+    """Manually trigger a timeline + notifications poll."""
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    poll_mastodon_timeline.delay()
+    poll_mastodon_notifications.delay()
+    messages.success(request, "Mastodon sync triggered.")
+    return redirect("site_admin:mastodon_settings")
