@@ -19,6 +19,13 @@ environ.Env.read_env(BASE_DIR / ".env")
 
 DEBUG = env.bool("DEBUG", default=False)
 SECRET_KEY = env("SECRET_KEY")
+FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
+if not FIELD_ENCRYPTION_KEY:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        "FIELD_ENCRYPTION_KEY must be set to a non-empty Fernet key. "
+        "Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+    )
 
 # Themes
 THEMES_ROOT = env("THEMES_ROOT", default=str(BASE_DIR / "themes"))
@@ -78,6 +85,7 @@ INSTALLED_APPS = [
     "site_admin.apps.SiteAdminConfig",
     "widgets.apps.WidgetsConfig",
     "microsub.apps.MicrosubConfig",
+    "mastodon_integration.apps.MastodonIntegrationConfig",
 
     # Third-party plugins from config/installed_plugins.py
     *INSTALLED_PLUGIN_APPS,
@@ -94,6 +102,7 @@ INSTALLED_APPS = [
     "storages",
     "django_celery_beat",
     "django_celery_results",
+    "encrypted_model_fields",
 ]
 
 if DEBUG:
@@ -240,6 +249,14 @@ CELERY_BEAT_SCHEDULE = {
     "poll-microsub-feeds": {
         "task": "microsub.tasks.poll_microsub_feeds",
         "schedule": 900,  # every 15 min (matches REFETCH_INTERVAL_SECONDS)
+    },
+    "poll-mastodon-timeline": {
+        "task": "mastodon_integration.tasks.poll_mastodon_timeline",
+        "schedule": 900,  # every 15 min
+    },
+    "poll-mastodon-notifications": {
+        "task": "mastodon_integration.tasks.poll_mastodon_notifications",
+        "schedule": 900,  # every 15 min
     },
 }
 

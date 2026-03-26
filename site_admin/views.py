@@ -33,6 +33,8 @@ from analytics.models import (
 
 from files.models import Attachment, File
 from files.gpx import GpxAnonymizeError, GpxAnonymizeOptions, anonymize_gpx
+from mastodon_integration.models import MastodonAccount, MastodonSyndicationDefault
+from mastodon_integration.tasks import poll_mastodon_timeline, poll_mastodon_notifications
 
 from core.models import (
     HCard,
@@ -3799,6 +3801,7 @@ def _build_post_form_context(
         "gpx_trim_distance": gpx_defaults["gpx_trim_distance"],
         "gpx_blur_enabled": gpx_defaults["gpx_blur_enabled"],
         "gpx_remove_timestamps": gpx_defaults["gpx_remove_timestamps"],
+        "mastodon_connected": MastodonAccount.get_active() is not None,
     }
 
 
@@ -4396,3 +4399,87 @@ def microsub_import_opml(request):
                 )
 
     return render(request, "site_admin/microsub/import_opml.html", {"form": form, "results": results})
+
+
+# ---------------------------------------------------------------------------
+# Mastodon
+# ---------------------------------------------------------------------------
+
+@require_http_methods(["GET", "POST"])
+def mastodon_settings(request):
+    """
+    Mastodon settings page. Shows connection status, per-kind syndication
+    defaults, and channel selectors for timeline and notifications.
+    """
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    from microsub.models import Channel
+
+    account = MastodonAccount.get_active()
+    defaults = {d.post_kind: d for d in MastodonSyndicationDefault.objects.all()}
+    channels = Channel.objects.order_by("order", "name")
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+
+        if action == "save_defaults":
+            for kind, obj in defaults.items():
+                obj.publish = request.POST.get(f"publish_{kind}") == "on"
+                obj.save(update_fields=["publish"])
+            if account:
+                tl_channel_id = request.POST.get("timeline_channel") or None
+                notif_channel_id = request.POST.get("notifications_channel") or None
+                account.timeline_channel_id = int(tl_channel_id) if tl_channel_id else None
+                account.notifications_channel_id = int(notif_channel_id) if notif_channel_id else None
+                account.save(update_fields=["timeline_channel", "notifications_channel"])
+            messages.success(request, "Mastodon settings saved.")
+            return redirect("site_admin:mastodon_settings")
+
+    return render(
+        request,
+        "site_admin/mastodon/settings.html",
+        {
+            "account": account,
+            "defaults": defaults,
+            "channels": channels,
+            "post_kind_choices": Post.KIND_CHOICES,
+        },
+    )
+
+
+@require_POST
+def mastodon_disconnect(request):
+    """Revoke access token and remove the active MastodonAccount."""
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    account = MastodonAccount.get_active()
+    if account:
+        try:
+            from mastodon_integration.client import get_client
+            client = get_client(account)
+            client.revoke_access_token()
+        except Exception:
+            pass  # Revocation is best-effort; always remove the local record
+        account.delete()
+        messages.success(request, "Mastodon account disconnected.")
+    else:
+        messages.info(request, "No active Mastodon account to disconnect.")
+
+    return redirect("site_admin:mastodon_settings")
+
+
+@require_POST
+def mastodon_manual_sync(request):
+    """Manually trigger a timeline + notifications poll."""
+    guard = _staff_guard(request)
+    if guard:
+        return guard
+
+    poll_mastodon_timeline.delay()
+    poll_mastodon_notifications.delay()
+    messages.success(request, "Mastodon sync triggered.")
+    return redirect("site_admin:mastodon_settings")

@@ -203,4 +203,8 @@ urlpatterns = [
     path("microsub/channels/<slug:uid>/feeds/add/", views.microsub_feed_add, name="microsub_feed_add"),
     path("microsub/channels/<slug:uid>/feeds/<int:feed_id>/remove/", views.microsub_feed_remove, name="microsub_feed_remove"),
     path("microsub/import/", views.microsub_import_opml, name="microsub_import_opml"),
+    # Mastodon
+    path("mastodon/", views.mastodon_settings, name="mastodon_settings"),
+    path("mastodon/disconnect/", views.mastodon_disconnect, name="mastodon_disconnect"),
+    path("mastodon/sync/", views.mastodon_manual_sync, name="mastodon_manual_sync"),
 ]

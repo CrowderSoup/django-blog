@@ -19,7 +19,6 @@ BRIDGY_PUBLISH_TARGETS = (
     ("bridgy_publish_bluesky", "https://brid.gy/publish/bluesky"),
     ("bridgy_publish_flickr", "https://brid.gy/publish/flickr"),
     ("bridgy_publish_github", "https://brid.gy/publish/github"),
-    ("bridgy_publish_mastodon", "https://brid.gy/publish/mastodon"),
 )
 
 
@@ -361,3 +360,14 @@ def queue_webmentions_for_post(
     from micropub.tasks import dispatch_webmentions
 
     dispatch_webmentions.delay(post.id, source_url, include_bridgy=include_bridgy)
+
+    # Dispatch Mastodon syndication unconditionally — the task itself checks
+    # _should_syndicate() and idempotency, so it is safe to call on every save.
+    try:
+        from mastodon_integration.tasks import publish_post_to_mastodon
+        publish_post_to_mastodon.delay(post.id)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "queue_webmentions_for_post: failed to dispatch publish_post_to_mastodon"
+        )

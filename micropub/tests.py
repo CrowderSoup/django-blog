@@ -163,7 +163,6 @@ class MicropubViewTests(TestCase):
         settings_obj.bridgy_publish_bluesky = False
         settings_obj.bridgy_publish_flickr = True
         settings_obj.bridgy_publish_github = False
-        settings_obj.bridgy_publish_mastodon = False
         settings_obj.save()
 
         response = self.client.get(
@@ -188,7 +187,6 @@ class MicropubViewTests(TestCase):
         settings_obj.bridgy_publish_bluesky = True
         settings_obj.bridgy_publish_flickr = False
         settings_obj.bridgy_publish_github = False
-        settings_obj.bridgy_publish_mastodon = False
         settings_obj.save()
 
         response = self.client.get(
@@ -475,7 +473,6 @@ class BridgyPublishWebmentionTests(TestCase):
         config.bridgy_publish_bluesky = True
         config.bridgy_publish_flickr = False
         config.bridgy_publish_github = False
-        config.bridgy_publish_mastodon = False
         config.save()
 
         source_url = "http://testserver/blog/post/hello/"

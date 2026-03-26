@@ -238,7 +238,6 @@ class SiteConfiguration(SingletonModel):
     bridgy_publish_bluesky = models.BooleanField("Bridgy Publish: Bluesky", default=True)
     bridgy_publish_flickr = models.BooleanField("Bridgy Publish: Flickr", default=True)
     bridgy_publish_github = models.BooleanField("Bridgy Publish: GitHub", default=True)
-    bridgy_publish_mastodon = models.BooleanField("Bridgy Publish: Mastodon", default=True)
     comments_enabled = models.BooleanField("Comments enabled", default=False)
     developer_tools_enabled = models.BooleanField("Developer tools enabled", default=False)
     default_feed_kinds = models.CharField(
