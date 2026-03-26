@@ -4458,9 +4458,14 @@ def mastodon_settings(request):
             if account:
                 tl_channel_id = request.POST.get("timeline_channel") or None
                 notif_channel_id = request.POST.get("notifications_channel") or None
+                timeline_reply_filter = request.POST.get("timeline_reply_filter") or MastodonAccount.TIMELINE_REPLIES_ALL
+                valid_reply_filters = {value for value, _label in MastodonAccount.TIMELINE_REPLY_FILTER_CHOICES}
+                if timeline_reply_filter not in valid_reply_filters:
+                    timeline_reply_filter = MastodonAccount.TIMELINE_REPLIES_ALL
                 account.timeline_channel_id = int(tl_channel_id) if tl_channel_id else None
                 account.notifications_channel_id = int(notif_channel_id) if notif_channel_id else None
-                account.save(update_fields=["timeline_channel", "notifications_channel"])
+                account.timeline_reply_filter = timeline_reply_filter
+                account.save(update_fields=["timeline_channel", "notifications_channel", "timeline_reply_filter"])
             messages.success(request, "Mastodon settings saved.")
             return redirect("site_admin:mastodon_settings")
 
@@ -4472,6 +4477,7 @@ def mastodon_settings(request):
             "defaults": defaults,
             "channels": channels,
             "post_kind_choices": Post.KIND_CHOICES,
+            "timeline_reply_filter_choices": MastodonAccount.TIMELINE_REPLY_FILTER_CHOICES,
         },
     )
 

@@ -42,6 +42,15 @@ class MastodonAccount(models.Model):
     avatar_url = models.URLField(blank=True)
     is_active = models.BooleanField(default=True)
 
+    TIMELINE_REPLIES_ALL = "all"
+    TIMELINE_REPLIES_HIDE = "hide"
+    TIMELINE_REPLIES_SELF_THREADS = "self_threads"
+    TIMELINE_REPLY_FILTER_CHOICES = [
+        (TIMELINE_REPLIES_ALL, "Include all posts"),
+        (TIMELINE_REPLIES_HIDE, "Hide replies"),
+        (TIMELINE_REPLIES_SELF_THREADS, "Hide replies except self-threads"),
+    ]
+
     # Microsub channels to route Mastodon content into (set via admin UI)
     timeline_channel = models.ForeignKey(
         "microsub.Channel",
@@ -50,6 +59,12 @@ class MastodonAccount(models.Model):
         on_delete=models.SET_NULL,
         related_name="mastodon_timeline_source",
         help_text="Microsub channel that receives the Mastodon home timeline.",
+    )
+    timeline_reply_filter = models.CharField(
+        max_length=20,
+        choices=TIMELINE_REPLY_FILTER_CHOICES,
+        default=TIMELINE_REPLIES_ALL,
+        help_text="Control whether replies are ingested into the Mastodon home timeline channel.",
     )
     notifications_channel = models.ForeignKey(
         "microsub.Channel",

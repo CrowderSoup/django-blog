@@ -54,6 +54,35 @@ def _build_canonical_url(post) -> str:
     return post.get_absolute_url()
 
 
+def _timeline_content_status(status):
+    reblog = _get(status, "reblog")
+    return reblog if reblog else status
+
+
+def _should_store_timeline_status(status, account) -> bool:
+    from .models import MastodonAccount
+
+    reply_filter = account.timeline_reply_filter or MastodonAccount.TIMELINE_REPLIES_ALL
+    if reply_filter == MastodonAccount.TIMELINE_REPLIES_ALL:
+        return True
+
+    content_status = _timeline_content_status(status)
+    in_reply_to_id = _get(content_status, "in_reply_to_id")
+    if not in_reply_to_id:
+        return True
+
+    if reply_filter == MastodonAccount.TIMELINE_REPLIES_HIDE:
+        return False
+
+    if reply_filter == MastodonAccount.TIMELINE_REPLIES_SELF_THREADS:
+        author = _get(content_status, "account")
+        author_id = str(_get(author, "id") or "")
+        reply_to_account_id = str(_get(content_status, "in_reply_to_account_id") or "")
+        return bool(author_id and reply_to_account_id and author_id == reply_to_account_id)
+
+    return True
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def publish_post_to_mastodon(self, post_id: int):
     """
@@ -234,6 +263,11 @@ def poll_mastodon_timeline():
 
         uid = f"mastodon:status:{status_id}"
         jf2 = status_to_jf2(status)
+
+        if not _should_store_timeline_status(status, account):
+            if not latest_id or status_id > latest_id:
+                latest_id = status_id
+            continue
 
         jf2["_uid"] = uid
         if author_url:

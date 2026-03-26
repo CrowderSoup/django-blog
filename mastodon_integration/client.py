@@ -54,6 +54,7 @@ def status_to_jf2(status) -> dict:
     spoiler_text = _get(content_status, "spoiler_text") or ""
     content_html = _get(content_status, "content") or ""
     url = _get(content_status, "url") or ""
+    in_reply_to_url = _get(content_status, "in_reply_to_url") or ""
     created_at = _get(status, "created_at")  # use original status timestamp
 
     jf2 = {
@@ -86,5 +87,8 @@ def status_to_jf2(status) -> dict:
 
     if reblog:
         jf2["repost-of"] = _get(reblog, "url") or ""
+
+    if in_reply_to_url:
+        jf2["in-reply-to"] = [in_reply_to_url]
 
     return jf2
