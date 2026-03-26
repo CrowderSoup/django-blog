@@ -149,6 +149,7 @@ TEMPLATES = [
             ],
             "builtins": [
                 "core.templatetags.theme",
+                "site_admin.templatetags.site_admin_tags",
             ],
             "context_processors": [
                 "django.template.context_processors.request",
