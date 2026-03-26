@@ -182,11 +182,12 @@ def forward(apps, schema_editor):
     EntrySearchToken.objects.all().delete()
     EntryCategory.objects.all().delete()
 
+    BATCH_SIZE = 500
     token_rows = []
     category_rows = []
     token_model = EntrySearchToken
     category_model = EntryCategory
-    for entry in Entry.objects.select_related("subscription").all().iterator():
+    for entry in Entry.objects.select_related("subscription").all().iterator(chunk_size=BATCH_SIZE):
         payload, metadata = normalize_entry_data(
             entry.data,
             uid=entry.uid,
@@ -215,6 +216,13 @@ def forward(apps, schema_editor):
             entry.save(update_fields=changed)
         token_rows.extend(token_model(entry_id=entry.id, token=token) for token in metadata["tokens"])
         category_rows.extend(category_model(entry_id=entry.id, value=value) for value in metadata["categories"])
+
+        if len(token_rows) >= BATCH_SIZE:
+            EntrySearchToken.objects.bulk_create(token_rows, ignore_conflicts=True)
+            token_rows = []
+        if len(category_rows) >= BATCH_SIZE:
+            EntryCategory.objects.bulk_create(category_rows, ignore_conflicts=True)
+            category_rows = []
 
     if token_rows:
         EntrySearchToken.objects.bulk_create(token_rows, ignore_conflicts=True)
