@@ -107,7 +107,12 @@ def dispatch_webmentions(post_id: int, source_url: str, *, include_bridgy: bool 
     import urllib.parse
     from blog.models import Post
     from micropub.models import Webmention
-    from micropub.webmention import _extract_targets, _bridgy_publish_targets, _resolve_mention_type
+    from micropub.webmention import (
+        _bridgy_publish_targets,
+        _extract_targets,
+        _is_globally_blocked_target,
+        _resolve_mention_type,
+    )
 
     try:
         post = Post.objects.get(id=post_id)
@@ -115,7 +120,11 @@ def dispatch_webmentions(post_id: int, source_url: str, *, include_bridgy: bool 
         return
 
     source_host = urllib.parse.urlparse(source_url).netloc
-    targets = [u for u in _extract_targets(post) if urllib.parse.urlparse(u).netloc != source_host]
+    targets = [
+        u
+        for u in _extract_targets(post)
+        if urllib.parse.urlparse(u).netloc != source_host and not _is_globally_blocked_target(u)
+    ]
     existing = set(
         Webmention.objects.filter(source=source_url, target__in=targets)
         .exclude(status__in=[Webmention.REJECTED, Webmention.TIMED_OUT])
@@ -130,7 +139,11 @@ def dispatch_webmentions(post_id: int, source_url: str, *, include_bridgy: bool 
     if include_bridgy:
         from core.models import SiteConfiguration
         settings_obj = SiteConfiguration.get_solo()
-        bridgy_targets = _bridgy_publish_targets(settings_obj)
+        bridgy_targets = [
+            target
+            for target in _bridgy_publish_targets(settings_obj)
+            if not _is_globally_blocked_target(target)
+        ]
         bridgy_existing = set(
             Webmention.objects.filter(source=source_url, target__in=bridgy_targets)
             .values_list("target", flat=True)

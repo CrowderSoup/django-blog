@@ -189,8 +189,6 @@ def poll_mastodon_timeline():
     Scheduled every 15 minutes by Celery Beat.
     """
     from django.db import close_old_connections
-    from microsub.models import Entry
-
     close_old_connections()
 
     from .models import MastodonAccount
@@ -205,6 +203,7 @@ def poll_mastodon_timeline():
         return
 
     from .client import get_client, status_to_jf2
+    from microsub.views import _store_entries
     client = get_client(account)
 
     fetch_kwargs = {"limit": 40}
@@ -236,21 +235,18 @@ def poll_mastodon_timeline():
         uid = f"mastodon:status:{status_id}"
         jf2 = status_to_jf2(status)
 
+        jf2["_uid"] = uid
+        if author_url:
+            source = jf2.get("_source")
+            if not isinstance(source, dict):
+                source = {}
+            source["url"] = source.get("url") or author_url
+            jf2["_source"] = source
+
         try:
-            _, created = Entry.objects.get_or_create(
-                channel=channel,
-                uid=uid,
-                defaults={
-                    "subscription": None,
-                    "data": jf2,
-                    "published": created_at,
-                    "author_url": author_url,
-                },
-            )
-            if created:
-                created_count += 1
+            created_count += _store_entries(channel, None, [jf2])
         except IntegrityError:
-            pass  # Duplicate inserted concurrently — safe to ignore
+            pass
         except Exception as exc:
             logger.warning(
                 "poll_mastodon_timeline: failed to create entry %s: %s", uid, exc
@@ -284,8 +280,6 @@ def poll_mastodon_notifications():
     """
     from django.db import close_old_connections
     from micropub.models import Webmention
-    from microsub.models import Entry
-
     close_old_connections()
 
     from .models import MastodonAccount, MastodonPost
@@ -295,6 +289,7 @@ def poll_mastodon_notifications():
         return
 
     from .client import get_client, status_to_jf2, strip_html
+    from microsub.views import _store_entries
     client = get_client(account)
 
     fetch_kwargs = {"limit": 40}
@@ -397,22 +392,18 @@ def poll_mastodon_notifications():
                 status_to_jf2_fn=status_to_jf2,
                 strip_html_fn=strip_html,
             )
+            jf2["_uid"] = uid
+            if actor_url:
+                source = jf2.get("_source")
+                if not isinstance(source, dict):
+                    source = {}
+                source["url"] = source.get("url") or actor_url
+                jf2["_source"] = source
 
             try:
-                _, created = Entry.objects.get_or_create(
-                    channel=notifications_channel,
-                    uid=uid,
-                    defaults={
-                        "subscription": None,
-                        "data": jf2,
-                        "published": created_at,
-                        "author_url": actor_url,
-                    },
-                )
-                if created:
-                    entry_count += 1
+                entry_count += _store_entries(notifications_channel, None, [jf2])
             except IntegrityError:
-                pass  # Duplicate inserted concurrently — safe to ignore
+                pass
             except Exception as exc:
                 logger.warning(
                     "poll_mastodon_notifications: entry creation failed for notif %s: %s",

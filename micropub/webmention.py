@@ -169,6 +169,14 @@ def _post_from_url(url: str) -> Optional[Post]:
         return None
 
 
+def _is_globally_blocked_target(target_url: str) -> bool:
+    from microsub.models import BlockedUser
+    from microsub.utils import url_matches_profile_prefix
+
+    blocked_urls = BlockedUser.objects.filter(channel__isnull=True).values_list("url", flat=True)
+    return any(url_matches_profile_prefix(blocked_url, target_url) for blocked_url in blocked_urls)
+
+
 def _send_webmention_request(
     source_url: str,
     target_url: str,
@@ -242,6 +250,20 @@ def send_webmention(
     mention_type: str = Webmention.MENTION,
     local_post: Optional[Post] = None,
 ) -> Webmention:
+    if _is_globally_blocked_target(target_url):
+        if not local_post:
+            local_post = _post_from_url(source_url)
+        mention_type = mention_type if mention_type in dict(Webmention.MENTION_CHOICES) else Webmention.MENTION
+        return Webmention.objects.create(
+            source=source_url,
+            target=target_url,
+            mention_type=mention_type,
+            status=Webmention.REJECTED,
+            target_post=local_post,
+            error="Target blocked by Microsub global block",
+            is_incoming=False,
+        )
+
     status, error = _send_webmention_request(source_url, target_url, mention_type)
     if status == Webmention.REJECTED and "No webmention endpoint" not in error:
         retry_status, retry_error = _send_webmention_request(
@@ -265,6 +287,12 @@ def send_webmention(
 
 
 def resend_webmention(webmention: Webmention) -> Webmention:
+    if _is_globally_blocked_target(webmention.target):
+        webmention.status = Webmention.REJECTED
+        webmention.error = "Target blocked by Microsub global block"
+        webmention.save(update_fields=["status", "error", "updated_at"])
+        return webmention
+
     status, error = _send_webmention_request(webmention.source, webmention.target, webmention.mention_type)
     if status == Webmention.REJECTED and "No webmention endpoint" not in error:
         retry_status, retry_error = _send_webmention_request(
@@ -292,7 +320,11 @@ def _resolve_mention_type(post: Post, target: str) -> str:
 
 def send_webmentions_for_post(post: Post, source_url: str) -> None:
     source_host = urllib.parse.urlparse(source_url).netloc
-    targets = [url for url in _extract_targets(post) if urllib.parse.urlparse(url).netloc != source_host]
+    targets = [
+        url
+        for url in _extract_targets(post)
+        if urllib.parse.urlparse(url).netloc != source_host and not _is_globally_blocked_target(url)
+    ]
     existing_targets = set()
     if targets:
         existing_targets = set(
@@ -333,7 +365,7 @@ def _bridgy_publish_targets(settings_obj) -> list[str]:
 
 
 def send_bridgy_publish_webmentions(post: Post, source_url: str, settings_obj) -> None:
-    targets = _bridgy_publish_targets(settings_obj)
+    targets = [target for target in _bridgy_publish_targets(settings_obj) if not _is_globally_blocked_target(target)]
     if not targets:
         return
     existing_targets = set(

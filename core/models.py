@@ -246,6 +246,11 @@ class SiteConfiguration(SingletonModel):
         blank=True,
         help_text="Comma-separated list of post kinds shown by default when no filter is applied. Leave blank for the default (article, note, photo, activity, event, checkin). Valid values: article, note, photo, activity, like, repost, reply, event, rsvp, checkin, bookmark.",
     )
+    microsub_unfollow_removes_entries = models.BooleanField(
+        "Microsub unfollow removes history",
+        default=False,
+        help_text="If enabled, unfollowing a feed removes its previously fetched entries from the channel instead of leaving them visible.",
+    )
 
     def __str__(self):
         return "Site Configuration"

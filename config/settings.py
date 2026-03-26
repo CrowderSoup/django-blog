@@ -61,6 +61,7 @@ if not DEBUG:
     CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 WEBMENTION_TRUSTED_DOMAINS = env.list("WEBMENTION_TRUSTED_DOMAINS", default=[])
+MICROSUB_BASE_URL = env("MICROSUB_BASE_URL", default="")
 
 # Comments + spam protection
 AKISMET_API_KEY = env("AKISMET_API_KEY", default="")

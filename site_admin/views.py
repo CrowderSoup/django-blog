@@ -4133,6 +4133,7 @@ def microsub_channel_create(request):
         return guard
 
     from microsub.models import Channel
+    from microsub.views import CHANNEL_GLOBAL, CHANNEL_NOTIFICATIONS
     from site_admin.forms import ChannelForm
     from django.utils.text import slugify
 
@@ -4141,6 +4142,9 @@ def microsub_channel_create(request):
         if form.is_valid():
             name = form.cleaned_data["name"]
             base_slug = slugify(name) or "channel"
+            if base_slug in {CHANNEL_NOTIFICATIONS, CHANNEL_GLOBAL}:
+                form.add_error("name", "That channel name is reserved.")
+                return render(request, "site_admin/microsub/channel_form.html", {"form": form, "channel": None})
             uid = base_slug
             suffix = 1
             while Channel.objects.filter(uid=uid).exists():
@@ -4222,6 +4226,9 @@ def microsub_channel_delete(request, uid):
     if channel.uid == "notifications":
         messages.error(request, "The notifications channel cannot be deleted.")
         return redirect("site_admin:microsub_channel_detail", uid=uid)
+    if Channel.objects.exclude(uid="notifications").count() <= 1:
+        messages.error(request, "At least one non-notifications channel is required.")
+        return redirect("site_admin:microsub_channel_detail", uid=uid)
 
     if request.method == "POST":
         channel.delete()
@@ -4242,6 +4249,7 @@ def microsub_feed_add(request, uid):
         return guard
 
     from microsub.models import Channel, Subscription
+    from microsub.tasks import populate_subscription_metadata
     from site_admin.forms import SubscriptionForm
 
     channel = get_object_or_404(Channel, uid=uid)
@@ -4260,6 +4268,8 @@ def microsub_feed_add(request, uid):
                 sub.save(update_fields=["is_active"])
                 messages.info(request, "Feed already subscribed (reactivated).")
             else:
+                base_url = request.build_absolute_uri("/")
+                transaction.on_commit(lambda: populate_subscription_metadata.delay(sub.id, base_url))
                 messages.success(request, f"Subscribed to {feed_url}.")
             return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
     else:
@@ -4278,12 +4288,24 @@ def microsub_feed_remove(request, uid, feed_id):
     if guard:
         return guard
 
+    from django.conf import settings
+    from core.models import SiteConfiguration
     from microsub.models import Channel, Subscription
+    from microsub.views import _unsubscribe_from_websub
 
     channel = get_object_or_404(Channel, uid=uid)
     sub = get_object_or_404(Subscription, pk=feed_id, channel=channel)
-    sub.delete()
-    messages.success(request, "Feed removed.")
+    sub.is_active = False
+    sub.websub_subscribed_at = None
+    sub.websub_requested_at = None
+    sub.websub_expires_at = None
+    sub.save(update_fields=["is_active", "websub_subscribed_at", "websub_requested_at", "websub_expires_at"])
+    if sub.websub_hub:
+        base_url = getattr(settings, "MICROSUB_BASE_URL", "").rstrip("/") or request.build_absolute_uri("/").rstrip("/")
+        _unsubscribe_from_websub(sub, base_url)
+    if SiteConfiguration.get_solo().microsub_unfollow_removes_entries:
+        channel.entries.filter(subscription=sub).update(is_removed=True)
+    messages.success(request, "Feed unfollowed.")
     return redirect("site_admin:microsub_channel_detail", uid=channel.uid)
 
 
@@ -4307,13 +4329,12 @@ def microsub_channel_reorder(request):
     if guard:
         return guard
 
-    from microsub.models import Channel
+    from microsub.views import _apply_channel_order
 
     try:
         data = json.loads(request.body)
         order_list = data.get("channels", [])
-        for i, uid in enumerate(order_list):
-            Channel.objects.filter(uid=uid).update(order=i)
+        _apply_channel_order(order_list)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
@@ -4327,6 +4348,8 @@ def microsub_import_opml(request):
         return guard
 
     from microsub.models import Channel, Subscription
+    from microsub.tasks import populate_subscription_metadata
+    from microsub.views import CHANNEL_GLOBAL, CHANNEL_NOTIFICATIONS
     from microsub.opml import parse_opml
     from site_admin.forms import OPMLImportForm
     from django.utils.text import slugify
@@ -4353,6 +4376,8 @@ def microsub_import_opml(request):
                 for group in parsed:
                     channel_name = group["name"]
                     base_slug = slugify(channel_name) or "channel"
+                    if base_slug in {CHANNEL_NOTIFICATIONS, CHANNEL_GLOBAL}:
+                        base_slug = f"{base_slug}-channel"
                     uid = base_slug
                     suffix = 1
                     while Channel.objects.filter(uid=uid).exists():
@@ -4386,6 +4411,8 @@ def microsub_import_opml(request):
                             sub.is_active = True
                             sub.save(update_fields=["is_active"])
                         if created:
+                            base_url = request.build_absolute_uri("/")
+                            transaction.on_commit(lambda sub_id=sub.id, root=base_url: populate_subscription_metadata.delay(sub_id, root))
                             channel_result["feeds_new"] += 1
 
                     results["channels"].append(channel_result)
