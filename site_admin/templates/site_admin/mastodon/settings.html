@@ -80,7 +80,7 @@
       </p>
       <div class="mt-4 divide-y divide-[color:var(--admin-border)]">
         {% for kind_value, kind_label in post_kind_choices %}
-          {% with default=defaults|default:{}|get_item:kind_value %}
+          {% with default=defaults|get_item:kind_value %}
           <div class="flex items-center justify-between py-3">
             <label for="publish_{{ kind_value }}" class="text-sm font-medium">{{ kind_label }}</label>
             <input
